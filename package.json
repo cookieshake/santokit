@@ -7,7 +7,8 @@
     "start": "node dist/entrypoints/node.js",
     "dev:cf": "wrangler dev",
     "deploy:cf": "wrangler deploy --minify",
-    "typegen:cf": "wrangler types --env-interface CloudflareBindings"
+    "typegen:cf": "wrangler types --env-interface CloudflareBindings",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.8",
@@ -18,11 +19,13 @@
     "zod": "^4.3.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.3.14",
     "@types/node": "^20.11.17",
     "@types/pg": "^8.16.0",
     "drizzle-kit": "^0.31.8",
     "tsx": "^4.7.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.17"
   },
   "paths": {
     "@/*": [
