@@ -1,0 +1,29 @@
+import { Hono } from 'hono'
+import { zValidator } from '@hono/zod-validator'
+import { CreateProjectSchema } from '../../validators.js'
+import { projectService } from './project.service.js'
+import collectionController from '@/modules/collection/collection.controller.js'
+
+const app = new Hono()
+
+app.post('/', zValidator('json', CreateProjectSchema), async (c) => {
+    const { name, ownerId } = c.req.valid('json')
+    try {
+        const result = await projectService.create(name, ownerId)
+        return c.json(result)
+    } catch (e) {
+        return c.json({ error: 'Failed to create project' }, 500)
+    }
+})
+
+app.get('/', async (c) => {
+    const result = await projectService.list()
+    return c.json(result)
+})
+
+// Recursively mount routes: Project -> Collections
+// e.g. /projects/:projectId/collections
+app.route('/:projectId/collections', collectionController)
+
+
+export default app
