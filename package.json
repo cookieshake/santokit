@@ -1,0 +1,26 @@
+{
+  "name": "santoki",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/entrypoints/node.ts",
+    "build": "tsc",
+    "start": "node dist/entrypoints/node.js",
+    "dev:cf": "wrangler dev",
+    "deploy:cf": "wrangler deploy --minify",
+    "typegen:cf": "wrangler types --env-interface CloudflareBindings"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.8",
+    "hono": "^4.11.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "tsx": "^4.7.1",
+    "typescript": "^5.8.3"
+  },
+  "paths": {
+    "@/*": [
+      "src/*"
+    ]
+  }
+}
