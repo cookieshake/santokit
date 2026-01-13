@@ -13,6 +13,7 @@ export const authAdmin = betterAuth({
             verification: schema.verifications,
         },
     }),
+    baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3001/admin/v1/auth",
     emailAndPassword: {
         enabled: true,
     },

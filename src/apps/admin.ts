@@ -6,43 +6,64 @@ import projectController from '@/modules/project/project.controller.js'
 import adminController from '@/modules/admin/admin.controller.js'
 import { db } from '@/db/index.js'
 import { users } from '@/db/schema.js'
-import { eq, arrayContains } from 'drizzle-orm'
+import { arrayContains } from 'drizzle-orm'
+import uiController from '@/modules/admin/ui.controller.js'
+import { serveStatic } from '@hono/node-server/serve-static'
 
-const app = new Hono<{
+const api = new Hono<{
     Variables: {
         user: typeof authAdmin.$Infer.Session.user;
     };
-}>().basePath('/v1')
+}>()
 
-// Public Auth routes
-app.route('/auth', adminController)
+const app = new Hono()
 
-// Protected routes middleware
-app.use('/*', async (c, next) => {
+// Serve static assets
+app.use('/assets/*', serveStatic({ root: './src' }))
+
+// Shared Auth middleware for both API and UI
+const authMiddleware = async (c: any, next: any) => {
     const session = await authAdmin.api.getSession({
         headers: c.req.raw.headers,
     });
     if (!session) {
-        return c.json({ error: "Unauthorized" }, 401);
+        if (c.req.path.startsWith('/admin/_') && c.req.path !== '/admin/_/login') {
+            return c.redirect('/admin/_/login') // Redirect to login page if UI
+        }
+        if (!c.req.path.startsWith('/admin/_')) {
+            return c.json({ error: "Unauthorized" }, 401);
+        }
+        return next() // Continue if it's the login page or other public UI
     }
-    // Set user to context for subsequent middlewares
-    c.set('user', session.user);
+    c.set('user', (session as any).user);
     await next()
-})
+}
 
-// Apply Authorization Middleware to all routes after authentication
-app.use('/*', authzMiddleware(() => 'admin'))
+// Public Auth routes (mounted on api)
+api.route('/auth', adminController)
 
-app.get('/', (c) => c.text('Admin API (Modular Architecture)'))
+// API routes (prefixed with /v1 in the final app)
+api.use('/*', authMiddleware)
+api.use('/*', authzMiddleware(() => 'admin'))
 
-// Mount Modules
-app.route('/sources', datasourceController)
-app.route('/projects', projectController)
+api.get('/', (c) => c.text('Admin API (Modular Architecture)'))
 
-// --- Admin Management ---
-app.get('/admins', async (c) => {
+// Mount Modules on API
+api.route('/sources', datasourceController)
+api.route('/projects', projectController)
+
+// --- Admin Management on API ---
+api.get('/admins', async (c) => {
     const allAdmins = await db.select().from(users).where(arrayContains(users.roles, ['admin']))
     return c.json(allAdmins)
 })
 
+// UI routes (prefixed with /admin/_)
+app.use('/admin/_', authMiddleware)
+app.route('/admin/_', uiController)
+
+// Mount API on the main app
+app.route('/admin/v1', api)
+
 export default app
+

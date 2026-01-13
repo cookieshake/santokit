@@ -7,5 +7,5 @@ serve({
     fetch: clientApp.fetch,
     port,
 }, (info) => {
-    console.log(`Data API is running on http://localhost:${info.port}`)
+    console.log(`Public API is running on http://localhost:${info.port}`)
 })
