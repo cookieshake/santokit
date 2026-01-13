@@ -23,7 +23,7 @@ app.post('/', zValidator('json', CreateCollectionSchema), async (c) => {
     const projectId = parseInt(c.req.param('projectId')!)
     const { name, dataSourceId } = c.req.valid('json')
     try {
-        const result = await collectionService.create(projectId, name, dataSourceId)
+        const result = await collectionService.create(projectId, name)
         return c.json(result)
     } catch (e) {
         return c.json({ error: 'Failed to create collection', details: String(e) }, 500)

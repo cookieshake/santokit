@@ -33,6 +33,15 @@ describe('Collection Service (Integration)', () => {
     beforeEach(async () => {
         // Setup schema
         await pgliteInstance.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        email TEXT NOT NULL UNIQUE,
+        password TEXT,
+        role TEXT NOT NULL DEFAULT 'user',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
       CREATE TABLE IF NOT EXISTS data_sources (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL UNIQUE,
@@ -43,19 +52,18 @@ describe('Collection Service (Integration)', () => {
       CREATE TABLE IF NOT EXISTS projects (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
-        owner_id INTEGER,
+        owner_id TEXT REFERENCES users(id),
         created_at TIMESTAMP DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS collections (
         id SERIAL PRIMARY KEY,
         project_id INTEGER NOT NULL,
         name TEXT NOT NULL,
-        data_source_id INTEGER NOT NULL,
         physical_name TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       );
     `)
-        await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources RESTART IDENTITY CASCADE`)
+        await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, users RESTART IDENTITY CASCADE`)
 
         // Setup test data
         await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string, prefix) VALUES ('test_source', 'pg://test', 'test_')`)
@@ -66,7 +74,7 @@ describe('Collection Service (Integration)', () => {
     })
 
     it('should create a collection and a physical table', async () => {
-        const col = await collectionService.create(1, 'posts', 1)
+        const col = await collectionService.create(1, 'posts')
         expect(col).toBeDefined()
         expect(col.physicalName).toBe('test_p1_posts')
 
@@ -77,7 +85,7 @@ describe('Collection Service (Integration)', () => {
     })
 
     it('should add a field to a collection', async () => {
-        await collectionService.create(1, 'users', 1)
+        await collectionService.create(1, 'users')
         await collectionService.addField(1, 'users', 'age', 'integer', true)
 
         // Verify column exists

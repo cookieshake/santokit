@@ -8,10 +8,10 @@ export const getAuthProject = (db: any) => {
         database: drizzleAdapter(db, {
             provider: "pg",
             schema: {
-                user: schema.user,
-                session: schema.session,
-                account: schema.account,
-                verification: schema.verification,
+                user: schema.users,
+                session: schema.sessions,
+                account: schema.accounts,
+                verification: schema.verifications,
             },
         }),
         emailAndPassword: {

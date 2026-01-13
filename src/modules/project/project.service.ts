@@ -4,7 +4,7 @@ import { connectionManager } from '@/db/connection-manager.js'
 import { sql } from 'drizzle-orm'
 
 export const projectService = {
-    create: async (name: string, ownerId: number) => {
+    create: async (name: string, ownerId: string) => {
         return await projectRepository.create({ name, ownerId })
     },
     list: async () => {
@@ -23,7 +23,7 @@ export const projectService = {
         if (!targetDb) throw new Error('Could not connect to data source')
 
         await targetDb.execute(sql.raw(`
-            CREATE TABLE IF NOT EXISTS accounts (
+            CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,

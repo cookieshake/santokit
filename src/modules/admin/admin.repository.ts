@@ -1,20 +1,27 @@
 import { db } from '@/db/index.js'
-import { admins } from '@/db/schema.js'
-import { eq } from 'drizzle-orm'
+import { users } from '@/db/schema.js'
+import { eq, and } from 'drizzle-orm'
 
 export class AdminRepository {
     async create(data: any) {
-        const [result] = await db.insert(admins).values(data).returning()
+        const [result] = await db.insert(users).values({
+            ...data,
+            role: 'admin',
+            id: crypto.randomUUID(), // users table needs string ID
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            emailVerified: false,
+        }).returning()
         return result
     }
 
     async findByEmail(email: string) {
-        const [result] = await db.select().from(admins).where(eq(admins.email, email))
+        const [result] = await db.select().from(users).where(and(eq(users.email, email), eq(users.role, 'admin')))
         return result
     }
 
-    async findById(id: number) {
-        const [result] = await db.select().from(admins).where(eq(admins.id, id))
+    async findById(id: string) {
+        const [result] = await db.select().from(users).where(and(eq(users.id, id), eq(users.role, 'admin')))
         return result
     }
 }

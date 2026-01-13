@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { adminService } from './admin.service.js'
 import { db } from '@/db/index.js'
-import { admins } from '@/db/schema.js'
+import { users } from '@/db/schema.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
@@ -20,18 +20,20 @@ describe('Admin Module (System Level Users)', () => {
     beforeEach(async () => {
         // Table creation
         await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS admins (
-            id SERIAL PRIMARY KEY,
+          CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            name TEXT,
             email TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL,
+            password TEXT,
             role TEXT NOT NULL DEFAULT 'user',
+            email_verified BOOLEAN DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
           );
         `)
 
         // Clear tables
-        await mockedDb.execute(sql`TRUNCATE TABLE admins RESTART IDENTITY CASCADE`)
+        await mockedDb.execute(sql`TRUNCATE TABLE users RESTART IDENTITY CASCADE`)
     })
 
     it('should register a new admin', async () => {
@@ -60,7 +62,7 @@ describe('Admin Module (System Level Users)', () => {
             password: 'password123'
         })
         const result = await adminService.login('admin@example.com', 'password123')
-        expect(result.admin.email).toBe('admin@example.com')
+        expect(result.user.email).toBe('admin@example.com')
         expect(result.token).toBeDefined()
     })
 

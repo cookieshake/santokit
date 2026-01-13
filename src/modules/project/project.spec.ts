@@ -38,7 +38,7 @@ describe('Project Service (Integration)', () => {
     // Basic table creation for tests (since we don't have migrations)
     await pgliteInstance.exec(`
       CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
+        id TEXT PRIMARY KEY,
         email TEXT NOT NULL UNIQUE,
         password TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'user',
@@ -48,7 +48,7 @@ describe('Project Service (Integration)', () => {
       CREATE TABLE IF NOT EXISTS projects (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
-        owner_id INTEGER REFERENCES users(id),
+        owner_id TEXT REFERENCES users(id),
         data_source_id INTEGER UNIQUE,
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -58,20 +58,21 @@ describe('Project Service (Integration)', () => {
     await db.execute(sql`TRUNCATE TABLE projects, users RESTART IDENTITY CASCADE`)
 
     // Create a dummy user
-    await pgliteInstance.exec(`INSERT INTO users (email, password) VALUES ('test@example.com', 'pass123')`)
+    const dummyId = 'user-1'
+    await pgliteInstance.exec(`INSERT INTO users (id, email, password) VALUES ('${dummyId}', 'test@example.com', 'pass123')`)
   })
 
 
   it('should create a new project', async () => {
-    const project = await projectService.create('New Project', 1)
+    const project = await projectService.create('New Project', 'user-1')
     expect(project).toBeDefined()
     expect(project.name).toBe('New Project')
-    expect(project.ownerId).toBe(1)
+    expect(project.ownerId).toBe('user-1')
   })
 
   it('should list projects', async () => {
-    await projectService.create('Project 1', 1)
-    await projectService.create('Project 2', 1)
+    await projectService.create('Project 1', 'user-1')
+    await projectService.create('Project 2', 'user-1')
 
     const projects = await projectService.list()
     expect(projects.length).toBe(2)
@@ -80,7 +81,7 @@ describe('Project Service (Integration)', () => {
 
   it('should associate a data source', async () => {
     // 1. Create a project
-    const project = await projectService.create('To Associate', 1)
+    const project = await projectService.create('To Associate', 'user-1')
 
     // 2. Mock datasource existence (we need to create it in test DB too)
     await pgliteInstance.exec(`

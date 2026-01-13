@@ -4,7 +4,8 @@ import datasourceController from '@/modules/datasource/datasource.controller.js'
 import projectController from '@/modules/project/project.controller.js'
 import adminController from '@/modules/admin/admin.controller.js'
 import { db } from '@/db/index.js'
-import { admins } from '@/db/schema.js'
+import { users } from '@/db/schema.js'
+import { eq } from 'drizzle-orm'
 
 const app = new Hono<{
     Variables: {
@@ -38,7 +39,7 @@ app.route('/projects', projectController)
 
 // --- Admin Management ---
 app.get('/admins', async (c) => {
-    const allAdmins = await db.select().from(admins)
+    const allAdmins = await db.select().from(users).where(eq(users.role, 'admin'))
     return c.json(allAdmins)
 })
 

@@ -1,5 +1,6 @@
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
 import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
+import { projectRepository } from '@/modules/project/project.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { sql } from 'drizzle-orm'
 
@@ -10,7 +11,10 @@ export const dataService = {
         const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
         if (!col) throw new Error('Collection not found')
 
-        const source = await dataSourceRepository.findById(col.dataSourceId)
+        const project = await projectRepository.findById(projectId)
+        if (!project || !project.dataSourceId) throw new Error('Project or Data Source not found')
+
+        const source = await dataSourceRepository.findById(project.dataSourceId)
         if (!source) throw new Error('Data Source not found')
 
         const targetDb = await connectionManager.getConnection(source.name)
@@ -47,7 +51,10 @@ export const dataService = {
         const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
         if (!col) throw new Error('Collection not found')
 
-        const source = await dataSourceRepository.findById(col.dataSourceId)
+        const project = await projectRepository.findById(projectId)
+        if (!project || !project.dataSourceId) throw new Error('Project or Data Source not found')
+
+        const source = await dataSourceRepository.findById(project.dataSourceId)
         if (!source) throw new Error('Data Source not found')
 
         const targetDb = await connectionManager.getConnection(source.name)

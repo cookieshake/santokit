@@ -1,20 +1,21 @@
 import { pgTable, serial, text, timestamp, boolean, integer, unique } from 'drizzle-orm/pg-core';
 
-export const user = pgTable("user", {
+export const users = pgTable("users", {
     id: text("id").primaryKey(),
     name: text('name').notNull(),
     email: text('email').notNull().unique(),
     emailVerified: boolean('email_verified').notNull(),
     image: text('image'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
-    role: text('role'),
+    password: text('password'), // Added for credential auth
+    role: text('role').notNull().default('user'), // Ensure not null and default
     banned: boolean('banned'),
     banReason: text('ban_reason'),
     banExpires: timestamp('ban_expires'),
+    createdAt: timestamp('created_at').notNull(),
+    updatedAt: timestamp('updated_at').notNull(),
 });
 
-export const session = pgTable("session", {
+export const sessions = pgTable("sessions", {
     id: text("id").primaryKey(),
     expiresAt: timestamp('expires_at').notNull(),
     token: text('token').notNull().unique(),
@@ -22,14 +23,14 @@ export const session = pgTable("session", {
     updatedAt: timestamp('updated_at').notNull(),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
-    userId: text('user_id').notNull().references(() => user.id),
+    userId: text('user_id').notNull().references(() => users.id),
 });
 
-export const account = pgTable("account", {
+export const accounts = pgTable("accounts", {
     id: text("id").primaryKey(),
     accountId: text('account_id').notNull(),
     providerId: text('provider_id').notNull(),
-    userId: text('user_id').notNull().references(() => user.id),
+    userId: text('user_id').notNull().references(() => users.id),
     accessToken: text('access_token'),
     refreshToken: text('refresh_token'),
     idToken: text('id_token'),
@@ -41,7 +42,7 @@ export const account = pgTable("account", {
     updatedAt: timestamp('updated_at').notNull(),
 });
 
-export const verification = pgTable("verification", {
+export const verifications = pgTable("verifications", {
     id: text("id").primaryKey(),
     identifier: text('identifier').notNull(),
     value: text('value').notNull(),
@@ -50,15 +51,7 @@ export const verification = pgTable("verification", {
     updatedAt: timestamp('updated_at'),
 });
 
-// Admins (System Level Users)
-export const admins = pgTable('admins', {
-    id: serial('id').primaryKey(),
-    email: text('email').notNull().unique(),
-    password: text('password').notNull(),
-    role: text('role').notNull().default('user'),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
-});
+// Admins table removed, users table used instead with role='admin'
 
 // Data Sources
 export const dataSources = pgTable('data_sources', {
@@ -73,7 +66,7 @@ export const dataSources = pgTable('data_sources', {
 export const projects = pgTable('projects', {
     id: serial('id').primaryKey(),
     name: text('name').notNull(),
-    ownerId: integer('owner_id').references(() => admins.id),
+    ownerId: text('owner_id').references(() => users.id),
     dataSourceId: integer('data_source_id').references(() => dataSources.id).unique(),
     createdAt: timestamp('created_at').defaultNow(),
 });

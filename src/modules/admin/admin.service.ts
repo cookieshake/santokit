@@ -26,7 +26,7 @@ export class AdminService {
         }
 
         const token = await sign(payload, JWT_SECRET)
-        return { admin, token }
+        return { user: admin, token }
     }
 }
 

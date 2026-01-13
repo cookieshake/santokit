@@ -22,7 +22,7 @@ export const CreateDataSourceSchema = z.object({
 
 export const CreateProjectSchema = z.object({
     name: z.string().min(1),
-    ownerId: z.number().int().positive(),
+    ownerId: z.string().min(1),
 })
 
 export const CreateUserSchema = z.object({
