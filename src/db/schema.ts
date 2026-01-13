@@ -39,3 +39,16 @@ export const collections = pgTable('collections', {
 }, (t) => ({
     unq: unique().on(t.projectId, t.name),
 }));
+
+// Accounts (Project-specific users)
+export const accounts = pgTable('accounts', {
+    id: serial('id').primaryKey(),
+    projectId: integer('project_id').references(() => projects.id).notNull(),
+    email: text('email').notNull(),
+    password: text('password').notNull(),
+    role: text('role').notNull().default('user'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+}, (t) => ({
+    unq: unique().on(t.projectId, t.email),
+}));
