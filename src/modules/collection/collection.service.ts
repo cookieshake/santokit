@@ -1,5 +1,5 @@
-import { collectionRepository } from './collection.repository.js'
-import { dataSourceRepository } from '../datasource/datasource.repository.js'
+import { collectionRepository } from '@/modules/collection/collection.repository.js'
+import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
 
 export const collectionService = {
     create: async (projectId: number, name: string, dataSourceId: number) => {

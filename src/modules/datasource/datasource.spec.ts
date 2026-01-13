@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import * as schema from '@/db/schema.js'
-import { dataSourceService } from './datasource.service.js'
+import { dataSourceService } from '@/modules/datasource/datasource.service.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
@@ -14,7 +14,7 @@ vi.mock('../../db/index.js', async () => {
     return { db, pglite }
 })
 
-import * as dbModule from '../../db/index.js'
+import * as dbModule from '@/db/index.js'
 const { db, pglite } = dbModule as any
 const pgliteInstance = pglite as any
 

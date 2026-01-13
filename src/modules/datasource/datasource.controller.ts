@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { CreateDataSourceSchema } from '../../validators.js'
-import { dataSourceService } from './datasource.service.js'
+import { CreateDataSourceSchema } from '@/validators.js'
+import { dataSourceService } from '@/modules/datasource/datasource.service.js'
 
 const app = new Hono()
 

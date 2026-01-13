@@ -1,7 +1,7 @@
 
 import { serve } from '@hono/node-server'
-import clientApp from '../apps/client.js'
-import adminApp from '../apps/admin.js'
+import clientApp from '@/apps/client.js'
+import adminApp from '@/apps/admin.js'
 
 // Client API on Port 3000
 serve({

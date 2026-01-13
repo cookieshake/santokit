@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import * as schema from '@/db/schema.js'
-import { projectService } from './project.service.js'
-import { projectRepository } from './project.repository.js'
+import { projectService } from '@/modules/project/project.service.js'
+import { projectRepository } from '@/modules/project/project.repository.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
@@ -16,7 +16,7 @@ vi.mock('../../db/index.js', async () => {
 })
 
 // Correctly import the mocked db
-import * as dbModule from '../../db/index.js'
+import * as dbModule from '@/db/index.js'
 const { db, pglite } = dbModule as any
 const pgliteInstance = pglite as any
 

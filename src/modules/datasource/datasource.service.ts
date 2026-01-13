@@ -1,4 +1,4 @@
-import { dataSourceRepository } from './datasource.repository.js'
+import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
 
 export const dataSourceService = {
     create: async (name: string, connectionString: string, prefix?: string) => {

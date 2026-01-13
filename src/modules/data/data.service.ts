@@ -1,6 +1,6 @@
-import { collectionRepository } from '../collection/collection.repository.js'
-import { dataSourceRepository } from '../datasource/datasource.repository.js'
-import { connectionManager } from '../../db/connection-manager.js'
+import { collectionRepository } from '@/modules/collection/collection.repository.js'
+import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
+import { connectionManager } from '@/db/connection-manager.js'
 import { sql } from 'drizzle-orm'
 
 export const dataService = {

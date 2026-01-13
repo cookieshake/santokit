@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { DynamicDataInsertSchema } from '../../validators.js'
-import { dataService } from './data.service.js'
+import { DynamicDataInsertSchema } from '@/validators.js'
+import { dataService } from '@/modules/data/data.service.js'
 
 const app = new Hono()
 

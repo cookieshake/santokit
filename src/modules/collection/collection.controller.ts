@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { CreateCollectionSchema, AddFieldSchema, RenameFieldSchema, CreateIndexSchema } from '../../validators.js'
-import { collectionService } from './collection.service.js'
+import { CreateCollectionSchema, AddFieldSchema, RenameFieldSchema, CreateIndexSchema } from '@/validators.js'
+import { collectionService } from '@/modules/collection/collection.service.js'
 
 const app = new Hono()
 

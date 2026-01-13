@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { jwt } from 'hono/jwt'
-import dataController from '../modules/data/data.controller.js'
+import dataController from '@/modules/data/data.controller.js'
 
 const app = new Hono().basePath('/v1')
 const JWT_SECRET = process.env.JWT_SECRET || 'secret'

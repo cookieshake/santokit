@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import { drizzle } from 'drizzle-orm/pglite'
 import * as schema from '@/db/schema.js'
-import { collectionService } from './collection.service.js'
+import { collectionService } from '@/modules/collection/collection.service.js'
 import { sql } from 'drizzle-orm'
 
 // Mock the global db and the connection manager
@@ -15,12 +15,12 @@ vi.mock('../../db/index.js', async () => {
     return { db, pglite }
 })
 
-import * as dbModule from '../../db/index.js'
+import * as dbModule from '@/db/index.js'
 const { db, pglite } = dbModule as any
-import { connectionManager } from '../../db/connection-manager.js'
+import { connectionManager } from '@/db/connection-manager.js'
 
 // Mock connectionManager to return the SAME in-memory DB for all "physical" connections
-vi.mock('../../db/connection-manager.js', () => ({
+vi.mock('@/db/connection-manager.js', () => ({
     connectionManager: {
         getConnection: vi.fn(),
         close: vi.fn()

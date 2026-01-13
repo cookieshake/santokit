@@ -1,9 +1,9 @@
 import { Hono } from 'hono'
 import { jwt } from 'hono/jwt'
-import { db } from '../db/index.js'
-import { users } from '../db/schema.js'
-import datasourceController from '../modules/datasource/datasource.controller.js'
-import projectController from '../modules/project/project.controller.js'
+import { db } from '@/db/index.js'
+import { users } from '@/db/schema.js'
+import datasourceController from '@/modules/datasource/datasource.controller.js'
+import projectController from '@/modules/project/project.controller.js'
 
 const app = new Hono().basePath('/v1')
 const JWT_SECRET = process.env.JWT_SECRET || 'secret'

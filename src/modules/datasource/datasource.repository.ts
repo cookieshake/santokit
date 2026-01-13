@@ -1,5 +1,5 @@
-import { db } from '../../db/index.js'
-import { dataSources } from '../../db/schema.js'
+import { db } from '@/db/index.js'
+import { dataSources } from '@/db/schema.js'
 import { eq } from 'drizzle-orm'
 
 export const dataSourceRepository = {
