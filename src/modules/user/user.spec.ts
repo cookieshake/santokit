@@ -36,12 +36,16 @@ describe('User Service (Project Level)', () => {
     // Basic table creation for system DB
     await pgliteInstance.exec(`
           CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
+            id TEXT PRIMARY KEY DEFAULT 'u' || floor(random() * 1000000)::text,
             name TEXT,
             email TEXT NOT NULL UNIQUE,
             password TEXT,
-            role TEXT NOT NULL DEFAULT 'user',
+            roles TEXT[] NOT NULL DEFAULT ARRAY['user'],
             email_verified BOOLEAN DEFAULT FALSE,
+            image TEXT,
+            banned BOOLEAN,
+            ban_reason TEXT,
+            ban_expires TIMESTAMP,
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
           );
@@ -73,7 +77,7 @@ describe('User Service (Project Level)', () => {
     // No need to try users separately now it's consolidated
 
     // Create initial setup
-    await pgliteInstance.exec(`INSERT INTO users (id, email, password, role) VALUES ('00000000-0000-0000-0000-000000000001', 'admin@example.com', 'password', 'admin')`)
+    await pgliteInstance.exec(`INSERT INTO users (id, email, password, roles) VALUES ('admin-1', 'admin@example.com', 'password', '{"admin"}')`)
     await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds1', 'memory'), ('ds2', 'memory')`)
 
     const p1 = await projectService.create('Project 1', 'admin-1')
@@ -91,7 +95,7 @@ describe('User Service (Project Level)', () => {
             id SERIAL PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'user',
+            roles TEXT[] NOT NULL DEFAULT ARRAY['user'],
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
           );
@@ -116,7 +120,10 @@ describe('User Service (Project Level)', () => {
       password: 'pw'
     })
     const list = await userService.listUsers(projectId1)
-    expect(list.length).toBe(1)
+    expect(list.length).toBe(2)
+    const found = list.find(u => u.email === 'list@example.com')
+    expect(found).toBeDefined()
+    expect(found!.roles).toContain('user')
   })
 
   it('should delete a user', async () => {
@@ -126,6 +133,6 @@ describe('User Service (Project Level)', () => {
     })
     await userService.deleteUser(projectId1, user.id as number)
     const list = await userService.listUsers(projectId1)
-    expect(list.length).toBe(0)
+    expect(list.length).toBe(1)
   })
 })

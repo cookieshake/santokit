@@ -25,8 +25,12 @@ describe('Admin Module (System Level Users)', () => {
             name TEXT,
             email TEXT NOT NULL UNIQUE,
             password TEXT,
-            role TEXT NOT NULL DEFAULT 'user',
+            roles TEXT[] NOT NULL DEFAULT ARRAY['user'],
             email_verified BOOLEAN DEFAULT FALSE,
+            image TEXT,
+            banned BOOLEAN,
+            ban_reason TEXT,
+            ban_expires TIMESTAMP,
             created_at TIMESTAMP DEFAULT NOW(),
             updated_at TIMESTAMP DEFAULT NOW()
           );
@@ -42,7 +46,7 @@ describe('Admin Module (System Level Users)', () => {
             password: 'password123'
         })
         expect(admin.email).toBe('admin@example.com')
-        expect(admin.role).toBe('admin')
+        expect(admin.roles).toContain('admin')
     })
 
     it('should NOT allow registering duplicate email', async () => {

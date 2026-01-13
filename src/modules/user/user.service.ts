@@ -7,7 +7,7 @@ export const userService = {
     createUser: async (projectId: number, data: any) => {
         return await userRepository.create(projectId, {
             ...data,
-            role: data.role || 'user'
+            roles: data.roles || ['user']
         })
     },
 
@@ -28,7 +28,7 @@ export const userService = {
         const payload = {
             id: user.id,
             email: user.email,
-            role: user.role,
+            roles: user.roles,
             projectId: projectId,
             exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
         }

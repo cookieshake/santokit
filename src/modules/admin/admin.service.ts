@@ -8,7 +8,7 @@ export class AdminService {
         // In a real app, hash password here
         return adminRepository.create({
             ...data,
-            role: 'admin' // Force admin for now as per requirement
+            roles: ['admin'] // Force admin for now as per requirement
         })
     }
 
@@ -21,7 +21,7 @@ export class AdminService {
         const payload = {
             id: admin.id,
             email: admin.email,
-            role: admin.role,
+            roles: admin.roles,
             exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
         }
 

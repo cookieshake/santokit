@@ -7,7 +7,7 @@ export const users = pgTable("users", {
     emailVerified: boolean('email_verified').notNull(),
     image: text('image'),
     password: text('password'), // Added for credential auth
-    role: text('role').notNull().default('user'), // Ensure not null and default
+    roles: text('roles').array().notNull().default(['user']), // Changed to support multiple roles
     banned: boolean('banned'),
     banReason: text('ban_reason'),
     banExpires: timestamp('ban_expires'),

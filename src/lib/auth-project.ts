@@ -19,8 +19,8 @@ export const getAuthProject = (db: any) => {
         },
         user: {
             additionalFields: {
-                role: {
-                    type: "string",
+                roles: {
+                    type: "string[]",
                     required: false,
                 },
             },

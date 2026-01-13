@@ -24,6 +24,10 @@ export const userRepository = {
         const vals = keys.map(k => {
             const v = data[k]
             if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`
+            if (Array.isArray(v)) {
+                const arrVals = v.map(item => typeof item === 'string' ? `"${item.replace(/"/g, '\\"')}"` : item).join(',')
+                return `'${"{" + arrVals + "}"}'`
+            }
             return v
         }).join(', ')
 
@@ -38,9 +42,10 @@ export const userRepository = {
         return result.rows
     },
 
-    findById: async (projectId: number, id: number) => {
+    findById: async (projectId: number, id: number | string) => {
         const db = await userRepository.getDbForProject(projectId)
-        const result = await db.execute(sql.raw(`SELECT * FROM "users" WHERE id = ${id}`))
+        const val = typeof id === 'string' ? `'${id.replace(/'/g, "''")}'` : id
+        const result = await db.execute(sql.raw(`SELECT * FROM "users" WHERE id = ${val}`))
         return result.rows[0]
     },
 
@@ -50,8 +55,9 @@ export const userRepository = {
         return result.rows[0]
     },
 
-    delete: async (projectId: number, id: number) => {
+    delete: async (projectId: number, id: number | string) => {
         const db = await userRepository.getDbForProject(projectId)
-        await db.execute(sql.raw(`DELETE FROM "users" WHERE id = ${id}`))
+        const val = typeof id === 'string' ? `'${id.replace(/'/g, "''")}'` : id
+        await db.execute(sql.raw(`DELETE FROM "users" WHERE id = ${val}`))
     }
 }
