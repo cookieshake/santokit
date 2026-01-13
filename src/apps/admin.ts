@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authAdmin } from '@/lib/auth-admin.js'
+import { authzMiddleware } from '@/lib/authz.middleware.js'
 import datasourceController from '@/modules/datasource/datasource.controller.js'
 import projectController from '@/modules/project/project.controller.js'
 import adminController from '@/modules/admin/admin.controller.js'
@@ -24,12 +25,13 @@ app.use('/*', async (c, next) => {
     if (!session) {
         return c.json({ error: "Unauthorized" }, 401);
     }
-    if (session.user.role !== 'admin') {
-        return c.json({ error: 'Forbidden: Admins only' }, 403)
-    }
+    // Set user to context for subsequent middlewares
     c.set('user', session.user);
     await next()
 })
+
+// Apply Authorization Middleware to all routes after authentication
+app.use('/*', authzMiddleware(() => 'admin'))
 
 app.get('/', (c) => c.text('Admin API (Modular Architecture)'))
 

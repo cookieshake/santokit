@@ -82,3 +82,15 @@ export const collections = pgTable('collections', {
     unq: unique().on(t.projectId, t.name),
 }));
 
+// Casbin Rules for Authorization
+export const casbinTable = pgTable("casbin_rule", {
+    id: serial("id").primaryKey(),
+    ptype: text("ptype"),
+    v0: text("v0"),
+    v1: text("v1"),
+    v2: text("v2"),
+    v3: text("v3"),
+    v4: text("v4"),
+    v5: text("v5"),
+});
+

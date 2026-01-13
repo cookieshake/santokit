@@ -18,6 +18,8 @@
     "@hono/node-server": "^1.19.8",
     "@hono/zod-validator": "^0.7.6",
     "better-auth": "^1.4.12",
+    "casbin": "^5.48.0",
+    "casbin-drizzle-adapter": "^1.1.1",
     "drizzle-orm": "^0.45.1",
     "hono": "^4.11.3",
     "pg": "^8.16.3",
