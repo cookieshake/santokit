@@ -2,11 +2,15 @@
   "name": "santoki",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/entrypoints/node.ts",
-    "build": "tsc",
-    "start": "node dist/entrypoints/node.js",
-    "dev:cf": "wrangler dev",
-    "deploy:cf": "wrangler deploy --minify",
+    "dev:admin": "tsx watch src/entrypoints/node-admin.ts",
+    "dev:data": "tsx watch src/entrypoints/node-data.ts",
+    "build": "tsc && tsc-alias",
+    "start:admin": "node dist/entrypoints/node-admin.js",
+    "start:data": "node dist/entrypoints/node-data.js",
+    "dev:cf:admin": "wrangler dev --main src/entrypoints/wf-admin.ts",
+    "dev:cf:data": "wrangler dev --main src/entrypoints/wf-data.ts",
+    "deploy:cf:admin": "wrangler deploy --minify --main src/entrypoints/wf-admin.ts --name santoki-admin",
+    "deploy:cf:data": "wrangler deploy --minify --main src/entrypoints/wf-data.ts --name santoki-data",
     "typegen:cf": "wrangler types --env-interface CloudflareBindings",
     "test": "vitest run"
   },
@@ -23,6 +27,7 @@
     "@types/node": "^20.11.17",
     "@types/pg": "^8.16.0",
     "drizzle-kit": "^0.31.8",
+    "tsc-alias": "^1.8.16",
     "tsx": "^4.7.1",
     "typescript": "^5.8.3",
     "vitest": "^4.0.17"
