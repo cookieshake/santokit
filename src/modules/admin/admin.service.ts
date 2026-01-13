@@ -1,7 +1,6 @@
 import { adminRepository } from './admin.repository.js'
 import { sign } from 'hono/jwt'
-
-const JWT_SECRET = process.env.JWT_SECRET || 'secret'
+import { config } from '@/config/index.js'
 
 export class AdminService {
     async register(data: any) {
@@ -25,7 +24,7 @@ export class AdminService {
             exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
         }
 
-        const token = await sign(payload, JWT_SECRET)
+        const token = await sign(payload, config.auth.jwtSecret)
         return { user: admin, token }
     }
 }

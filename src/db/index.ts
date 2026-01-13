@@ -2,12 +2,10 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from '@/db/schema.js';
-
-// In a real app, use environment variables!
-const connectionString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/santoki_db';
+import { config } from '@/config/index.js';
 
 const pool = new Pool({
-    connectionString,
+    connectionString: config.db.url,
 });
 
 export const db = drizzle(pool, { schema });

@@ -1,11 +1,10 @@
 import { serve } from '@hono/node-server'
 import clientApp from '@/apps/client.js'
-
-const port = Number(process.env.PORT) || 3000
+import { config } from '@/config/index.js'
 
 serve({
     fetch: clientApp.fetch,
-    port,
+    port: config.server.port,
 }, (info) => {
     console.log(`Public API is running on http://localhost:${info.port}`)
 })
