@@ -1,10 +1,10 @@
 
 export const config = {
     db: {
-        url: process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/santoki_db',
+        url: process.env.DATABASE_URL,
     },
     auth: {
-        adminUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3001/admin/v1/auth',
+        adminUrl: process.env.BETTER_AUTH_URL || 'http://localhost:3000/admin/v1/auth',
         jwtSecret: process.env.JWT_SECRET || 'secret',
         initialAdmin: {
             email: process.env.INITIAL_ADMIN_EMAIL || 'admin@example.com',
