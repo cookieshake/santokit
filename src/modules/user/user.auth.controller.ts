@@ -1,31 +1,15 @@
 import { Hono } from 'hono'
-import { zValidator } from '@hono/zod-validator'
-import { RegisterSchema, LoginSchema } from '@/validators.js'
-import { userService } from '@/modules/user/user.service.js'
+import { getAuthProject } from '@/lib/auth-project.js'
+import { userRepository } from './user.repository.js'
 
 const app = new Hono()
 
 // Mounted at /v1/auth/:projectId
-app.post('/register', zValidator('json', RegisterSchema), async (c) => {
+app.on(['POST', 'GET'], '/*', async (c) => {
     const projectId = parseInt(c.req.param('projectId')!)
-    const data = c.req.valid('json')
-    try {
-        const user = await userService.createUser(projectId, data)
-        return c.json(user)
-    } catch (e: any) {
-        return c.json({ error: e.message }, 400)
-    }
-})
-
-app.post('/login', zValidator('json', LoginSchema), async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
-    const { email, password } = c.req.valid('json')
-    try {
-        const result = await userService.login(projectId, email, password)
-        return c.json(result)
-    } catch (e: any) {
-        return c.json({ error: e.message }, 401)
-    }
+    const db = await userRepository.getDbForProject(projectId)
+    const auth = getAuthProject(db)
+    return auth.handler(c.req.raw)
 })
 
 export default app

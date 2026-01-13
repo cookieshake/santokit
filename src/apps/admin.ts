@@ -1,30 +1,34 @@
 import { Hono } from 'hono'
-import { jwt } from 'hono/jwt'
-import { db } from '@/db/index.js'
-import { admins } from '@/db/schema.js'
+import { authAdmin } from '@/lib/auth-admin.js'
 import datasourceController from '@/modules/datasource/datasource.controller.js'
 import projectController from '@/modules/project/project.controller.js'
 import adminController from '@/modules/admin/admin.controller.js'
+import { db } from '@/db/index.js'
+import { admins } from '@/db/schema.js'
 
-
-const app = new Hono().basePath('/v1')
-const JWT_SECRET = process.env.JWT_SECRET || 'secret'
+const app = new Hono<{
+    Variables: {
+        user: typeof authAdmin.$Infer.Session.user;
+    };
+}>().basePath('/v1')
 
 // Public Auth routes
 app.route('/auth', adminController)
 
 // Protected routes middleware
-app.use('/*', jwt({ secret: JWT_SECRET }))
-
-// Auth Middleware: Check for 'admin' role
 app.use('/*', async (c, next) => {
-    const payload = c.get('jwtPayload')
-    if (payload.role !== 'admin') {
+    const session = await authAdmin.api.getSession({
+        headers: c.req.raw.headers,
+    });
+    if (!session) {
+        return c.json({ error: "Unauthorized" }, 401);
+    }
+    if (session.user.role !== 'admin') {
         return c.json({ error: 'Forbidden: Admins only' }, 403)
     }
+    c.set('user', session.user);
     await next()
 })
-
 
 app.get('/', (c) => c.text('Admin API (Modular Architecture)'))
 
