@@ -9,13 +9,19 @@ export const authzMiddleware = (domainResolver?: (c: Context) => string) => {
         }
 
         const enforcer = await getEnforcer();
-        const sub = user.role; // Use user role as subject
-        const dom = domainResolver ? domainResolver(c) : 'admin'; // Default to 'admin' domain
+        const userRoles = (user.roles || []) as string[];
+        const dom = domainResolver ? domainResolver(c) : 'admin';
         const obj = c.req.path;
         const act = c.req.method;
 
-        // Check permission (Row Level Security is handled by obj matching)
-        const allowed = await enforcer.enforce(sub, dom, obj, act);
+        // Check if ANY of the user's roles have permission
+        let allowed = false;
+        for (const role of userRoles) {
+            if (await enforcer.enforce(role, dom, obj, act)) {
+                allowed = true;
+                break;
+            }
+        }
 
         if (!allowed) {
             return c.json({ error: 'Forbidden: You do not have permission to access this resource' }, 403);
@@ -26,54 +32,39 @@ export const authzMiddleware = (domainResolver?: (c: Context) => string) => {
 
         // Intercept JSON responses
         if (c.res && c.res.headers.get('content-type')?.includes('application/json')) {
-            // Retrieve policies to find allowed columns
-            // This is a manual lookup to find "Which policy allowed this?" and "What columns are allowed?"
-            // We fetch all policies for the subject in the domain
-            const policies = await enforcer.getFilteredPolicy(0, sub, dom);
+            // Find all allowed columns across all roles that matched
+            let allowedCols: Set<string> | null = null;
+            let matchedAny = false;
 
-            // Filter policies that match object and action
-            // We need to use the same matching logic as the enforcer (keyMatch)
-            // Note: This relies on the internal implementation details of how policies are stored
-            // p = sub, dom, obj, act, cols
+            for (const role of userRoles) {
+                const policies = await enforcer.getFilteredPolicy(0, role, dom);
 
-            // Helper to check match
-            // We'll import keyMatch from 'casbin' if available, or regex
-            // Basic keyMatch (glob) implementation for now assuming simpler paths or exact matches
-            // Ideally we should use enforcer's matcher, but that's complex to expose.
-            // For now, we iterate and simple match.
+                const keyMatch = (key: string, pattern: string) => {
+                    if (pattern === '*') return true;
+                    if (pattern.endsWith('*')) return key.startsWith(pattern.slice(0, -1));
+                    return key === pattern;
+                };
 
-            let allowedCols: Set<string> | null = null; // null means ALL
+                for (const policy of policies) {
+                    const pObj = policy[2];
+                    const pAct = policy[3];
+                    const pCols = policy[4];
 
-            // Simple KeyMatch shim (or standard wildcard check)
-            // In a real scenario, use casbin.util.keyMatch or similar
-            const keyMatch = (key: string, pattern: string) => {
-                // Simple exact match or * suffix
-                if (pattern === '*') return true;
-                if (pattern.endsWith('*')) return key.startsWith(pattern.slice(0, -1));
-                return key === pattern;
-            };
+                    if (keyMatch(obj, pObj) && (pAct === act || pAct === '*')) {
+                        matchedAny = true;
+                        if (!pCols || pCols === '*' || pCols === '') {
+                            allowedCols = null; // ALL allowed if any rule allows all
+                            break;
+                        }
 
-            let matched = false;
-
-            for (const policy of policies) {
-                const pObj = policy[2];
-                const pAct = policy[3];
-                const pCols = policy[4]; // v5
-
-                if (keyMatch(obj, pObj) && (pAct === act || pAct === '*')) {
-                    matched = true;
-                    // If any rule has *, allow all (set to null)
-                    if (!pCols || pCols === '*' || pCols === '') {
-                        allowedCols = null;
-                        break;
+                        if (allowedCols === null) allowedCols = new Set();
+                        pCols.split(',').forEach(col => allowedCols!.add(col.trim()));
                     }
-
-                    if (allowedCols === null) allowedCols = new Set();
-                    pCols.split(',').forEach(col => allowedCols!.add(col.trim()));
                 }
+                if (allowedCols === null && matchedAny) break;
             }
 
-            if (allowedCols !== null && matched) {
+            if (allowedCols !== null && matchedAny) {
                 const clone = c.res.clone();
                 try {
                     const body = await clone.json();

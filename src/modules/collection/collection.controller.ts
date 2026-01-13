@@ -108,4 +108,8 @@ app.delete('/:collectionName/indexes/:indexName', async (c) => {
     }
 })
 
+import dataController from '@/modules/data/data.controller.js'
+
+app.route('/:collectionName/data', dataController)
+
 export default app

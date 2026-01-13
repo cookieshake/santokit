@@ -4,8 +4,10 @@ import { connectionManager } from '@/db/connection-manager.js'
 import { sql } from 'drizzle-orm'
 
 export const projectService = {
-    create: async (name: string, ownerId: string) => {
-        return await projectRepository.create({ name, ownerId })
+    create: async (name: string, dataSourceId: number) => {
+        const project = await projectRepository.create({ name, dataSourceId })
+        await projectService.initializeDataSource(dataSourceId)
+        return project
     },
     list: async () => {
         return await projectRepository.findAll()
@@ -13,7 +15,7 @@ export const projectService = {
     getById: async (id: number) => {
         return await projectRepository.findById(id)
     },
-    associateDataSource: async (projectId: number, dataSourceId: number) => {
+    initializeDataSource: async (dataSourceId: number) => {
         // 1. Get Data Source
         const source = await dataSourceRepository.findById(dataSourceId)
         if (!source) throw new Error('Data Source not found')
@@ -32,6 +34,9 @@ export const projectService = {
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         `))
+    },
+    associateDataSource: async (projectId: number, dataSourceId: number) => {
+        await projectService.initializeDataSource(dataSourceId)
 
         // 3. Update project link
         return await projectRepository.update(projectId, { dataSourceId })

@@ -59,8 +59,7 @@ describe('User Service (Project Level)', () => {
           CREATE TABLE IF NOT EXISTS projects (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
-            owner_id TEXT REFERENCES users(id),
-            data_source_id INTEGER REFERENCES data_sources(id) UNIQUE,
+            data_source_id INTEGER NOT NULL REFERENCES data_sources(id) UNIQUE,
             created_at TIMESTAMP DEFAULT NOW()
           );
           CREATE TABLE IF NOT EXISTS collections (
@@ -80,11 +79,8 @@ describe('User Service (Project Level)', () => {
     await pgliteInstance.exec(`INSERT INTO users (id, email, password, roles) VALUES ('admin-1', 'admin@example.com', 'password', '{"admin"}')`)
     await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds1', 'memory'), ('ds2', 'memory')`)
 
-    const p1 = await projectService.create('Project 1', 'admin-1')
-    const p2 = await projectService.create('Project 2', 'admin-1')
-
-    await projectService.associateDataSource(p1.id, 1)
-    await projectService.associateDataSource(p2.id, 2)
+    const p1 = await projectService.create('Project 1', 1)
+    const p2 = await projectService.create('Project 2', 2)
 
     projectId1 = p1.id
     projectId2 = p2.id

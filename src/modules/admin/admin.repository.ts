@@ -1,13 +1,14 @@
 import { db } from '@/db/index.js'
 import { users } from '@/db/schema.js'
 import { eq, and, arrayContains } from 'drizzle-orm'
+import { randomUUID } from 'node:crypto'
 
 export class AdminRepository {
     async create(data: any) {
         const [result] = await db.insert(users).values({
             ...data,
             roles: ['admin'], // Force admin for now as per requirement
-            id: crypto.randomUUID(), // users table needs string ID
+            id: randomUUID(), // users table needs string ID
             createdAt: new Date(),
             updatedAt: new Date(),
             emailVerified: false,

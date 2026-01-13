@@ -66,8 +66,7 @@ export const dataSources = pgTable('data_sources', {
 export const projects = pgTable('projects', {
     id: serial('id').primaryKey(),
     name: text('name').notNull(),
-    ownerId: text('owner_id').references(() => users.id),
-    dataSourceId: integer('data_source_id').references(() => dataSources.id).unique(),
+    dataSourceId: integer('data_source_id').references(() => dataSources.id).unique().notNull(),
     createdAt: timestamp('created_at').defaultNow(),
 });
 

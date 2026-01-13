@@ -3,6 +3,7 @@ import { db } from '../db/index.js'
 import { users } from '../db/schema.js'
 import { arrayContains, eq } from 'drizzle-orm'
 import { config } from '../config/index.js'
+import { getEnforcer } from './casbin.js'
 
 export async function ensureAdminExists() {
     console.log('Checking for admin accounts...')
@@ -35,6 +36,12 @@ export async function ensureAdminExists() {
             await db.update(users)
                 .set({ roles: ['admin'] })
                 .where(eq(users.email, email))
+
+            // Add default policy for admin role: [admin, admin, *, *, *] 
+            // format: sub, dom, obj, act, cols
+            const enforcer = await getEnforcer();
+            await enforcer.addPolicy('admin', 'admin', '*', '*', '*');
+            await enforcer.savePolicy();
 
             console.log('Default admin account created successfully!')
             console.log(`Email: ${email}`)

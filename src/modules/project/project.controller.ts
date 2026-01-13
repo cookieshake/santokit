@@ -8,12 +8,12 @@ import userController from '@/modules/user/user.controller.js'
 const app = new Hono()
 
 app.post('/', zValidator('json', CreateProjectSchema), async (c) => {
-    const { name, ownerId } = c.req.valid('json')
+    const { name, dataSourceId } = c.req.valid('json')
     try {
-        const result = await projectService.create(name, ownerId)
+        const result = await projectService.create(name, dataSourceId)
         return c.json(result)
-    } catch (e) {
-        return c.json({ error: 'Failed to create project' }, 500)
+    } catch (e: any) {
+        return c.json({ error: e.message || 'Failed to create project' }, 500)
     }
 })
 

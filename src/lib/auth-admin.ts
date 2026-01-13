@@ -20,8 +20,8 @@ export const authAdmin = betterAuth({
     },
     user: {
         additionalFields: {
-            role: {
-                type: "string",
+            roles: {
+                type: "string[]",
                 required: false,
             },
         },

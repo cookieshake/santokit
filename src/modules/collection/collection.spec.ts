@@ -52,8 +52,7 @@ describe('Collection Service (Integration)', () => {
       CREATE TABLE IF NOT EXISTS projects (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
-        owner_id TEXT REFERENCES users(id),
-        data_source_id INTEGER UNIQUE REFERENCES data_sources(id),
+        data_source_id INTEGER NOT NULL UNIQUE REFERENCES data_sources(id),
         created_at TIMESTAMP DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS collections (
