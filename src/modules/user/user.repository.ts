@@ -3,7 +3,7 @@ import { dataSourceRepository } from '@/modules/datasource/datasource.repository
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { sql } from 'drizzle-orm'
 
-export const accountRepository = {
+export const userRepository = {
     async getDbForProject(projectId: number) {
         const project = await projectRepository.findById(projectId)
         if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
@@ -18,7 +18,7 @@ export const accountRepository = {
     },
 
     create: async (projectId: number, data: any) => {
-        const db = await accountRepository.getDbForProject(projectId)
+        const db = await userRepository.getDbForProject(projectId)
         const keys = Object.keys(data)
         const cols = keys.map(k => `"${k}"`).join(', ')
         const vals = keys.map(k => {
@@ -27,31 +27,31 @@ export const accountRepository = {
             return v
         }).join(', ')
 
-        const query = `INSERT INTO "accounts" (${cols}) VALUES (${vals}) RETURNING *`
+        const query = `INSERT INTO "users" (${cols}) VALUES (${vals}) RETURNING *`
         const result = await db.execute(sql.raw(query))
         return result.rows[0]
     },
 
     findByProjectId: async (projectId: number) => {
-        const db = await accountRepository.getDbForProject(projectId)
-        const result = await db.execute(sql.raw(`SELECT * FROM "accounts"`))
+        const db = await userRepository.getDbForProject(projectId)
+        const result = await db.execute(sql.raw(`SELECT * FROM "users"`))
         return result.rows
     },
 
     findById: async (projectId: number, id: number) => {
-        const db = await accountRepository.getDbForProject(projectId)
-        const result = await db.execute(sql.raw(`SELECT * FROM "accounts" WHERE id = ${id}`))
+        const db = await userRepository.getDbForProject(projectId)
+        const result = await db.execute(sql.raw(`SELECT * FROM "users" WHERE id = ${id}`))
         return result.rows[0]
     },
 
     findByEmail: async (projectId: number, email: string) => {
-        const db = await accountRepository.getDbForProject(projectId)
-        const result = await db.execute(sql.raw(`SELECT * FROM "accounts" WHERE email = '${email.replace(/'/g, "''")}'`))
+        const db = await userRepository.getDbForProject(projectId)
+        const result = await db.execute(sql.raw(`SELECT * FROM "users" WHERE email = '${email.replace(/'/g, "''")}'`))
         return result.rows[0]
     },
 
     delete: async (projectId: number, id: number) => {
-        const db = await accountRepository.getDbForProject(projectId)
-        await db.execute(sql.raw(`DELETE FROM "accounts" WHERE id = ${id}`))
+        const db = await userRepository.getDbForProject(projectId)
+        await db.execute(sql.raw(`DELETE FROM "users" WHERE id = ${id}`))
     }
 }

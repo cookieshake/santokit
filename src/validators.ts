@@ -25,7 +25,7 @@ export const CreateProjectSchema = z.object({
     ownerId: z.number().int().positive(),
 })
 
-export const CreateAccountSchema = z.object({
+export const CreateUserSchema = z.object({
     email: z.string().email(),
     password: z.string().min(6),
     role: z.string().default('user'),

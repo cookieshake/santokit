@@ -1,13 +1,13 @@
 import { Hono } from 'hono'
 import { jwt } from 'hono/jwt'
 import dataController from '@/modules/data/data.controller.js'
-import accountAuthController from '@/modules/account/account.auth.controller.js'
+import userAuthController from '@/modules/user/user.auth.controller.js'
 
 const app = new Hono().basePath('/v1')
 const JWT_SECRET = process.env.JWT_SECRET || 'secret'
 
 // Public Auth routes for projects
-app.route('/auth/:projectId', accountAuthController)
+app.route('/auth/:projectId', userAuthController)
 
 // Protected Data routes middleware
 app.use('/data/:projectId/*', async (c, next) => {

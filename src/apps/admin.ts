@@ -1,17 +1,17 @@
 import { Hono } from 'hono'
 import { jwt } from 'hono/jwt'
 import { db } from '@/db/index.js'
-import { users } from '@/db/schema.js'
+import { admins } from '@/db/schema.js'
 import datasourceController from '@/modules/datasource/datasource.controller.js'
 import projectController from '@/modules/project/project.controller.js'
-import authController from '@/modules/auth/auth.controller.js'
+import adminController from '@/modules/admin/admin.controller.js'
 
 
 const app = new Hono().basePath('/v1')
 const JWT_SECRET = process.env.JWT_SECRET || 'secret'
 
 // Public Auth routes
-app.route('/auth', authController)
+app.route('/auth', adminController)
 
 // Protected routes middleware
 app.use('/*', jwt({ secret: JWT_SECRET }))
@@ -32,10 +32,10 @@ app.get('/', (c) => c.text('Admin API (Modular Architecture)'))
 app.route('/sources', datasourceController)
 app.route('/projects', projectController)
 
-// --- User Management (Simple enough to keep here for now, or move to module later) ---
-app.get('/users', async (c) => {
-    const allUsers = await db.select().from(users)
-    return c.json(allUsers)
+// --- Admin Management ---
+app.get('/admins', async (c) => {
+    const allAdmins = await db.select().from(admins)
+    return c.json(allAdmins)
 })
 
 export default app

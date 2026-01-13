@@ -1,8 +1,8 @@
 
 import { pgTable, serial, text, timestamp, boolean, integer, unique } from 'drizzle-orm/pg-core';
 
-// Users
-export const users = pgTable('users', {
+// Admins (System Level Users)
+export const admins = pgTable('admins', {
     id: serial('id').primaryKey(),
     email: text('email').notNull().unique(),
     password: text('password').notNull(),
@@ -24,7 +24,7 @@ export const dataSources = pgTable('data_sources', {
 export const projects = pgTable('projects', {
     id: serial('id').primaryKey(),
     name: text('name').notNull(),
-    ownerId: integer('owner_id').references(() => users.id),
+    ownerId: integer('owner_id').references(() => admins.id),
     dataSourceId: integer('data_source_id').references(() => dataSources.id).unique(),
     createdAt: timestamp('created_at').defaultNow(),
 });

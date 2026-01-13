@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
-import { authService } from './auth.service.js'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { adminService } from './admin.service.js'
 import { db } from '@/db/index.js'
-import { users } from '@/db/schema.js'
+import { admins } from '@/db/schema.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
@@ -16,11 +16,11 @@ vi.mock('../../db/index.js', async () => {
 const { db: mockedDb, pglite } = await import('@/db/index.js') as any
 const pgliteInstance = pglite as any
 
-describe('Auth Module (System Users/Admins)', () => {
+describe('Admin Module (System Level Users)', () => {
     beforeEach(async () => {
         // Table creation
         await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS users (
+          CREATE TABLE IF NOT EXISTS admins (
             id SERIAL PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
@@ -31,44 +31,44 @@ describe('Auth Module (System Users/Admins)', () => {
         `)
 
         // Clear tables
-        await mockedDb.execute(sql`TRUNCATE TABLE users RESTART IDENTITY CASCADE`)
+        await mockedDb.execute(sql`TRUNCATE TABLE admins RESTART IDENTITY CASCADE`)
     })
 
-    it('should register a new admin user', async () => {
-        const user = await authService.register({
+    it('should register a new admin', async () => {
+        const admin = await adminService.register({
             email: 'admin@example.com',
             password: 'password123'
         })
-        expect(user.email).toBe('admin@example.com')
-        expect(user.role).toBe('admin')
+        expect(admin.email).toBe('admin@example.com')
+        expect(admin.role).toBe('admin')
     })
 
     it('should NOT allow registering duplicate email', async () => {
-        await authService.register({
+        await adminService.register({
             email: 'admin@example.com',
             password: 'password123'
         })
-        await expect(authService.register({
+        await expect(adminService.register({
             email: 'admin@example.com',
             password: 'passother'
         })).rejects.toThrow()
     })
 
     it('should login and return a token', async () => {
-        await authService.register({
+        await adminService.register({
             email: 'admin@example.com',
             password: 'password123'
         })
-        const result = await authService.login('admin@example.com', 'password123')
-        expect(result.user.email).toBe('admin@example.com')
+        const result = await adminService.login('admin@example.com', 'password123')
+        expect(result.admin.email).toBe('admin@example.com')
         expect(result.token).toBeDefined()
     })
 
     it('should fail login with wrong password', async () => {
-        await authService.register({
+        await adminService.register({
             email: 'admin@example.com',
             password: 'password123'
         })
-        await expect(authService.login('admin@example.com', 'wrongpassword')).rejects.toThrow('Invalid credentials')
+        await expect(adminService.login('admin@example.com', 'wrongpassword')).rejects.toThrow('Invalid credentials')
     })
 })

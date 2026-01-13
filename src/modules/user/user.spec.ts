@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest'
-import { accountService } from './account.service.js'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { userService } from './user.service.js'
 import { projectService } from '../project/project.service.js'
 import { sql } from 'drizzle-orm'
 
@@ -25,18 +25,17 @@ vi.mock('../../db/connection-manager.js', async () => {
 
 // Correctly import the mocked modules
 import * as dbModule from '@/db/index.js'
-import { connectionManager } from '@/db/connection-manager.js'
 const { db, pglite } = dbModule as any
 const pgliteInstance = pglite as any
 
-describe('Account Service', () => {
+describe('User Service (Project Level)', () => {
     let projectId1: number
     let projectId2: number
 
     beforeEach(async () => {
         // Basic table creation for system DB
         await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS users (
+          CREATE TABLE IF NOT EXISTS admins (
             id SERIAL PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
@@ -54,7 +53,7 @@ describe('Account Service', () => {
           CREATE TABLE IF NOT EXISTS projects (
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
-            owner_id INTEGER REFERENCES users(id),
+            owner_id INTEGER REFERENCES admins(id),
             data_source_id INTEGER REFERENCES data_sources(id) UNIQUE,
             created_at TIMESTAMP DEFAULT NOW()
           );
@@ -68,13 +67,13 @@ describe('Account Service', () => {
         `)
 
         // Clear tables
-        await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, users RESTART IDENTITY CASCADE`)
+        await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, admins RESTART IDENTITY CASCADE`)
         try {
-            await pgliteInstance.exec(`TRUNCATE TABLE accounts RESTART IDENTITY CASCADE`)
+            await pgliteInstance.exec(`TRUNCATE TABLE users RESTART IDENTITY CASCADE`)
         } catch (e) { }
 
         // Create initial setup
-        await pgliteInstance.exec(`INSERT INTO users (email, password) VALUES ('test@example.com', 'pass123')`)
+        await pgliteInstance.exec(`INSERT INTO admins (email, password) VALUES ('test@example.com', 'pass123')`)
         await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds1', 'memory'), ('ds2', 'memory')`)
 
         const p1 = await projectService.create('Project 1', 1)
@@ -85,58 +84,48 @@ describe('Account Service', () => {
 
         projectId1 = p1.id
         projectId2 = p2.id
+
+        // Ensure 'users' table exists in the physical DB (mocked as same pglite)
+        await pgliteInstance.exec(`
+          CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW()
+          );
+        `)
     })
 
-    it('should create an account for a project (in physical DB)', async () => {
-        const acc = await accountService.createAccount(projectId1, {
+    it('should create a user for a project (in physical DB)', async () => {
+        const user = await userService.createUser(projectId1, {
             email: 'test@example.com',
             password: 'password123'
         })
-        expect(acc.email).toBe('test@example.com')
+        expect(user.email).toBe('test@example.com')
 
         // Verify it's in the DB (which is mocked as pgliteInstance)
-        const res = await pgliteInstance.query(`SELECT * FROM accounts WHERE email = 'test@example.com'`)
+        const res = await pgliteInstance.query(`SELECT * FROM users WHERE email = 'test@example.com'`)
         expect(res.rows.length).toBe(1)
     })
 
-    it('should allow same email in DIFFERENT projects', async () => {
-        // Since we are mocking connectionManager to return the SAME pglite instance, 
-        // normally this would conflict if they share the same 'accounts' table name.
-        // But the user's intent is that they are in DIFFERENT physical databases.
-        // In this test, because they share the same pglite instance mock, 
-        // the UNIQUE constraint on email in the 'accounts' table will actually COLLIDE.
-
-        // FIX for test: We should either mock separate pglite instances or 
-        // acknowledge that in this simple mock they share the same table.
-
-        // However, the real implementation will use different pools/connections.
-        // To verify the logic, let's just assert that createAccount is called with correct projectId.
-
-        await accountService.createAccount(projectId1, {
-            email: 'user1@example.com',
-            password: 'pw'
-        })
-
-        // This will succeed if they are separate. In our mock, they are NOT separate.
-        // Let's just test one and trust the 1:1 logic.
-    })
-
-    it('should list accounts for a project', async () => {
-        await accountService.createAccount(projectId1, {
+    it('should list users for a project', async () => {
+        await userService.createUser(projectId1, {
             email: 'list@example.com',
             password: 'pw'
         })
-        const list = await accountService.listAccounts(projectId1)
+        const list = await userService.listUsers(projectId1)
         expect(list.length).toBe(1)
     })
 
-    it('should delete an account', async () => {
-        const acc = await accountService.createAccount(projectId1, {
+    it('should delete a user', async () => {
+        const user = await userService.createUser(projectId1, {
             email: 'del@example.com',
             password: 'pw'
         })
-        await accountService.deleteAccount(projectId1, acc.id as number)
-        const list = await accountService.listAccounts(projectId1)
+        await userService.deleteUser(projectId1, user.id as number)
+        const list = await userService.listUsers(projectId1)
         expect(list.length).toBe(0)
     })
 })
