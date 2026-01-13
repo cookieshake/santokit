@@ -25,6 +25,7 @@ export const projects = pgTable('projects', {
     id: serial('id').primaryKey(),
     name: text('name').notNull(),
     ownerId: integer('owner_id').references(() => users.id),
+    dataSourceId: integer('data_source_id').references(() => dataSources.id).unique(),
     createdAt: timestamp('created_at').defaultNow(),
 });
 
@@ -33,22 +34,9 @@ export const collections = pgTable('collections', {
     id: serial('id').primaryKey(),
     projectId: integer('project_id').references(() => projects.id).notNull(),
     name: text('name').notNull(), // Logical name e.g. 'posts'
-    dataSourceId: integer('data_source_id').references(() => dataSources.id).notNull(),
     physicalName: text('physical_name').notNull(), // Physical name e.g. 'p1_posts'
     createdAt: timestamp('created_at').defaultNow(),
 }, (t) => ({
     unq: unique().on(t.projectId, t.name),
 }));
 
-// Accounts (Project-specific users)
-export const accounts = pgTable('accounts', {
-    id: serial('id').primaryKey(),
-    projectId: integer('project_id').references(() => projects.id).notNull(),
-    email: text('email').notNull(),
-    password: text('password').notNull(),
-    role: text('role').notNull().default('user'),
-    createdAt: timestamp('created_at').defaultNow(),
-    updatedAt: timestamp('updated_at').defaultNow(),
-}, (t) => ({
-    unq: unique().on(t.projectId, t.email),
-}));

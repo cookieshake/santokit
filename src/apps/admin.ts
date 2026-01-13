@@ -4,10 +4,16 @@ import { db } from '@/db/index.js'
 import { users } from '@/db/schema.js'
 import datasourceController from '@/modules/datasource/datasource.controller.js'
 import projectController from '@/modules/project/project.controller.js'
+import authController from '@/modules/auth/auth.controller.js'
+
 
 const app = new Hono().basePath('/v1')
 const JWT_SECRET = process.env.JWT_SECRET || 'secret'
 
+// Public Auth routes
+app.route('/auth', authController)
+
+// Protected routes middleware
 app.use('/*', jwt({ secret: JWT_SECRET }))
 
 // Auth Middleware: Check for 'admin' role
@@ -18,6 +24,7 @@ app.use('/*', async (c, next) => {
     }
     await next()
 })
+
 
 app.get('/', (c) => c.text('Admin API (Modular Architecture)'))
 

@@ -22,6 +22,17 @@ app.get('/', async (c) => {
     return c.json(result)
 })
 
+app.post('/:projectId/associate-datasource', async (c) => {
+    const projectId = Number(c.req.param('projectId'))
+    const { dataSourceId } = await c.req.json()
+    try {
+        const project = await projectService.associateDataSource(projectId, dataSourceId)
+        return c.json(project)
+    } catch (e: any) {
+        return c.json({ error: e.message }, 400)
+    }
+})
+
 // Recursively mount routes: Project -> Collections/Accounts
 // e.g. /projects/:projectId/collections
 app.route('/:projectId/collections', collectionController)

@@ -14,5 +14,9 @@ export const projectRepository = {
         return await db.query.projects.findFirst({
             where: eq(projects.id, id)
         })
+    },
+    update: async (id: number, data: Partial<typeof projects.$inferInsert>) => {
+        const result = await db.update(projects).set(data).where(eq(projects.id, id)).returning()
+        return result[0]
     }
 }

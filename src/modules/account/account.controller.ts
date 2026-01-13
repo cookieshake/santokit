@@ -27,8 +27,9 @@ app.get('/', async (c) => {
 
 // DELETE /projects/:projectId/accounts/:accountId
 app.delete('/:accountId', async (c) => {
+    const projectId = Number(c.req.param('projectId'))
     const accountId = Number(c.req.param('accountId'))
-    await accountService.deleteAccount(accountId)
+    await accountService.deleteAccount(projectId, accountId)
     return c.json({ success: true })
 })
 
