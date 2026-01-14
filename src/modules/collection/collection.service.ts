@@ -3,7 +3,7 @@ import { dataSourceRepository } from '@/modules/datasource/datasource.repository
 import { projectRepository } from '@/modules/project/project.repository.js'
 
 export const collectionService = {
-    create: async (projectId: number, name: string) => {
+    create: async (projectId: number, name: string, idType: 'serial' | 'uuid' = 'serial') => {
         // 1. Get Project and its Data Source
         const project = await projectRepository.findById(projectId)
         if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
@@ -15,13 +15,14 @@ export const collectionService = {
         const physicalName = `${source.prefix}p${projectId}_${name}`.toLowerCase()
 
         // 3. Create Physical Table
-        await collectionRepository.createPhysicalTable(source.name, physicalName)
+        await collectionRepository.createPhysicalTable(source.name, physicalName, idType)
 
         // 4. Save Metadata
         return await collectionRepository.create({
             projectId,
             name,
-            physicalName
+            physicalName,
+            idType
         })
     },
 

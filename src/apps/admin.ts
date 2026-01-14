@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { authAdmin } from '@/lib/auth-admin.js'
 import { authzMiddleware } from '@/lib/authz.middleware.js'
+import { handleDbError, AppError } from '@/lib/errors.js'
 import datasourceController from '@/modules/datasource/datasource.controller.js'
 import projectController from '@/modules/project/project.controller.js'
 import adminController from '@/modules/admin/admin.controller.js'
@@ -17,6 +18,33 @@ const api = new Hono<{
 }>()
 
 const app = new Hono()
+
+app.onError((err, c) => {
+    console.error(`[Error] ${c.req.method} ${c.req.path}:`, err)
+
+    if (err instanceof AppError) {
+        return c.json({
+            error: err.message,
+            code: err.code,
+            details: err.details
+        }, err.status as any)
+    }
+
+    // Attempt to handle database errors
+    const appErr = handleDbError(err)
+    if (appErr.status !== 500 || appErr.code !== 'DATABASE_ERROR') {
+        return c.json({
+            error: appErr.message,
+            code: appErr.code,
+            details: appErr.details
+        }, appErr.status as any)
+    }
+
+    return c.json({
+        error: 'Internal Server Error',
+        details: process.env.NODE_ENV === 'development' ? err.message : undefined
+    }, 500)
+})
 
 // Serve static assets
 app.use('/assets/*', serveStatic({ root: './src' }))

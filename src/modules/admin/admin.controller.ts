@@ -6,12 +6,8 @@ const app = new Hono()
 
 app.post('/register', async (c) => {
     const { email, password } = await c.req.json()
-    try {
-        const result = await adminService.register({ email, password, name: email.split('@')[0], roles: ['admin'] })
-        return c.json(result)
-    } catch (e: any) {
-        return c.json({ error: e.message }, 400)
-    }
+    const result = await adminService.register({ email, password, name: email.split('@')[0], roles: ['admin'] })
+    return c.json(result)
 })
 
 app.on(['POST', 'GET'], '/*', async (c) => {

@@ -9,12 +9,8 @@ const app = new Hono()
 
 app.post('/', zValidator('json', CreateProjectSchema), async (c) => {
     const { name, dataSourceId } = c.req.valid('json')
-    try {
-        const result = await projectService.create(name, dataSourceId)
-        return c.json(result)
-    } catch (e: any) {
-        return c.json({ error: e.message || 'Failed to create project' }, 500)
-    }
+    const result = await projectService.create(name, dataSourceId)
+    return c.json(result)
 })
 
 app.get('/', async (c) => {
@@ -25,12 +21,8 @@ app.get('/', async (c) => {
 app.post('/:projectId/associate-datasource', async (c) => {
     const projectId = Number(c.req.param('projectId'))
     const { dataSourceId } = await c.req.json()
-    try {
-        const project = await projectService.associateDataSource(projectId, dataSourceId)
-        return c.json(project)
-    } catch (e: any) {
-        return c.json({ error: e.message }, 400)
-    }
+    const project = await projectService.associateDataSource(projectId, dataSourceId)
+    return c.json(project)
 })
 
 // Recursively mount routes: Project -> Collections/Users

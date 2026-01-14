@@ -7,12 +7,8 @@ const app = new Hono()
 
 app.post('/', zValidator('json', CreateDataSourceSchema), async (c) => {
     const { name, connectionString, prefix } = c.req.valid('json')
-    try {
-        const result = await dataSourceService.create(name, connectionString, prefix)
-        return c.json(result)
-    } catch (e) {
-        return c.json({ error: 'Failed to create data source', details: String(e) }, 500)
-    }
+    const result = await dataSourceService.create(name, connectionString, prefix)
+    return c.json(result)
 })
 
 app.get('/', async (c) => {

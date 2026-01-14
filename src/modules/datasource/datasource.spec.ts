@@ -6,12 +6,8 @@ import { dataSourceService } from '@/modules/datasource/datasource.service.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
-    const { PGlite } = await import('@electric-sql/pglite')
-    const { drizzle } = await import('drizzle-orm/pglite')
-    const schema = await import('../../db/schema.js')
-    const pglite = new PGlite()
-    const db = drizzle(pglite, { schema })
-    return { db, pglite }
+    const { createTestDb } = await import('../../tests/db-setup.js')
+    return await createTestDb()
 })
 
 import * as dbModule from '@/db/index.js'
@@ -20,15 +16,7 @@ const pgliteInstance = pglite as any
 
 describe('DataSource Service (Integration)', () => {
     beforeEach(async () => {
-        await pgliteInstance.exec(`
-      CREATE TABLE IF NOT EXISTS data_sources (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        connection_string TEXT NOT NULL,
-        prefix TEXT NOT NULL DEFAULT 'santoki_',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `)
+        // Schema is already setup by createTestDb in the mock
         await db.execute(sql`TRUNCATE TABLE data_sources RESTART IDENTITY CASCADE`)
     })
 

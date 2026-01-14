@@ -9,13 +9,8 @@ const app = new Hono()
 app.post('/', zValidator('json', CreateUserSchema), async (c) => {
     const projectId = Number(c.req.param('projectId'))
     const data = c.req.valid('json')
-    try {
-        const result = await userService.createUser(projectId, data)
-        return c.json(result)
-    } catch (e) {
-        console.error(e)
-        return c.json({ error: 'Failed to create user (Duplicate email in project?)' }, 400)
-    }
+    const result = await userService.createUser(projectId, data)
+    return c.json(result)
 })
 
 // GET /projects/:projectId/users/

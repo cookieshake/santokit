@@ -19,10 +19,18 @@ export const userRepository = {
 
     create: async (projectId: number, data: any) => {
         const db = await userRepository.getDbForProject(projectId)
-        const keys = Object.keys(data)
+        const fullData = {
+            id: typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(36).substring(2),
+            name: data.email, // default name
+            email_verified: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            ...data
+        }
+        const keys = Object.keys(fullData)
         const cols = keys.map(k => `"${k}"`).join(', ')
         const vals = keys.map(k => {
-            const v = data[k]
+            const v = (fullData as any)[k]
             if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`
             if (Array.isArray(v)) {
                 const arrVals = v.map(item => typeof item === 'string' ? `"${item.replace(/"/g, '\\"')}"` : item).join(',')

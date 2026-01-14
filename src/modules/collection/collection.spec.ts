@@ -7,12 +7,8 @@ import { sql } from 'drizzle-orm'
 
 // Mock the global db and the connection manager
 vi.mock('../../db/index.js', async () => {
-  const { PGlite } = await import('@electric-sql/pglite')
-  const { drizzle } = await import('drizzle-orm/pglite')
-  const schema = await import('../../db/schema.js')
-  const pglite = new PGlite()
-  const db = drizzle(pglite, { schema })
-  return { db, pglite }
+  const { createTestDb } = await import('../../tests/db-setup.js')
+  return await createTestDb()
 })
 
 import * as dbModule from '@/db/index.js'
@@ -31,38 +27,7 @@ const pgliteInstance = pglite as any
 
 describe('Collection Service (Integration)', () => {
   beforeEach(async () => {
-    // Setup schema
-    await pgliteInstance.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        email TEXT NOT NULL UNIQUE,
-        password TEXT,
-        role TEXT NOT NULL DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS data_sources (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        connection_string TEXT NOT NULL,
-        prefix TEXT NOT NULL DEFAULT 'santoki_',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS projects (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        data_source_id INTEGER NOT NULL UNIQUE REFERENCES data_sources(id),
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS collections (
-        id SERIAL PRIMARY KEY,
-        project_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        physical_name TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `)
+    // Schema is already setup by createTestDb in the mock
     await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, users RESTART IDENTITY CASCADE`)
 
     // Setup test data
@@ -82,6 +47,23 @@ describe('Collection Service (Integration)', () => {
     const tables = await pgliteInstance.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
     const tableNames = tables.rows.map((r: any) => r.tablename)
     expect(tableNames).toContain('test_p1_posts')
+  })
+
+  it('should create a collection with UUID id type', async () => {
+    const col = await collectionService.create(1, 'uuid_posts', 'uuid')
+    expect(col.idType).toBe('uuid')
+
+    // Verify physical table exists
+    const tables = await pgliteInstance.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
+    const tableNames = tables.rows.map((r: any) => r.tablename)
+    expect(tableNames).toContain('test_p1_uuid_posts')
+
+    // Verify 'id' column type is uuid
+    const columns = await pgliteInstance.query(`
+      SELECT data_type FROM information_schema.columns 
+      WHERE table_name = 'test_p1_uuid_posts' AND column_name = 'id'
+    `)
+    expect(columns.rows[0].data_type).toBe('uuid')
   })
 
   it('should add a field to a collection', async () => {

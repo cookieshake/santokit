@@ -7,12 +7,8 @@ import { projectRepository } from '@/modules/project/project.repository.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
-  const { PGlite } = await import('@electric-sql/pglite')
-  const { drizzle } = await import('drizzle-orm/pglite')
-  const schema = await import('../../db/schema.js')
-  const pglite = new PGlite()
-  const db = drizzle(pglite, { schema })
-  return { db, pglite }
+  const { createTestDb } = await import('../../tests/db-setup.js')
+  return await createTestDb()
 })
 
 vi.mock('../../db/connection-manager.js', async () => {
@@ -36,36 +32,16 @@ const pgliteInstance = pglite as any
 describe('Project Service (Integration)', () => {
   beforeEach(async () => {
     // Basic table creation for tests (since we don't have migrations)
-    await pgliteInstance.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        email TEXT NOT NULL UNIQUE,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS data_sources (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,
-        connection_string TEXT NOT NULL,
-        prefix TEXT NOT NULL DEFAULT 'santoki_',
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS projects (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        data_source_id INTEGER NOT NULL UNIQUE,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `)
-
+    // Schema is already setup by createTestDb in the mock
     // Clear tables
     await db.execute(sql`TRUNCATE TABLE projects, data_sources, users RESTART IDENTITY CASCADE`)
 
     // Create a dummy user
     const dummyId = 'user-1'
-    await pgliteInstance.exec(`INSERT INTO users (id, email, password) VALUES ('${dummyId}', 'test@example.com', 'pass123')`)
+    await pgliteInstance.exec(`
+      INSERT INTO users (id, name, email, password, email_verified, created_at, updated_at) 
+      VALUES ('${dummyId}', 'Test User', 'test@example.com', 'pass123', true, NOW(), NOW())
+    `)
 
     // Create a default data source for tests
     await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('default_ds', 'pglite://memory')`)

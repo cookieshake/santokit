@@ -7,6 +7,7 @@ export class AdminRepository {
     async create(data: any) {
         const [result] = await db.insert(users).values({
             ...data,
+            name: data.name || data.email, // satisfy notNull constraint
             roles: ['admin'], // Force admin for now as per requirement
             id: randomUUID(), // users table needs string ID
             createdAt: new Date(),

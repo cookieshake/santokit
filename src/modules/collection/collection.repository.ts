@@ -26,10 +26,15 @@ export const collectionRepository = {
     },
 
     // Physical Table Operations
-    createPhysicalTable: async (dataSourceName: string, physicalName: string) => {
+    createPhysicalTable: async (dataSourceName: string, physicalName: string, idType: 'serial' | 'uuid' = 'serial') => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
-        await targetDb.execute(sql.raw(`CREATE TABLE "${physicalName}" (id SERIAL PRIMARY KEY, created_at TIMESTAMP DEFAULT NOW())`))
+
+        const idCol = idType === 'uuid'
+            ? 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
+            : 'id SERIAL PRIMARY KEY'
+
+        await targetDb.execute(sql.raw(`CREATE TABLE "${physicalName}" (${idCol}, created_at TIMESTAMP DEFAULT NOW())`))
     },
 
     // Field Operations

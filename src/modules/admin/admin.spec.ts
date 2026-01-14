@@ -5,12 +5,8 @@ import { users } from '@/db/schema.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
-    const { PGlite } = await import('@electric-sql/pglite')
-    const { drizzle } = await import('drizzle-orm/pglite')
-    const schema = await import('../../db/schema.js')
-    const pglite = new PGlite()
-    const db = drizzle(pglite, { schema })
-    return { db, pglite }
+    const { createTestDb } = await import('../../tests/db-setup.js')
+    return await createTestDb()
 })
 
 const { db: mockedDb, pglite } = await import('@/db/index.js') as any
@@ -18,24 +14,7 @@ const pgliteInstance = pglite as any
 
 describe('Admin Module (System Level Users)', () => {
     beforeEach(async () => {
-        // Table creation
-        await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            name TEXT,
-            email TEXT NOT NULL UNIQUE,
-            password TEXT,
-            roles TEXT[] NOT NULL DEFAULT ARRAY['user'],
-            email_verified BOOLEAN DEFAULT FALSE,
-            image TEXT,
-            banned BOOLEAN,
-            ban_reason TEXT,
-            ban_expires TIMESTAMP,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-          );
-        `)
-
+        // Schema is already setup by createTestDb in the mock
         // Clear tables
         await mockedDb.execute(sql`TRUNCATE TABLE users RESTART IDENTITY CASCADE`)
     })

@@ -4,98 +4,54 @@ import { projectService } from '../project/project.service.js'
 import { sql } from 'drizzle-orm'
 
 vi.mock('../../db/index.js', async () => {
-  const { PGlite } = await import('@electric-sql/pglite')
-  const { drizzle } = await import('drizzle-orm/pglite')
-  const schema = await import('../../db/schema.js')
-  const pglite = new PGlite()
-  const db = drizzle(pglite, { schema })
-  return { db, pglite }
+  const { createTestDb } = await import('../../tests/db-setup.js')
+  return await createTestDb()
 })
 
 vi.mock('../../db/connection-manager.js', async () => {
-  const { drizzle } = await import('drizzle-orm/pglite')
-  const { pglite } = await import('../../db/index.js') as any
-  const db = drizzle(pglite)
+  const { createTestDb } = await import('../../tests/db-setup.js')
+  const { db, pglite } = await createTestDb()
   return {
     connectionManager: {
       getConnection: vi.fn().mockResolvedValue(db)
-    }
+    },
+    projectPglite: pglite,
+    projectDb: db
   }
 })
 
 // Correctly import the mocked modules
 import * as dbModule from '@/db/index.js'
-const { db, pglite } = dbModule as any
-const pgliteInstance = pglite as any
+import * as cmModule from '@/db/connection-manager.js'
+
+const { db, pglite: systemPglite } = dbModule as any
+const systemPgliteInstance = systemPglite as any
+const { projectPglite, projectDb } = cmModule as any
 
 describe('User Service (Project Level)', () => {
   let projectId1: number
   let projectId2: number
 
   beforeEach(async () => {
-    // Basic table creation for system DB
-    await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY DEFAULT 'u' || floor(random() * 1000000)::text,
-            name TEXT,
-            email TEXT NOT NULL UNIQUE,
-            password TEXT,
-            roles TEXT[] NOT NULL DEFAULT ARRAY['user'],
-            email_verified BOOLEAN DEFAULT FALSE,
-            image TEXT,
-            banned BOOLEAN,
-            ban_reason TEXT,
-            ban_expires TIMESTAMP,
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-          );
-          CREATE TABLE IF NOT EXISTS data_sources (
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL UNIQUE,
-            connection_string TEXT NOT NULL,
-            prefix TEXT NOT NULL DEFAULT 'santoki_',
-            created_at TIMESTAMP DEFAULT NOW()
-          );
-          CREATE TABLE IF NOT EXISTS projects (
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
-            data_source_id INTEGER NOT NULL REFERENCES data_sources(id) UNIQUE,
-            created_at TIMESTAMP DEFAULT NOW()
-          );
-          CREATE TABLE IF NOT EXISTS collections (
-            id SERIAL PRIMARY KEY,
-            project_id INTEGER NOT NULL REFERENCES projects(id),
-            name TEXT NOT NULL,
-            physical_name TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW()
-          );
-        `)
+    // Schema is already setup by createTestDb in the mock
 
     // Clear tables
     await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, users RESTART IDENTITY CASCADE`)
+    await projectDb.execute(sql`TRUNCATE TABLE users RESTART IDENTITY CASCADE`)
     // No need to try users separately now it's consolidated
 
     // Create initial setup
-    await pgliteInstance.exec(`INSERT INTO users (id, email, password, roles) VALUES ('admin-1', 'admin@example.com', 'password', '{"admin"}')`)
-    await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds1', 'memory'), ('ds2', 'memory')`)
+    await systemPgliteInstance.exec(`
+      INSERT INTO users (id, name, email, password, roles, email_verified, created_at, updated_at) 
+      VALUES ('admin-1', 'Admin', 'admin@example.com', 'password', '{"admin"}', true, NOW(), NOW())
+    `)
+    await systemPgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds1', 'memory'), ('ds2', 'memory')`)
 
     const p1 = await projectService.create('Project 1', 1)
     const p2 = await projectService.create('Project 2', 2)
 
     projectId1 = p1.id
     projectId2 = p2.id
-
-    // Ensure 'users' table exists in the physical DB (mocked as same pglite)
-    await pgliteInstance.exec(`
-          CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            email TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL,
-            roles TEXT[] NOT NULL DEFAULT ARRAY['user'],
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW()
-          );
-        `)
   })
 
   it('should create a user for a project (in physical DB)', async () => {
@@ -105,8 +61,8 @@ describe('User Service (Project Level)', () => {
     })
     expect(user.email).toBe('test@example.com')
 
-    // Verify it's in the DB (which is mocked as pgliteInstance)
-    const res = await pgliteInstance.query(`SELECT * FROM users WHERE email = 'test@example.com'`)
+    // Verify it's in the DB (which is projectPglite)
+    const res = await projectPglite.query(`SELECT * FROM users WHERE email = 'test@example.com'`)
     expect(res.rows.length).toBe(1)
   })
 
@@ -116,7 +72,7 @@ describe('User Service (Project Level)', () => {
       password: 'pw'
     })
     const list = await userService.listUsers(projectId1)
-    expect(list.length).toBe(2)
+    expect(list.length).toBe(1)
     const found = list.find(u => u.email === 'list@example.com')
     expect(found).toBeDefined()
     expect(found!.roles).toContain('user')
@@ -129,6 +85,6 @@ describe('User Service (Project Level)', () => {
     })
     await userService.deleteUser(projectId1, user.id as number)
     const list = await userService.listUsers(projectId1)
-    expect(list.length).toBe(1)
+    expect(list.length).toBe(0)
   })
 })

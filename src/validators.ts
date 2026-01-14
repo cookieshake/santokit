@@ -35,6 +35,7 @@ export const CreateUserSchema = z.object({
 export const CreateCollectionSchema = z.object({
     name: z.string().min(1).regex(/^[a-zA-Z0-9_]+$/, "Alphanumeric and underscores only"),
     dataSourceId: z.number().int().positive().optional(),
+    idType: z.enum(['serial', 'uuid']).default('serial'),
 })
 
 export const AddFieldSchema = z.object({

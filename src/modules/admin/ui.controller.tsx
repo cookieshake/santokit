@@ -514,6 +514,15 @@ app.get('/projects/:id', async (c) => {
                             </label>
                             <input type="text" id="collection-name" class="input input-bordered w-full" placeholder="posts" required />
                         </div>
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">Primary Key Type</span>
+                            </label>
+                            <select id="collection-id-type" class="select select-bordered w-full">
+                                <option value="serial">Incremental Integer (SERIAL)</option>
+                                <option value="uuid">UUID (v4)</option>
+                            </select>
+                        </div>
                         <div class="modal-action">
                             <button type="submit" class="btn btn-primary w-full">Create Collection</button>
                         </div>
@@ -535,7 +544,10 @@ app.get('/projects/:id', async (c) => {
                         const res = await fetch('/admin/v1/projects/${projectId}/collections', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name })
+                            body: JSON.stringify({ 
+                                name, 
+                                idType: document.getElementById('collection-id-type').value 
+                            })
                         });
                         if (res.ok) {
                             window.location.reload();
@@ -543,12 +555,12 @@ app.get('/projects/:id', async (c) => {
                             const data = await res.json();
                             errorDiv.textContent = data.error || data.details || 'Failed to create collection';
                             errorDiv.classList.remove('hidden');
-                             errorDiv.style.display = 'grid';
+                            errorDiv.style.display = 'grid';
                         }
                     } catch (err) {
                         errorDiv.textContent = 'An error occurred';
-                         errorDiv.classList.remove('hidden');
-                          errorDiv.style.display = 'grid';
+                        errorDiv.classList.remove('hidden');
+                        errorDiv.style.display = 'grid';
                     }
                 });
             `}} />
@@ -568,6 +580,7 @@ app.get('/projects/:id', async (c) => {
                                         <tr>
                                             <th>Name</th>
                                             <th>Physical Name</th>
+                                            <th>ID Type</th>
                                             <th>Created At</th>
                                             <th>Actions</th>
                                         </tr>
@@ -577,6 +590,7 @@ app.get('/projects/:id', async (c) => {
                                             <tr>
                                                 <td class="font-bold">{col.name}</td>
                                                 <td><code class="badge badge-ghost">{col.physicalName}</code></td>
+                                                <td><div class="badge badge-outline">{col.idType || 'serial'}</div></td>
                                                 <td>{col.createdAt ? new Date(col.createdAt).toLocaleDateString() : '-'}</td>
                                                 <td>
                                                     <a href={`/admin/_/projects/${projectId}/collections/${col.name}`} class="btn btn-sm btn-secondary">Design</a>
