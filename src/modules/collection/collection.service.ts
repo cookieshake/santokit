@@ -1,21 +1,18 @@
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
-import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
+// dataSourceRepository import removed
 import { projectRepository } from '@/modules/project/project.repository.js'
 
 export const collectionService = {
     create: async (projectId: number, name: string, idType: 'serial' | 'uuid' = 'serial') => {
-        // 1. Get Project and its Data Source
+        // 1. Get Project
         const project = await projectRepository.findById(projectId)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
-
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
+        if (!project) throw new Error('Project not found') // removed dataSource check
 
         // 2. Generate Physical Name
-        const physicalName = `${source.prefix}p${projectId}_${name}`.toLowerCase()
+        const physicalName = `${project.prefix}p${projectId}_${name}`.toLowerCase()
 
         // 3. Create Physical Table
-        await collectionRepository.createPhysicalTable(source.name, physicalName, idType)
+        await collectionRepository.createPhysicalTable(project.name, physicalName, idType)
 
         // 4. Save Metadata
         return await collectionRepository.create({
@@ -35,13 +32,10 @@ export const collectionService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(projectId)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        const fields = await collectionRepository.getFields(source.name, col.physicalName)
-        const indexes = await collectionRepository.getIndexes(source.name, col.physicalName)
+        const fields = await collectionRepository.getFields(project.name, col.physicalName)
+        const indexes = await collectionRepository.getIndexes(project.name, col.physicalName)
 
         return { meta: col, fields, indexes }
     },
@@ -52,12 +46,9 @@ export const collectionService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(projectId)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        await collectionRepository.addField(source.name, col.physicalName, fieldName, type, isNullable)
+        await collectionRepository.addField(project.name, col.physicalName, fieldName, type, isNullable)
     },
 
     removeField: async (projectId: number, collectionName: string, fieldName: string) => {
@@ -65,12 +56,9 @@ export const collectionService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(projectId)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        await collectionRepository.removeField(source.name, col.physicalName, fieldName)
+        await collectionRepository.removeField(project.name, col.physicalName, fieldName)
     },
 
     renameField: async (projectId: number, collectionName: string, oldName: string, newName: string) => {
@@ -78,12 +66,9 @@ export const collectionService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(projectId)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        await collectionRepository.renameField(source.name, col.physicalName, oldName, newName)
+        await collectionRepository.renameField(project.name, col.physicalName, oldName, newName)
     },
 
     // Index Management
@@ -92,13 +77,10 @@ export const collectionService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(projectId)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        const fullIndexName = `${source.prefix}idx_${col.physicalName}_${indexName}`
-        await collectionRepository.createIndex(source.name, col.physicalName, fullIndexName, fields, unique)
+        const fullIndexName = `${project.prefix}idx_${col.physicalName}_${indexName}`
+        await collectionRepository.createIndex(project.name, col.physicalName, fullIndexName, fields, unique)
         return fullIndexName
     },
 
@@ -107,13 +89,10 @@ export const collectionService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(projectId)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        const fullIndexName = `${source.prefix}idx_${col.physicalName}_${indexName}`
-        await collectionRepository.removeIndex(source.name, fullIndexName)
+        const fullIndexName = `${project.prefix}idx_${col.physicalName}_${indexName}`
+        await collectionRepository.removeIndex(project.name, fullIndexName)
         return fullIndexName
     }
 }

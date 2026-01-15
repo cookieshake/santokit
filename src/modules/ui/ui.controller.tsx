@@ -163,7 +163,7 @@ app.get('/login', (c) => {
               const password = document.getElementById('password').value;
               
               try {
-                const res = await fetch('/v1/auth/sign-in/email', {
+                const res = await fetch('/v1/auth/sign-in', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ email, password })

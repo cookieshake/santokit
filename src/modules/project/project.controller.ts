@@ -8,8 +8,8 @@ import accountController from '@/modules/account/account.controller.js'
 const app = new Hono()
 
 app.post('/', zValidator('json', CreateProjectSchema), async (c) => {
-    const { name, dataSourceId } = c.req.valid('json')
-    const result = await projectService.create(name, dataSourceId)
+    const { name, connectionString, prefix } = c.req.valid('json')
+    const result = await projectService.create(name, connectionString, prefix)
     return c.json(result)
 })
 
@@ -18,12 +18,7 @@ app.get('/', async (c) => {
     return c.json(result)
 })
 
-app.post('/associate-datasource', async (c) => {
-    const projectId = Number(c.req.header('x-project-id'))
-    const { dataSourceId } = await c.req.json()
-    const project = await projectService.associateDataSource(projectId, dataSourceId)
-    return c.json(project)
-})
+// associate-datasource route removed
 
 // Recursively mount routes: Project -> Collections/Users
 // e.g. /projects/:projectId/collections

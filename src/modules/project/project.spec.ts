@@ -34,57 +34,44 @@ describe('Project Service (Integration)', () => {
     // Basic table creation for tests (since we don't have migrations)
     // Schema is already setup by createTestDb in the mock
     // Clear tables
-    await db.execute(sql`TRUNCATE TABLE projects, data_sources, accounts RESTART IDENTITY CASCADE`)
+    await db.execute(sql`TRUNCATE TABLE projects, accounts RESTART IDENTITY CASCADE`)
 
     // Create a dummy user
     const dummyId = 'user-1'
     await pgliteInstance.exec(`
-      INSERT INTO accounts (id, name, email, password, email_verified, created_at, updated_at) 
-      VALUES ('${dummyId}', 'Test User', 'test@example.com', 'pass123', true, NOW(), NOW())
+      INSERT INTO accounts (id, name, email, password, created_at, updated_at) 
+      VALUES ('${dummyId}', 'Test User', 'test@example.com', 'pass123', NOW(), NOW())
     `)
-
-    // Create a default data source for tests
-    await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('default_ds', 'pglite://memory')`)
   })
 
 
   it('should create a new project', async () => {
-    const project = await projectService.create('New Project', 1)
+    const project = await projectService.create('New Project', 'pglite://memory')
     expect(project).toBeDefined()
     expect(project.name).toBe('New Project')
-    expect(project.dataSourceId).toBe(1)
+    expect(project.connectionString).toBe('pglite://memory')
   })
 
   it('should list projects', async () => {
-    // Create another DS for second project because of unique constraint on dataSourceId
-    await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds_2', 'pglite://memory')`)
-
-    await projectService.create('Project 1', 1)
-    await projectService.create('Project 2', 2)
+    await projectService.create('Project 1', 'pglite://memory')
+    await projectService.create('Project 2', 'pglite://memory/2')
 
     const projects = await projectService.list()
     expect(projects.length).toBe(2)
     expect(projects[0].name).toBe('Project 1')
   })
 
-  it('should have a data source upon creation', async () => {
-    const project = await projectService.create('To Check', 1)
-    expect(project.dataSourceId).toBe(1)
+  it('should have a connection string upon creation', async () => {
+    const project = await projectService.create('To Check', 'pglite://memory')
+    expect(project.connectionString).toBe('pglite://memory')
   })
 
-  it('should create a project with a data source initially', async () => {
-    // 1. Mock datasource existence
-    await pgliteInstance.exec(`
-      INSERT INTO data_sources (name, connection_string) VALUES ('initial_ds', 'pglite://memory');
-    `)
-
-    // 2. Create project with dataSourceId
-    const project = await projectService.create('Project with DS', 1)
+  it('should create a project with correct prefix', async () => {
+    const project = await projectService.create('Project with Prefix', 'pglite://memory', 'p_')
     expect(project).toBeDefined()
-    expect(project.dataSourceId).toBe(1)
+    expect(project.prefix).toBe('p_')
 
-    // 3. Verify it's in DB
     const found = await projectService.getById(project.id)
-    expect(found?.dataSourceId).toBe(1)
+    expect(found?.prefix).toBe('p_')
   })
 })

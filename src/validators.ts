@@ -14,15 +14,12 @@ export const LoginSchema = z.object({
     password: z.string(),
 })
 
-export const CreateDataSourceSchema = z.object({
-    name: z.string().min(1),
-    connectionString: z.string().url(),
-    prefix: z.string().default('santoki_'),
-})
+// CreateDataSourceSchema removed
 
 export const CreateProjectSchema = z.object({
     name: z.string().min(1),
-    dataSourceId: z.number().int().positive(),
+    connectionString: z.string().url(),
+    prefix: z.string().default('santoki_'),
 })
 
 export const CreateUserSchema = z.object({
@@ -34,7 +31,6 @@ export const CreateUserSchema = z.object({
 
 export const CreateCollectionSchema = z.object({
     name: z.string().min(1).regex(/^[a-zA-Z0-9_]+$/, "Alphanumeric and underscores only"),
-    dataSourceId: z.number().int().positive().optional(),
     idType: z.enum(['serial', 'uuid']).default('serial'),
 })
 

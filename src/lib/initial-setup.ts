@@ -1,8 +1,8 @@
-import { authAdmin } from './auth-admin.js'
 import { db } from '../db/index.js'
 import { accounts } from '../db/schema.js'
 import { arrayContains, eq } from 'drizzle-orm'
 import { config } from '../config/index.js'
+import { hashPassword } from './password.js'
 
 
 export async function ensureAdminExists() {
@@ -15,7 +15,7 @@ export async function ensureAdminExists() {
             .where(arrayContains(accounts.roles, ['admin']))
             .limit(1)
 
-        if (admins.length > 0) {
+        if (admins && admins.length > 0) {
             console.log('Admin account found.')
             return
         }
@@ -23,27 +23,22 @@ export async function ensureAdminExists() {
         console.log('No admin account found. Creating default admin...')
         const { email, password, name } = config.auth.initialAdmin
 
-        const user = await authAdmin.api.signUpEmail({
-            body: {
-                email,
-                password,
-                name,
-            }
+        const hashedPassword = await hashPassword(password)
+
+        await db.insert(accounts).values({
+            id: crypto.randomUUID(),
+            email,
+            password: hashedPassword,
+            name: name,
+            roles: ['admin'],
         })
 
-        if (user) {
-            // Ensure roles are set correctly
-            await db.update(accounts)
-                .set({ roles: ['admin'] })
-                .where(eq(accounts.email, email))
+        console.log('Default admin account created successfully!')
+        console.log(`Email: ${email}`)
+        console.log('Please change the default password after your first login.')
 
-
-
-            console.log('Default admin account created successfully!')
-            console.log(`Email: ${email}`)
-            console.log('Please change the default password after your first login.')
-        }
     } catch (error) {
         console.error('Failed to ensure admin exists:', error)
     }
 }
+

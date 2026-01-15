@@ -1,12 +1,16 @@
 import { Hono } from 'hono'
-import { authAdmin } from '@/lib/auth-admin.js'
-import { getAuthProject } from '@/lib/auth-project.js'
+import { authController } from '@/modules/auth/auth.controller.js'
+import { authMiddleware } from '@/modules/auth/auth.middleware.js'
+import { db } from '@/db/index.js'
+import { accounts } from '@/db/schema.js'
+import { eq } from 'drizzle-orm'
 import { handleDbError, AppError } from '@/lib/errors.js'
 import { serveStatic } from '@hono/node-server/serve-static'
+import { getCookie } from 'hono/cookie'
+
 
 // Controllers
 import dataController from '@/modules/data/data.controller.js'
-import accountAuthController from '@/modules/account/account.auth.controller.js'
 import projectController from '@/modules/project/project.controller.js'
 import uiController from '@/modules/ui/ui.controller.js'
 
@@ -14,6 +18,8 @@ import { accountRepository } from '@/modules/account/account.repository.js'
 
 type Variables = {
     account: any;
+    user: any;
+    session: any;
 }
 
 const app = new Hono<{ Variables: Variables }>()
@@ -49,34 +55,13 @@ app.onError((err, c) => {
 const api = new Hono<{ Variables: Variables }>()
 
 // 1. Auth Routes
-// System Admin Auth
-const systemAuth = new Hono()
-systemAuth.post('/register', async (c) => {
-    const { email, password, name } = await c.req.json()
-    // Use BetterAuth API to create admin
-    const user = await authAdmin.api.signUpEmail({
-        body: {
-            email,
-            password,
-            name: name || email.split('@')[0],
-        }
-    })
-
-    if (user) {
-        return c.json(user)
-    }
-    return c.json({ error: "Failed to register" }, 400)
-})
-systemAuth.all('/*', (c) => authAdmin.handler(c.req.raw))
-
-api.route('/auth/system', systemAuth)
-// Project User Auth
-// Mounted at /v1/auth - Controller handles extracting project ID from header
-api.route('/auth', accountAuthController)
+api.route('/auth', authController)
 
 // 2. Data Routes (Protected)
+api.use('/data/*', authMiddleware)
 api.use('/data/*', async (c, next) => {
     const rawId = c.req.header('x-project-id')
+    const user = c.get('user')
 
     if (!rawId) {
         return c.json({ error: "Missing Project ID Header (x-project-id)" }, 400);
@@ -84,11 +69,10 @@ api.use('/data/*', async (c, next) => {
 
     // System Project (Admin Access)
     if (rawId === 'system') {
-        const session = await authAdmin.api.getSession({
-            headers: c.req.raw.headers,
-        });
-        if (!session) return c.json({ error: "Unauthorized System Access" }, 401);
-        c.set('account', session.user); // Admin user
+        if (!user || !user.roles.includes('admin')) {
+            return c.json({ error: "Unauthorized System Access" }, 401);
+        }
+        c.set('account', user); // Alias for legacy code
         return next()
     }
 
@@ -96,14 +80,18 @@ api.use('/data/*', async (c, next) => {
     const projectId = parseInt(rawId)
     if (isNaN(projectId)) return c.json({ error: "Invalid Project ID" }, 400);
 
-    const db = await accountRepository.getDbForProject(projectId)
-    const auth = getAuthProject(db)
-    const session = await auth.api.getSession({
-        headers: c.req.raw.headers,
-    });
-    if (!session) return c.json({ error: "Unauthorized" }, 401);
+    // TODO: Implement proper project-level permissions if needed.
+    // For now, if logged in, you can access.
+    // Ideally check if user is member of project or is admin.
+    if (!user) {
+        return c.json({ error: "Unauthorized" }, 401);
+    }
 
-    c.set('account', session.user);
+    // Temporary: allow admins to access all projects, regular users only their own? 
+    // Since we don't have project_members table in schema yet (or we used to but it's not clear), 
+    // we'll allow access if authenticated for now.
+
+    c.set('account', user);
     await next()
 })
 
@@ -112,22 +100,53 @@ api.use('/data/*', async (c, next) => {
 api.route('/data/:collectionName', dataController)
 api.get('/', (c) => c.text('Santoki Unified API'))
 
+// Project management routes (added if they were missing or implicitly handled)
+api.route('/projects', projectController)
+
 app.route('/v1', api)
 
+
+import { verify } from 'hono/jwt'
+import { config } from '@/config/index.js'
+
+// ...
 
 // --- UI Router (/ui) ---
 // Admin UI Protection Middleware
 app.use('/ui/*', async (c, next) => {
     if (c.req.path === '/ui/login') return next()
 
-    const session = await authAdmin.api.getSession({
-        headers: c.req.raw.headers,
-    });
-    if (!session) {
+    const token = getCookie(c, 'auth_token')
+    if (!token) {
         return c.redirect('/ui/login')
     }
-    c.set('account', session.user);
-    await next()
+
+    try {
+        const payload = await verify(token, config.auth.jwtSecret)
+
+        // Since UI is primarily for Admins in System context?
+        // Check roles from payload or fetch fresh from DB if needed
+        // Payload has { id, email, roles, projectId }
+
+        if (!payload.roles || !(payload.roles as string[]).includes('admin')) {
+            return c.redirect('/ui/login')
+        }
+
+        // Optional: Fetch full user if needed, or just use payload
+        // const [user] = await db.select().from(accounts).where(eq(accounts.id, payload.id as string));
+        // c.set('account', user);
+
+        c.set('user', {
+            id: payload.id,
+            email: payload.email,
+            roles: payload.roles,
+            projectId: payload.projectId
+        });
+
+        await next()
+    } catch (e) {
+        return c.redirect('/ui/login')
+    }
 })
 
 app.route('/ui', uiController)

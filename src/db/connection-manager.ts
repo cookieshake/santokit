@@ -1,6 +1,6 @@
 
 import { db as adminDb, type Database } from '@/db/index.js';
-import { dataSources } from '@/db/schema.js';
+import { projects } from '@/db/schema.js';
 import { eq } from 'drizzle-orm';
 
 // Singleton to hold active pools
@@ -14,20 +14,20 @@ class ConnectionManager {
         }
 
         // 2. Fetch config from Admin DB
-        const source = await adminDb.query.dataSources.findFirst({
-            where: eq(dataSources.name, sourceName)
+        const project = await adminDb.query.projects.findFirst({
+            where: eq(projects.name, sourceName)
         });
 
-        if (!source) return null;
+        if (!project) return null;
 
         let dbInstance: Database;
 
         // 3. Create new pool or client
-        if (source.connectionString.startsWith('postgres://') || source.connectionString.startsWith('postgresql://')) {
+        if (project.connectionString.startsWith('postgres://') || project.connectionString.startsWith('postgresql://')) {
             const { Pool } = await import('pg');
             const { drizzle } = await import('drizzle-orm/node-postgres');
             const pool = new Pool({
-                connectionString: source.connectionString
+                connectionString: project.connectionString
             });
             dbInstance = drizzle(pool) as unknown as Database;
             // Store the raw pool on the instance for closing
@@ -35,7 +35,7 @@ class ConnectionManager {
         } else {
             const { PGlite } = await import('@electric-sql/pglite');
             const { drizzle } = await import('drizzle-orm/pglite');
-            const client = new PGlite(source.connectionString);
+            const client = new PGlite(project.connectionString);
             dbInstance = drizzle(client) as unknown as Database;
             // Store the raw client on the instance for closing
             (dbInstance as any)._raw = client;

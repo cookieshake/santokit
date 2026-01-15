@@ -36,19 +36,19 @@ describe('User Service (Project Level)', () => {
     // Schema is already setup by createTestDb in the mock
 
     // Clear tables
-    await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, accounts RESTART IDENTITY CASCADE`)
+    await db.execute(sql`TRUNCATE TABLE collections, projects, accounts RESTART IDENTITY CASCADE`)
     await projectDb.execute(sql`TRUNCATE TABLE accounts RESTART IDENTITY CASCADE`)
     // No need to try users separately now it's consolidated
 
     // Create initial setup
     await systemPgliteInstance.exec(`
-      INSERT INTO accounts (id, name, email, password, roles, email_verified, created_at, updated_at) 
-      VALUES ('admin-1', 'Admin', 'admin@example.com', 'password', '{"admin"}', true, NOW(), NOW())
+      INSERT INTO accounts (id, name, email, password, roles, created_at, updated_at) 
+      VALUES ('admin-1', 'Admin', 'admin@example.com', 'password', '{"admin"}', NOW(), NOW())
     `)
-    await systemPgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds1', 'memory'), ('ds2', 'memory')`)
+    // Data sources are now part of project creation
 
-    const p1 = await projectService.create('Project 1', 1)
-    const p2 = await projectService.create('Project 2', 2)
+    const p1 = await projectService.create('Project 1', 'memory')
+    const p2 = await projectService.create('Project 2', 'memory')
 
     projectId1 = p1.id
     projectId2 = p2.id

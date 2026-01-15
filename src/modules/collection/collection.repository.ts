@@ -2,7 +2,7 @@ import { db } from '@/db/index.js'
 import { collections } from '@/db/schema.js'
 import { eq, and } from 'drizzle-orm'
 import { connectionManager } from '@/db/connection-manager.js'
-import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
+// dataSourceRepository import removed
 import { sql } from 'drizzle-orm'
 
 export const collectionRepository = {

@@ -1,5 +1,5 @@
 import { connectionManager } from '@/db/connection-manager.js'
-import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
+// dataSourceRepository import removed
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { sql } from 'drizzle-orm'
 import { db } from '@/db/index.js'
@@ -11,12 +11,9 @@ export const accountRepository = {
         }
 
         const project = await projectRepository.findById(projectId as number)
-        if (!project || !project.dataSourceId) throw new Error('Project not associated with a data source')
+        if (!project) throw new Error('Project not found') // removed dataSource check
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        const targetDb = await connectionManager.getConnection(source.name)
+        const targetDb = await connectionManager.getConnection(project.name)
         if (!targetDb) throw new Error('Could not connect to data source')
 
         return targetDb
@@ -27,7 +24,7 @@ export const accountRepository = {
         const fullData = {
             id: typeof crypto !== 'undefined' ? crypto.randomUUID() : Math.random().toString(36).substring(2),
             name: data.email, // default name
-            email_verified: false,
+
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
             ...data

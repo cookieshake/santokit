@@ -1,11 +1,15 @@
 import { accountRepository } from './account.repository.js'
 import { sign } from 'hono/jwt'
 import { config } from '@/config/index.js'
+import { hashPassword, verifyPassword } from '@/lib/password.js'
 
 export const accountService = {
     createUser: async (projectId: number | string, data: any) => {
+        const password = typeof data.password === 'string' ? data.password : String(data.password)
+        const hashedPassword = await hashPassword(password)
         return await accountRepository.create(projectId, {
             ...data,
+            password: hashedPassword,
             roles: data.roles || ['user']
         })
     },
@@ -20,7 +24,12 @@ export const accountService = {
 
     login: async (projectId: number | string, email: string, password: string) => {
         const user = await accountRepository.findByEmail(projectId, email)
-        if (!user || user.password !== password) {
+        if (!user) {
+            throw new Error('Invalid credentials')
+        }
+
+        const validPassword = await verifyPassword(String(user.password), password)
+        if (!validPassword) {
             throw new Error('Invalid credentials')
         }
 

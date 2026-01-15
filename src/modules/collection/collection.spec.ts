@@ -28,11 +28,10 @@ const pgliteInstance = pglite as any
 describe('Collection Service (Integration)', () => {
   beforeEach(async () => {
     // Schema is already setup by createTestDb in the mock
-    await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, accounts RESTART IDENTITY CASCADE`)
+    await db.execute(sql`TRUNCATE TABLE collections, projects, accounts RESTART IDENTITY CASCADE`)
 
     // Setup test data
-    await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string, prefix) VALUES ('test_source', 'pg://test', 'test_')`)
-    await pgliteInstance.exec(`INSERT INTO projects (name, data_source_id) VALUES ('test_project', 1)`)
+    await pgliteInstance.exec(`INSERT INTO projects (name, connection_string, prefix) VALUES ('test_project', 'pg://test', 'test_')`)
 
     // Setup mock connection
     vi.mocked(connectionManager.getConnection).mockResolvedValue(db as any)

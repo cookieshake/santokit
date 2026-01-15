@@ -4,69 +4,24 @@ export const accounts = pgTable("accounts", {
     id: text("id").primaryKey(),
     name: text('name').notNull(),
     email: text('email').notNull().unique(),
-    emailVerified: boolean('email_verified').notNull(),
-    image: text('image'),
-    password: text('password'), // Added for credential auth
-    roles: text('roles').array().notNull().default(['user']), // Changed to support multiple roles
-    banned: boolean('banned'),
-    banReason: text('ban_reason'),
-    banExpires: timestamp('ban_expires'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
+    password: text('password').notNull(), // Made required for simple email/pass auth
+    roles: text('roles').array().notNull().default(['user']),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-export const sessions = pgTable("sessions", {
-    id: text("id").primaryKey(),
-    expiresAt: timestamp('expires_at').notNull(),
-    token: text('token').notNull().unique(),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
-    ipAddress: text('ip_address'),
-    userAgent: text('user_agent'),
-    accountId: text('account_id').notNull().references(() => accounts.id),
-});
 
-export const oauthAccounts = pgTable("oauth_accounts", {
-    id: text("id").primaryKey(),
-    providerId: text('provider_id').notNull(),
-    accountId: text('account_id').notNull().references(() => accounts.id), // Link to internal account
-    providerAccountId: text('provider_account_id').notNull(),
-    accessToken: text('access_token'),
-    refreshToken: text('refresh_token'),
-    idToken: text('id_token'),
-    accessTokenExpiresAt: timestamp('access_token_expires_at'),
-    refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
-    scope: text('scope'),
-    password: text('password'),
-    createdAt: timestamp('created_at').notNull(),
-    updatedAt: timestamp('updated_at').notNull(),
-});
-
-export const verifications = pgTable("verifications", {
-    id: text("id").primaryKey(),
-    identifier: text('identifier').notNull(),
-    value: text('value').notNull(),
-    expiresAt: timestamp('expires_at').notNull(),
-    createdAt: timestamp('created_at'),
-    updatedAt: timestamp('updated_at'),
-});
 
 // Admins table removed, users table used instead with role='admin'
 
-// Data Sources
-export const dataSources = pgTable('data_sources', {
-    id: serial('id').primaryKey(),
-    name: text('name').notNull().unique(),
-    connectionString: text('connection_string').notNull(),
-    prefix: text('prefix').notNull().default('santoki_'), // Default for backward compat
-    createdAt: timestamp('created_at').defaultNow(),
-});
+// Data Sources table removed, merged into projects
 
 // Projects
 export const projects = pgTable('projects', {
     id: serial('id').primaryKey(),
     name: text('name').notNull(),
-    dataSourceId: integer('data_source_id').references(() => dataSources.id).unique().notNull(),
+    connectionString: text('connection_string').notNull(),
+    prefix: text('prefix').notNull().default('santoki_'),
     createdAt: timestamp('created_at').defaultNow(),
 });
 
