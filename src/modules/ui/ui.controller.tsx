@@ -4,8 +4,7 @@ import { projectService } from '@/modules/project/project.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { dataService } from '@/modules/data/data.service.js'
 import { db } from '@/db/index.js'
-// accounts import removed
-import { arrayContains, sql } from 'drizzle-orm'
+import { sql } from 'drizzle-orm'
 
 const app = new Hono<{
     Variables: {
@@ -14,222 +13,197 @@ const app = new Hono<{
 }>()
 
 const Layout = (props: { title: string; children: any; active: string; account?: any; projects?: any[]; currentProjectId?: number }) => (
-    <html lang="en" data-theme="corporate">
+    <html lang="en">
         <head>
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
             <title>{props.title} | Santoki Admin</title>
-            <link rel="stylesheet" href="/assets/admin-ui.css" />
-            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/inter-ui@3.19.3/inter.css" />
+            <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css" />
+            <script dangerouslySetInnerHTML={{
+                __html: `
+                function showModal(id) {
+                    document.getElementById(id)?.classList.add('is-active');
+                }
+                function hideModal(id) {
+                    document.getElementById(id)?.classList.remove('is-active');
+                }
+                function toggleDropdown(id) {
+                    document.getElementById(id)?.classList.toggle('is-active');
+                }
+                document.addEventListener('DOMContentLoaded', () => {
+                    // Close dropdowns when clicking outside
+                    document.addEventListener('click', (e) => {
+                        if (!e.target.closest('.dropdown')) {
+                            document.querySelectorAll('.dropdown').forEach(d => d.classList.remove('is-active'));
+                        }
+                    });
+                    // Close modals
+                    document.querySelectorAll('.modal-background, .modal-close, .delete').forEach(el => {
+                        el.addEventListener('click', () => {
+                            el.closest('.modal')?.classList.remove('is-active');
+                        });
+                    });
+                });
+            `}} />
         </head>
-        <body class="min-h-screen bg-base-200 font-sans">
-            <div class="drawer lg:drawer-open">
-                <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
-                <div class="drawer-content flex flex-col">
-                    {/* Top Navbar */}
-                    <div class="w-full navbar bg-base-100 shadow-sm border-b border-base-300">
-                        <div class="flex-none lg:hidden">
-                            <label for="my-drawer-2" aria-label="open sidebar" class="btn btn-square btn-ghost">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-6 h-6 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                            </label>
-                        </div>
-                        <div class="flex-1 px-2 lg:px-4">
-                            {props.projects && props.projects.length > 0 ? (
-                                <div class="dropdown">
-                                    <label tabindex={0} class="btn btn-ghost gap-2 normal-case">
-                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <path d="M12 2L2 7L12 12L22 7L12 2Z"></path>
-                                            <path d="M2 17L12 22L22 17"></path>
-                                            <path d="M2 12L12 17L22 12"></path>
-                                        </svg>
-                                        <span class="font-semibold">
-                                            {props.currentProjectId
-                                                ? props.projects.find(p => p.id === props.currentProjectId)?.name || 'Select Project'
-                                                : 'Select Project'}
-                                        </span>
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                            <polyline points="6 9 12 15 18 9"></polyline>
-                                        </svg>
-                                    </label>
-                                    <ul tabindex={0} class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-64 mt-2 border border-base-300">
-                                        {props.projects.map(project => (
-                                            <li>
-                                                <a
-                                                    href={`/ui/projects/${project.id}`}
-                                                    class={props.currentProjectId === project.id ? 'active' : ''}
-                                                >
-                                                    <div class="flex flex-col items-start gap-1">
-                                                        <span class="font-semibold">{project.name}</span>
-                                                        <span class="text-xs opacity-60">ID: {project.id}</span>
-                                                    </div>
-                                                </a>
-                                            </li>
-                                        ))}
-                                        <div class="divider my-1"></div>
-                                        <li>
-                                            <a href="/ui/projects" class="text-primary">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                    <line x1="12" y1="5" x2="12" y2="19"></line>
-                                                    <line x1="5" y1="12" x2="19" y2="12"></line>
-                                                </svg>
-                                                Manage All Projects
-                                            </a>
-                                        </li>
-                                    </ul>
-                                </div>
-                            ) : (
-                                <span class="text-xl font-bold lg:hidden">Santoki Admin</span>
-                            )}
-                        </div>
-                    </div>
-
-                    <main class="p-6 md:p-10">
-                        {props.children}
-                    </main>
-                </div>
-                <div class="drawer-side">
-                    <label for="my-drawer-2" aria-label="close sidebar" class="drawer-overlay"></label>
-                    <aside class="menu p-4 w-72 min-h-full bg-base-100 text-base-content border-r border-base-300">
-                        <div class="flex items-center gap-3 px-4 py-4 mb-4 text-2xl font-bold text-primary">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-primary">
-                                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                            </svg>
+        <body>
+            <div class="columns is-gapless">
+                <div class="column is-2">
+                    <aside class="menu section">
+                        <p class="menu-label is-size-4 has-text-link">
                             Santoki
-                        </div>
-                        <ul class="menu w-full text-base-content text-base font-medium">
-                            <li><a href="/ui" class={props.active === 'dashboard' ? 'active' : ''}>Dashboard</a></li>
-                            <li><a href="/ui/projects" class={props.active === 'projects' ? 'active' : ''}>Projects</a></li>
-                            <li><a href="/ui/admins" class={props.active === 'admins' ? 'active' : ''}>Admins</a></li>
+                        </p>
+                        <ul class="menu-list">
+                            <li><a href="/ui" class={props.active === 'dashboard' ? 'is-active' : ''}>Dashboard</a></li>
+                            <li><a href="/ui/projects" class={props.active === 'projects' ? 'is-active' : ''}>Projects</a></li>
+                            <li><a href="/ui/admins" class={props.active === 'admins' ? 'is-active' : ''}>Admins</a></li>
                         </ul>
                         {props.account && (
-                            <div class="mt-auto p-4 border-t border-base-200">
-                                <div class="flex items-center gap-3">
-                                    <div class="avatar placeholder">
-                                        <div class="bg-neutral-focus text-neutral-content rounded-full w-10">
-                                            <span class="text-xs">{props.account.email?.charAt(0).toUpperCase()}</span>
-                                        </div>
+                            <div class="mt-6 pt-5 has-border-top">
+                                <div class="media">
+                                    <div class="media-left">
+                                        <figure class="image is-48x48">
+                                            <span class="tag is-link is-large is-rounded">{props.account.email?.charAt(0).toUpperCase()}</span>
+                                        </figure>
                                     </div>
-                                    <div class="text-sm overflow-hidden text-ellipsis">
-                                        <div class="font-bold">{props.account.name || 'Admin'}</div>
-                                        <div class="opacity-70 text-xs">{props.account.email}</div>
+                                    <div class="media-content">
+                                        <p class="is-size-7 has-text-weight-semibold">{props.account.name || 'Admin'}</p>
+                                        <p class="is-size-7 has-text-grey">{props.account.email}</p>
                                     </div>
                                 </div>
                             </div>
                         )}
                     </aside>
                 </div>
+                <div class="column">
+                    <nav class="navbar">
+                        <div class="navbar-brand">
+                            {props.projects && props.projects.length > 0 && (
+                                <div class="navbar-item">
+                                    <div class="dropdown" id="project-dropdown">
+                                        <div class="dropdown-trigger">
+                                            <button class="button" onclick="toggleDropdown('project-dropdown')">
+                                                <span>
+                                                    {props.currentProjectId
+                                                        ? props.projects.find(p => p.id === props.currentProjectId)?.name || 'Select Project'
+                                                        : 'Select Project'}
+                                                </span>
+                                                <span class="icon is-small">
+                                                    <i>▼</i>
+                                                </span>
+                                            </button>
+                                        </div>
+                                        <div class="dropdown-menu">
+                                            <div class="dropdown-content">
+                                                {props.projects.map(project => (
+                                                    <a
+                                                        href={`/ui/projects/${project.id}`}
+                                                        class={`dropdown-item ${props.currentProjectId === project.id ? 'is-active' : ''}`}
+                                                    >
+                                                        <p class="has-text-weight-semibold">{project.name}</p>
+                                                        <p class="is-size-7 has-text-grey">ID: {project.id}</p>
+                                                    </a>
+                                                ))}
+                                                <hr class="dropdown-divider" />
+                                                <a href="/ui/projects" class="dropdown-item">
+                                                    Manage All Projects
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </nav>
+                    <section class="section">
+                        {props.children}
+                    </section>
+                </div>
             </div>
-
-            {/* Modal Container if needed */}
-            <div id="modal-container"></div>
-
-            <script dangerouslySetInnerHTML={{
-                __html: `
-                function showModal(id) {
-                    const el = document.getElementById(id);
-                    if(el) el.showModal();
-                }
-                function hideModal(id) {
-                    const el = document.getElementById(id);
-                    if(el) el.close();
-                }
-                // Close when clicking outside
-                window.addEventListener('click', (e) => {
-                    if (e.target.tagName === 'DIALOG') {
-                        e.target.close();
-                    }
-                });
-            `}} />
         </body>
     </html>
 )
 
 app.get('/login', (c) => {
     return c.html(
-        <html lang="en" data-theme="light">
+        <html lang="en">
             <head>
                 <meta charset="UTF-8" />
                 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
                 <title>Login | Santoki Admin</title>
-                <link rel="stylesheet" href="/assets/admin-ui.css" />
-                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/inter-ui@3.19.3/inter.css" />
+                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css" />
             </head>
-            <body class="flex items-center justify-center min-h-screen bg-base-200">
-                <div class="card w-96 bg-base-100 shadow-xl">
-                    <div class="card-body">
-                        <div class="flex flex-col items-center gap-2 mb-4">
-                            <div class="w-16 h-16 bg-primary/10 rounded-xl flex items-center justify-center text-primary mb-2">
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                    <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                    <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
+            <body class="hero is-fullheight is-link">
+                <div class="hero-body">
+                    <div class="container">
+                        <div class="columns is-centered">
+                            <div class="column is-4">
+                                <div class="box">
+                                    <div class="has-text-centered mb-5">
+                                        <h1 class="title is-3">Santoki Admin</h1>
+                                        <p class="subtitle is-6">Sign in to your account</p>
+                                    </div>
+                                    <form id="login-form">
+                                        <div class="field">
+                                            <label class="label">Email</label>
+                                            <div class="control">
+                                                <input class="input" type="email" id="email" placeholder="admin@example.com" required />
+                                            </div>
+                                        </div>
+                                        <div class="field">
+                                            <label class="label">Password</label>
+                                            <div class="control">
+                                                <input class="input" type="password" id="password" placeholder="••••••••" required />
+                                            </div>
+                                        </div>
+                                        <div class="field">
+                                            <div class="control">
+                                                <button type="submit" class="button is-link is-fullwidth">Sign In</button>
+                                            </div>
+                                        </div>
+                                    </form>
+                                    <div id="error-message" class="notification is-danger mt-4" style="display: none;">
+                                        <span id="error-text"></span>
+                                    </div>
+                                </div>
                             </div>
-                            <h2 class="card-title text-2xl">Santoki Admin</h2>
-                            <p class="text-base-content/60 text-sm">Sign in to your account</p>
-                        </div>
-                        <form id="login-form" class="space-y-4">
-                            <div class="form-control">
-                                <label class="label">
-                                    <span class="label-text">Email</span>
-                                </label>
-                                <input type="email" id="email" class="input input-bordered w-full" placeholder="admin@example.com" required />
-                            </div>
-                            <div class="form-control">
-                                <label class="label">
-                                    <span class="label-text">Password</span>
-                                </label>
-                                <input type="password" id="password" class="input input-bordered w-full" placeholder="••••••••" required />
-                            </div>
-                            <div class="form-control mt-6">
-                                <button type="submit" class="btn btn-primary w-full">Sign In</button>
-                            </div>
-                        </form>
-                        <div id="error-message" class="alert alert-error mt-4 hidden">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            <span id="error-text"></span>
                         </div>
                     </div>
-
-                    <script dangerouslySetInnerHTML={{
-                        __html: `
-            const form = document.getElementById('login-form');
-            const errorDiv = document.getElementById('error-message');
-            const errorText = document.getElementById('error-text');
-            
-            form.addEventListener('submit', async (e) => {
-              e.preventDefault();
-              errorDiv.classList.add('hidden');
-              errorDiv.classList.remove('flex');
-              
-              const email = document.getElementById('email').value;
-              const password = document.getElementById('password').value;
-              
-              try {
-                const res = await fetch('/v1/auth/sign-in', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ email, password })
-                });
-                
-                if (res.ok) {
-                  window.location.href = '/ui';
-                } else {
-                  const data = await res.json();
-                  errorText.textContent = data.message || 'Login failed';
-                  errorDiv.classList.remove('hidden');
-                  errorDiv.classList.add('flex');
-                }
-              } catch (err) {
-                errorText.textContent = 'An error occurred';
-                errorDiv.classList.remove('hidden');
-                errorDiv.classList.add('flex');
-              }
-            });
-          `}} />
                 </div>
+
+                <script dangerouslySetInnerHTML={{
+                    __html: `
+                    const form = document.getElementById('login-form');
+                    const errorDiv = document.getElementById('error-message');
+                    const errorText = document.getElementById('error-text');
+                    
+                    form.addEventListener('submit', async (e) => {
+                      e.preventDefault();
+                      errorDiv.style.display = 'none';
+                      
+                      const email = document.getElementById('email').value;
+                      const password = document.getElementById('password').value;
+                      
+                      try {
+                        const res = await fetch('/v1/auth/sign-in', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ email, password })
+                        });
+                        
+                        if (res.ok) {
+                          window.location.href = '/ui';
+                        } else {
+                          const data = await res.json();
+                          errorText.textContent = data.message || 'Login failed';
+                          errorDiv.style.display = 'block';
+                        }
+                      } catch (err) {
+                        errorText.textContent = 'An error occurred';
+                        errorDiv.style.display = 'block';
+                      }
+                    });
+                  `}} />
             </body>
         </html>
     )
@@ -243,52 +217,44 @@ app.get('/', async (c) => {
 
     return c.html(
         <Layout title="Dashboard" active="dashboard" projects={projects}>
-            <div class="mb-8">
-                <h1 class="text-3xl font-bold">Dashboard</h1>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div class="stats shadow bg-base-100">
-                    <div class="stat">
-                        <div class="stat-title">Total Projects</div>
-                        <div class="stat-value text-primary">{projects.length}</div>
+            <h1 class="title">Dashboard</h1>
+
+            <div class="columns">
+                <div class="column">
+                    <div class="notification is-link">
+                        <p class="heading">Total Projects</p>
+                        <p class="title">{projects.length}</p>
                     </div>
                 </div>
-                <div class="stats shadow bg-base-100">
-                    <div class="stat">
-                        <div class="stat-title">Active Admins</div>
-                        <div class="stat-value text-accent">{admins.length}</div>
+                <div class="column">
+                    <div class="notification is-primary">
+                        <p class="heading">Active Admins</p>
+                        <p class="title">{admins.length}</p>
                     </div>
                 </div>
             </div>
 
-            <div class="card bg-base-100 shadow-xl">
-                <div class="card-body">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="card-title">Recent Projects</h2>
-                        {projects.length > 5 && (
-                            <a href="/ui/projects" class="btn btn-outline btn-sm">View All</a>
-                        )}
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="table table-zebra">
-                            <thead>
+            <div class="box">
+                <h2 class="title is-4">Recent Projects</h2>
+                <div class="table-container">
+                    <table class="table is-fullwidth is-striped is-hoverable">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Created At</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {projects.slice(0, 5).map(p => (
                                 <tr>
-                                    <th>Name</th>
-                                    <th>Created At</th>
-                                    <th>Status</th>
+                                    <td>{p.name}</td>
+                                    <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '-'}</td>
+                                    <td><span class="tag is-success">Active</span></td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {projects.slice(0, 5).map(p => (
-                                    <tr>
-                                        <td class="font-bold">{p.name}</td>
-                                        <td>{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : '-'}</td>
-                                        <td><div class="badge badge-success gap-2 text-white">Active</div></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </Layout>
@@ -300,44 +266,57 @@ app.get('/projects', async (c) => {
     const account = c.get('account')
     return c.html(
         <Layout title="Projects" active="projects" account={account} projects={projects}>
-            <div class="flex justify-between items-center mb-6">
-                <h1 class="text-3xl font-bold">Projects</h1>
-                <button class="btn btn-primary" onclick="showModal('new-project-modal')">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    New Project
-                </button>
+            <div class="level">
+                <div class="level-left">
+                    <div class="level-item">
+                        <h1 class="title">Projects</h1>
+                    </div>
+                </div>
+                <div class="level-right">
+                    <div class="level-item">
+                        <button class="button is-link" onclick="showModal('new-project-modal')">
+                            <span>New Project</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <dialog id="new-project-modal" class="modal">
-                <div class="modal-box">
-                    <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="hideModal('new-project-modal')">✕</button>
-                    <h3 class="font-bold text-lg mb-4">Create New Project</h3>
-                    <form id="new-project-form" class="space-y-4">
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Project Name</span>
-                            </label>
-                            <input type="text" id="project-name" class="input input-bordered w-full" placeholder="My Awesome Project" required />
-                        </div>
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Connection String</span>
-                            </label>
-                            <input type="text" id="project-conn" class="input input-bordered w-full" placeholder="postgres://..." required />
-                        </div>
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Prefix</span>
-                            </label>
-                            <input type="text" id="project-prefix" class="input input-bordered w-full" value="santoki_" required />
-                        </div>
-                        <div class="modal-action">
-                            <button type="submit" class="btn btn-primary w-full">Create Project</button>
-                        </div>
-                    </form>
-                    <div id="project-error" class="alert alert-error mt-4 hidden"></div>
+            <div id="new-project-modal" class="modal">
+                <div class="modal-background"></div>
+                <div class="modal-card">
+                    <header class="modal-card-head">
+                        <p class="modal-card-title">Create New Project</p>
+                        <button class="delete" onclick="hideModal('new-project-modal')"></button>
+                    </header>
+                    <section class="modal-card-body">
+                        <form id="new-project-form">
+                            <div class="field">
+                                <label class="label">Project Name</label>
+                                <div class="control">
+                                    <input class="input" type="text" id="project-name" placeholder="My Awesome Project" required />
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Connection String</label>
+                                <div class="control">
+                                    <input class="input" type="text" id="project-conn" placeholder="postgres://..." required />
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Prefix</label>
+                                <div class="control">
+                                    <input class="input" type="text" id="project-prefix" value="santoki_" required />
+                                </div>
+                            </div>
+                        </form>
+                        <div id="project-error" class="notification is-danger" style="display: none;"></div>
+                    </section>
+                    <footer class="modal-card-foot">
+                        <button class="button is-link" onclick="document.getElementById('new-project-form').requestSubmit()">Create</button>
+                        <button class="button" onclick="hideModal('new-project-modal')">Cancel</button>
+                    </footer>
                 </div>
-            </dialog>
+            </div>
 
             <script dangerouslySetInnerHTML={{
                 __html: `
@@ -349,61 +328,54 @@ app.get('/projects', async (c) => {
                     const errorDiv = document.getElementById('project-error');
                     errorDiv.style.display = 'none';
                     try {
-                        const body = {
-                            name,
-                            connectionString,
-                            prefix
-                        };
-
                         const res = await fetch('/v1/projects', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body)
+                            body: JSON.stringify({ name, connectionString, prefix })
                         });
                         if (res.ok) {
                             window.location.reload();
                         } else {
                             const data = await res.json();
                             errorDiv.textContent = data.error || 'Failed to create project';
-                            errorDiv.classList.remove('hidden');
-                             errorDiv.style.display = 'grid';
+                            errorDiv.style.display = 'block';
                         }
                     } catch (err) {
                         errorDiv.textContent = 'An error occurred';
-                        errorDiv.classList.remove('hidden');
-                         errorDiv.style.display = 'grid';
+                        errorDiv.style.display = 'block';
                     }
                 });
             `}} />
-            <div class="card bg-base-100 shadow-xl overflow-x-auto">
-                <table class="table table-zebra">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Prefix</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {projects.map(p => (
+
+            <div class="box">
+                <div class="table-container">
+                    <table class="table is-fullwidth is-striped is-hoverable">
+                        <thead>
                             <tr>
-                                <td>{p.id}</td>
-                                <td class="font-bold">{p.name}</td>
-                                <td><code class="badge badge-ghost">{p.prefix}</code></td>
-                                <td>
-                                    <a href={`/ui/projects/${p.id}`} class="btn btn-sm btn-outline">Manage</a>
-                                </td>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Prefix</th>
+                                <th>Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {projects.map(p => (
+                                <tr>
+                                    <td>{p.id}</td>
+                                    <td>{p.name}</td>
+                                    <td><code>{p.prefix}</code></td>
+                                    <td>
+                                        <a href={`/ui/projects/${p.id}`} class="button is-small">Manage</a>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </Layout>
     )
 })
-
-// Sources route removed
 
 app.get('/projects/:id', async (c) => {
     const projectId = parseInt(c.req.param('id'))
@@ -416,55 +388,71 @@ app.get('/projects/:id', async (c) => {
 
     return c.html(
         <Layout title={`Project: ${project.name}`} active="projects" account={account} projects={projects} currentProjectId={projectId}>
-            <div class="flex justify-between items-center mb-6">
-                <div class="flex items-center gap-4">
-                    <a href="/ui/projects" class="btn btn-square btn-ghost">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                    </a>
-                    <h1 class="text-3xl font-bold">{project.name}</h1>
+            <nav class="breadcrumb">
+                <ul>
+                    <li><a href="/ui/projects">Projects</a></li>
+                    <li class="is-active"><a>{project.name}</a></li>
+                </ul>
+            </nav>
+
+            <div class="level">
+                <div class="level-left">
+                    <div class="level-item">
+                        <h1 class="title">{project.name}</h1>
+                    </div>
                 </div>
-                <button class="btn btn-primary" onclick="showModal('new-collection-modal')">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    NewCollection
-                </button>
+                <div class="level-right">
+                    <div class="level-item">
+                        <button class="button is-link" onclick="showModal('new-collection-modal')">New Collection</button>
+                    </div>
+                </div>
             </div>
 
-            <dialog id="new-collection-modal" class="modal">
-                <div class="modal-box">
-                    <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="hideModal('new-collection-modal')">✕</button>
-                    <h3 class="font-bold text-lg mb-4">Create New Collection</h3>
-                    <form id="new-collection-form" class="space-y-4">
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Collection Name</span>
-                            </label>
-                            <input type="text" id="collection-name" class="input input-bordered w-full" placeholder="posts" required />
-                        </div>
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Primary Key Type</span>
-                            </label>
-                            <select id="collection-id-type" class="select select-bordered w-full">
-                                <option value="serial">Incremental Integer (SERIAL)</option>
-                                <option value="uuid">UUID (v4)</option>
-                            </select>
-                        </div>
-                        <div class="modal-action">
-                            <button type="submit" class="btn btn-primary w-full">Create Collection</button>
-                        </div>
-                    </form>
-                    <div id="collection-error" class="alert alert-error mt-4 hidden"></div>
+            <div id="new-collection-modal" class="modal">
+                <div class="modal-background"></div>
+                <div class="modal-card">
+                    <header class="modal-card-head">
+                        <p class="modal-card-title">Create New Collection</p>
+                        <button class="delete" onclick="hideModal('new-collection-modal')"></button>
+                    </header>
+                    <section class="modal-card-body">
+                        <form id="new-collection-form">
+                            <div class="field">
+                                <label class="label">Collection Name</label>
+                                <div class="control">
+                                    <input class="input" type="text" id="collection-name" placeholder="posts" required />
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Primary Key Type</label>
+                                <div class="control">
+                                    <div class="select is-fullwidth">
+                                        <select id="collection-id-type">
+                                            <option value="serial">Incremental Integer (SERIAL)</option>
+                                            <option value="uuid">UUID (v4)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                        <div id="collection-error" class="notification is-danger" style="display: none;"></div>
+                    </section>
+                    <footer class="modal-card-foot">
+                        <button class="button is-link" onclick="document.getElementById('new-collection-form').requestSubmit()">Create</button>
+                        <button class="button" onclick="hideModal('new-collection-modal')">Cancel</button>
+                    </footer>
                 </div>
-            </dialog>
+            </div>
 
             <script dangerouslySetInnerHTML={{
                 __html: `
+                const projectId = ${projectId};
                 document.getElementById('new-collection-form').addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const name = document.getElementById('collection-name').value;
+                    const idType = document.getElementById('collection-id-type').value;
                     const errorDiv = document.getElementById('collection-error');
-                    errorDiv.classList.add('hidden');
-                    errorDiv.classList.remove('flex');
+                    errorDiv.style.display = 'none';
 
                     try {
                         const res = await fetch('/v1/projects/collections', {
@@ -473,38 +461,33 @@ app.get('/projects/:id', async (c) => {
                                 'Content-Type': 'application/json',
                                 'x-project-id': String(projectId)
                             },
-                            body: JSON.stringify({
-                                name,
-                                idType: document.getElementById('collection-id-type').value
-                            })
+                            body: JSON.stringify({ name, idType })
                         });
                         if (res.ok) {
                             window.location.reload();
                         } else {
                             const data = await res.json();
                             errorDiv.textContent = data.error || data.details || 'Failed to create collection';
-                            errorDiv.classList.remove('hidden');
-                            errorDiv.style.display = 'grid';
+                            errorDiv.style.display = 'block';
                         }
                     } catch (err) {
                         errorDiv.textContent = 'An error occurred';
-                        errorDiv.classList.remove('hidden');
-                        errorDiv.style.display = 'grid';
+                        errorDiv.style.display = 'block';
                     }
                 });
             `}} />
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div class="card bg-base-100 shadow-xl lg:col-span-2">
-                    <div class="card-body">
-                        <h2 class="card-title mb-4">Collections</h2>
+            <div class="columns">
+                <div class="column is-8">
+                    <div class="box">
+                        <h2 class="title is-4">Collections</h2>
                         {collections.length === 0 ? (
-                            <div class="text-center py-10 opacity-50">
-                                <p>No collections yet. Create your first one!</p>
+                            <div class="notification">
+                                No collections yet. Create your first one!
                             </div>
                         ) : (
-                            <div class="overflow-x-auto">
-                                <table class="table table-zebra">
+                            <div class="table-container">
+                                <table class="table is-fullwidth is-striped is-hoverable">
                                     <thead>
                                         <tr>
                                             <th>Name</th>
@@ -515,10 +498,10 @@ app.get('/projects/:id', async (c) => {
                                     <tbody>
                                         {collections.map(col => (
                                             <tr>
-                                                <td class="font-bold">{col.name}</td>
-                                                <td><code class="badge badge-ghost">{col.physicalName}</code></td>
+                                                <td>{col.name}</td>
+                                                <td><code>{col.physicalName}</code></td>
                                                 <td>
-                                                    <a href={`/ui/projects/${projectId}/collections/${col.name}`} class="btn btn-sm btn-secondary">Design</a>
+                                                    <a href={`/ui/projects/${projectId}/collections/${col.name}`} class="button is-small is-primary">Design</a>
                                                 </td>
                                             </tr>
                                         ))}
@@ -528,26 +511,26 @@ app.get('/projects/:id', async (c) => {
                         )}
                     </div>
                 </div>
-                <div class="card bg-base-100 shadow-xl h-fit">
-                    <div class="card-body">
-                        <h2 class="card-title mb-4">Details</h2>
-                        <div class="form-control w-full">
-                            <label class="label">
-                                <span class="label-text">Project ID</span>
-                            </label>
-                            <input type="text" value={String(project.id)} readonly class="input input-bordered w-full bg-base-200" />
+                <div class="column">
+                    <div class="box">
+                        <h2 class="title is-5">Details</h2>
+                        <div class="field">
+                            <label class="label">Project ID</label>
+                            <div class="control">
+                                <input class="input is-static" type="text" value={String(project.id)} readonly />
+                            </div>
                         </div>
-                        <div class="form-control w-full">
-                            <label class="label">
-                                <span class="label-text">Connection String</span>
-                            </label>
-                            <input type="text" value={project.connectionString} readonly class="input input-bordered w-full bg-base-200" />
+                        <div class="field">
+                            <label class="label">Connection String</label>
+                            <div class="control">
+                                <input class="input is-static" type="text" value={project.connectionString} readonly />
+                            </div>
                         </div>
-                        <div class="form-control w-full">
-                            <label class="label">
-                                <span class="label-text">Created At</span>
-                            </label>
-                            <input type="text" value={project.createdAt ? new Date(project.createdAt).toLocaleString() : '-'} readonly class="input input-bordered w-full bg-base-200" />
+                        <div class="field">
+                            <label class="label">Created At</label>
+                            <div class="control">
+                                <input class="input is-static" type="text" value={project.createdAt ? new Date(project.createdAt).toLocaleString() : '-'} readonly />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -568,88 +551,123 @@ app.get('/projects/:id/collections/:colName', async (c) => {
 
         return c.html(
             <Layout title={`Collection: ${collectionName}`} active="projects" account={account} projects={projects} currentProjectId={projectId}>
-                <div class="flex justify-between items-center mb-6">
-                    <div class="flex items-center gap-4">
-                        <a href={`/ui/projects/${projectId}`} class="btn btn-square btn-ghost">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                        </a>
-                        <h1 class="text-3xl font-bold">{collectionName}</h1>
+                <nav class="breadcrumb">
+                    <ul>
+                        <li><a href="/ui/projects">Projects</a></li>
+                        <li><a href={`/ui/projects/${projectId}`}>Project {projectId}</a></li>
+                        <li class="is-active"><a>{collectionName}</a></li>
+                    </ul>
+                </nav>
+
+                <div class="level">
+                    <div class="level-left">
+                        <div class="level-item">
+                            <h1 class="title">{collectionName}</h1>
+                        </div>
                     </div>
-                    <div class="flex gap-2">
-                        <button class="btn btn-secondary" onclick="showModal('add-row-modal')">Insert Data</button>
-                        <button class="btn btn-primary" onclick="showModal('add-field-modal')">Add Field</button>
+                    <div class="level-right">
+                        <div class="level-item">
+                            <div class="buttons">
+                                <button class="button is-primary" onclick="showModal('add-row-modal')">Insert Data</button>
+                                <button class="button is-link" onclick="showModal('add-field-modal')">Add Field</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <dialog id="add-row-modal" class="modal">
-                    <div class="modal-box w-11/12 max-w-5xl">
-                        <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="hideModal('add-row-modal')">✕</button>
-                        <h3 class="font-bold text-lg mb-4">Insert New Record</h3>
-                        <form id="add-row-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {detail.fields.filter(f => f.column_name !== 'id' && f.column_name !== 'created_at' && f.column_name !== 'updated_at').map(field => (
-                                <div class="form-control">
-                                    <label class="label">
-                                        <span class="label-text">{(field as any).column_name}</span>
-                                        <span class="label-text-alt opacity-50">{(field as any).data_type}</span>
-                                    </label>
-                                    <input type="text" name={(field as any).column_name} class="input input-bordered w-full" placeholder={`Enter ${(field as any).column_name}`} />
+                <div id="add-row-modal" class="modal">
+                    <div class="modal-background"></div>
+                    <div class="modal-card" style="width: 90%;">
+                        <header class="modal-card-head">
+                            <p class="modal-card-title">Insert New Record</p>
+                            <button class="delete" onclick="hideModal('add-row-modal')"></button>
+                        </header>
+                        <section class="modal-card-body">
+                            <form id="add-row-form">
+                                <div class="columns is-multiline">
+                                    {detail.fields.filter(f => f.column_name !== 'id' && f.column_name !== 'created_at' && f.column_name !== 'updated_at').map(field => (
+                                        <div class="column is-half">
+                                            <div class="field">
+                                                <label class="label">
+                                                    {(field as any).column_name}
+                                                    <span class="tag is-small ml-2">{(field as any).data_type}</span>
+                                                </label>
+                                                <div class="control">
+                                                    <input class="input" type="text" name={(field as any).column_name} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
-                            ))}
-                            <div class="col-span-1 md:col-span-2 modal-action">
-                                <button type="submit" class="btn btn-primary w-full">Insert Record</button>
-                            </div>
-                        </form>
-                        <div id="row-error" class="alert alert-error mt-4 hidden"></div>
+                            </form>
+                            <div id="row-error" class="notification is-danger" style="display: none;"></div>
+                        </section>
+                        <footer class="modal-card-foot">
+                            <button class="button is-link" onclick="document.getElementById('add-row-form').requestSubmit()">Insert</button>
+                            <button class="button" onclick="hideModal('add-row-modal')">Cancel</button>
+                        </footer>
                     </div>
-                </dialog>
+                </div>
 
-                <dialog id="add-field-modal" class="modal">
-                    <div class="modal-box">
-                        <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="hideModal('add-field-modal')">✕</button>
-                        <h3 class="font-bold text-lg mb-4">Add New Field</h3>
-                        <form id="add-field-form" class="space-y-4">
-                            <div class="form-control">
-                                <label class="label">
-                                    <span class="label-text">Field Name</span>
-                                </label>
-                                <input type="text" id="field-name" class="input input-bordered w-full" placeholder="title" required />
-                            </div>
-                            <div class="form-control">
-                                <label class="label">
-                                    <span class="label-text">Type</span>
-                                </label>
-                                <select id="field-type" class="select select-bordered w-full">
-                                    <option value="text">Text</option>
-                                    <option value="integer">Integer</option>
-                                    <option value="boolean">Boolean</option>
-                                    <option value="timestamp">Timestamp</option>
-                                    <option value="jsonb">JSONB</option>
-                                </select>
-                            </div>
-                            <div class="form-control">
-                                <label class="label cursor-pointer justify-start gap-4">
-                                    <input type="checkbox" id="field-nullable" checked class="checkbox checkbox-primary" />
-                                    <span class="label-text">Nullable</span>
-                                </label>
-                            </div>
-                            <div class="modal-action">
-                                <button type="submit" class="btn btn-primary w-full">Add Field</button>
-                            </div>
-                        </form>
-                        <div id="field-error" class="alert alert-error mt-4 hidden"></div>
+                <div id="add-field-modal" class="modal">
+                    <div class="modal-background"></div>
+                    <div class="modal-card">
+                        <header class="modal-card-head">
+                            <p class="modal-card-title">Add New Field</p>
+                            <button class="delete" onclick="hideModal('add-field-modal')"></button>
+                        </header>
+                        <section class="modal-card-body">
+                            <form id="add-field-form">
+                                <div class="field">
+                                    <label class="label">Field Name</label>
+                                    <div class="control">
+                                        <input class="input" type="text" id="field-name" placeholder="title" required />
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <label class="label">Type</label>
+                                    <div class="control">
+                                        <div class="select is-fullwidth">
+                                            <select id="field-type">
+                                                <option value="text">Text</option>
+                                                <option value="integer">Integer</option>
+                                                <option value="boolean">Boolean</option>
+                                                <option value="timestamp">Timestamp</option>
+                                                <option value="jsonb">JSONB</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="field">
+                                    <div class="control">
+                                        <label class="checkbox">
+                                            <input type="checkbox" id="field-nullable" checked />
+                                            Nullable
+                                        </label>
+                                    </div>
+                                </div>
+                            </form>
+                            <div id="field-error" class="notification is-danger" style="display: none;"></div>
+                        </section>
+                        <footer class="modal-card-foot">
+                            <button class="button is-link" onclick="document.getElementById('add-field-form').requestSubmit()">Add</button>
+                            <button class="button" onclick="hideModal('add-field-modal')">Cancel</button>
+                        </footer>
                     </div>
-                </dialog>
+                </div>
 
                 <script dangerouslySetInnerHTML={{
                     __html: `
+                    const projectId = ${projectId};
+                    const collectionName = '${collectionName}';
+                    
                     document.getElementById('add-row-form').addEventListener('submit', async (e) => {
                         e.preventDefault();
                         const formData = new FormData(e.target);
                         const data = {};
                         formData.forEach((value, key) => { data[key] = value; });
                         const errorDiv = document.getElementById('row-error');
-                        errorDiv.classList.add('hidden');
-                        errorDiv.classList.remove('flex'); // likely grid or flex
+                        errorDiv.style.display = 'none';
 
                         try {
                             const res = await fetch('/v1/data/' + collectionName, {
@@ -665,13 +683,11 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                             } else {
                                 const errData = await res.json();
                                 errorDiv.textContent = errData.error || 'Failed to insert data';
-                                errorDiv.classList.remove('hidden');
-                                errorDiv.style.display = 'grid';
+                                errorDiv.style.display = 'block';
                             }
                         } catch (err) {
                             errorDiv.textContent = 'An error occurred';
-                            errorDiv.classList.remove('hidden');
-                            errorDiv.style.display = 'grid';
+                            errorDiv.style.display = 'block';
                         }
                     });
 
@@ -681,8 +697,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                         const type = document.getElementById('field-type').value;
                         const isNullable = document.getElementById('field-nullable').checked;
                         const errorDiv = document.getElementById('field-error');
-                        errorDiv.classList.add('hidden');
-                        errorDiv.classList.remove('flex');
+                        errorDiv.style.display = 'none';
 
                         try {
                             const res = await fetch('/v1/projects/collections/' + collectionName + '/fields', {
@@ -693,81 +708,77 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                                 },
                                 body: JSON.stringify({ name, type, isNullable })
                             });
-                if (res.ok) {
-                    window.location.reload();
+                            if (res.ok) {
+                                window.location.reload();
                             } else {
                                 const data = await res.json();
-                errorDiv.textContent = data.error || data.details || 'Failed to add field';
-                errorDiv.classList.remove('hidden');
-                errorDiv.style.display = 'grid';
+                                errorDiv.textContent = data.error || data.details || 'Failed to add field';
+                                errorDiv.style.display = 'block';
                             }
                         } catch (err) {
-                    errorDiv.textContent = 'An error occurred';
-                errorDiv.classList.remove('hidden');
-                errorDiv.style.display = 'grid';
+                            errorDiv.textContent = 'An error occurred';
+                            errorDiv.style.display = 'block';
                         }
                     });
 
-                async function deleteField(fieldName) {
+                    async function deleteField(fieldName) {
                         if (!confirm('Are you sure you want to delete this field?')) return;
-                try {
+                        try {
                             const res = await fetch('/v1/projects/collections/' + collectionName + '/fields/' + fieldName, {
                                 method: 'DELETE',
                                 headers: { 'x-project-id': String(projectId) }
                             });
-                if (res.ok) {
-                    window.location.reload();
+                            if (res.ok) {
+                                window.location.reload();
                             } else {
-                    alert('Failed to delete field');
+                                alert('Failed to delete field');
                             }
                         } catch (err) {
-                    alert('An error occurred');
+                            alert('An error occurred');
                         }
                     }
                 `}} />
 
-                <div class="card bg-base-100 shadow-xl mb-8">
-                    <div class="card-body">
-                        <h2 class="card-title mb-4">Data Rows</h2>
-                        {rows.length === 0 ? (
-                            <div class="text-center py-10 opacity-50">
-                                <p>No data yet.</p>
-                            </div>
-                        ) : (
-                            <div class="overflow-x-auto">
-                                <table class="table table-zebra table-sm">
-                                    <thead>
+                <div class="box mb-5">
+                    <h2 class="title is-4">Data Rows</h2>
+                    {rows.length === 0 ? (
+                        <div class="notification">
+                            No data yet.
+                        </div>
+                    ) : (
+                        <div class="table-container">
+                            <table class="table is-fullwidth is-striped is-hoverable">
+                                <thead>
+                                    <tr>
+                                        {detail.fields.map(f => (
+                                            <th>{(f as any).column_name}</th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {rows.map(row => (
                                         <tr>
                                             {detail.fields.map(f => (
-                                                <th>{(f as any).column_name}</th>
+                                                <td>
+                                                    {row[(f as any).column_name] === null ? <span class="has-text-grey-light">NULL</span> :
+                                                        typeof row[(f as any).column_name] === 'object' ? JSON.stringify(row[(f as any).column_name]) :
+                                                            String(row[(f as any).column_name])}
+                                                </td>
                                             ))}
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {rows.map(row => (
-                                            <tr>
-                                                {detail.fields.map(f => (
-                                                    <td class="max-w-xs truncate">
-                                                        {row[(f as any).column_name] === null ? <span class="opacity-50">NULL</span> :
-                                                            typeof row[(f as any).column_name] === 'object' ? JSON.stringify(row[(f as any).column_name]) :
-                                                                String(row[(f as any).column_name])}
-                                                    </td>
-                                                ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </div>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="card bg-base-100 shadow-xl">
-                        <div class="card-body">
-                            <h2 class="card-title mb-4">Fields</h2>
-                            <div class="overflow-x-auto">
-                                <table class="table table-zebra">
+                <div class="columns">
+                    <div class="column">
+                        <div class="box">
+                            <h2 class="title is-4">Fields</h2>
+                            <div class="table-container">
+                                <table class="table is-fullwidth is-striped">
                                     <thead>
                                         <tr>
                                             <th>Name</th>
@@ -779,11 +790,15 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                                     <tbody>
                                         {detail.fields.map(field => (
                                             <tr>
-                                                <td class="font-bold">{field.column_name}</td>
-                                                <td><code class="badge badge-ghost">{field.data_type}</code></td>
-                                                <td>{field.is_nullable === 'YES' ? <span class="text-success">Yes</span> : <span class="text-error">No</span>}</td>
+                                                <td>{field.column_name}</td>
+                                                <td><code>{field.data_type}</code></td>
                                                 <td>
-                                                    <button onclick={`deleteField('${field.column_name}')`} class="btn btn-xs btn-error btn-outline">Delete</button>
+                                                    {field.is_nullable === 'YES'
+                                                        ? <span class="tag is-success">Yes</span>
+                                                        : <span class="tag is-danger">No</span>}
+                                                </td>
+                                                <td>
+                                                    <button onclick={`deleteField('${field.column_name}')`} class="button is-small is-danger is-outlined">Delete</button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -792,22 +807,20 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                             </div>
                         </div>
                     </div>
-                    <div class="card bg-base-100 shadow-xl h-fit">
-                        <div class="card-body">
-                            <h2 class="card-title mb-4">Indexes</h2>
+                    <div class="column">
+                        <div class="box">
+                            <h2 class="title is-4">Indexes</h2>
                             {detail.indexes.length === 0 ? (
-                                <p class="opacity-50">No indexes found.</p>
+                                <p class="has-text-grey">No indexes found.</p>
                             ) : (
-                                <ul class="menu bg-base-200 w-full rounded-box">
+                                <div class="content">
                                     {detail.indexes.map(idx => (
-                                        <li>
-                                            <div class="flex flex-col items-start gap-1">
-                                                <span class="font-bold">{idx.indexname}</span>
-                                                <code class="text-xs break-all">{idx.indexdef}</code>
-                                            </div>
-                                        </li>
+                                        <div class="notification">
+                                            <p class="has-text-weight-semibold">{idx.indexname}</p>
+                                            <code class="is-size-7">{idx.indexdef}</code>
+                                        </div>
                                     ))}
-                                </ul>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -815,7 +828,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
             </Layout>
         )
     } catch (e) {
-        return c.html(<Layout title="Error" active="projects" account={c.get('account')}><div>Error: {String(e)}</div></Layout>)
+        return c.html(<Layout title="Error" active="projects" account={c.get('account')}><div class="notification is-danger">Error: {String(e)}</div></Layout>)
     }
 })
 
@@ -825,38 +838,49 @@ app.get('/admins', async (c) => {
     const account = c.get('account')
     return c.html(
         <Layout title="Admins" active="admins" account={account} projects={projects}>
-            <div class="flex justify-between items-center mb-6">
-                <h1 class="text-3xl font-bold">Administrators</h1>
-                <button class="btn btn-primary" onclick="showModal('invite-admin-modal')">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Invite Admin
-                </button>
+            <div class="level">
+                <div class="level-left">
+                    <div class="level-item">
+                        <h1 class="title">Administrators</h1>
+                    </div>
+                </div>
+                <div class="level-right">
+                    <div class="level-item">
+                        <button class="button is-link" onclick="showModal('invite-admin-modal')">Invite Admin</button>
+                    </div>
+                </div>
             </div>
 
-            <dialog id="invite-admin-modal" class="modal">
-                <div class="modal-box">
-                    <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="hideModal('invite-admin-modal')">✕</button>
-                    <h3 class="font-bold text-lg mb-4">Invite Admin</h3>
-                    <form id="invite-admin-form" class="space-y-4">
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Email Address</span>
-                            </label>
-                            <input type="email" id="admin-email" class="input input-bordered w-full" placeholder="admin@example.com" required />
-                        </div>
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Password</span>
-                            </label>
-                            <input type="password" id="admin-password" class="input input-bordered w-full" placeholder="••••••••" required />
-                        </div>
-                        <div class="modal-action">
-                            <button type="submit" class="btn btn-primary w-full">Create Admin</button>
-                        </div>
-                    </form>
-                    <div id="admin-error" class="alert alert-error mt-4 hidden"></div>
+            <div id="invite-admin-modal" class="modal">
+                <div class="modal-background"></div>
+                <div class="modal-card">
+                    <header class="modal-card-head">
+                        <p class="modal-card-title">Invite Admin</p>
+                        <button class="delete" onclick="hideModal('invite-admin-modal')"></button>
+                    </header>
+                    <section class="modal-card-body">
+                        <form id="invite-admin-form">
+                            <div class="field">
+                                <label class="label">Email Address</label>
+                                <div class="control">
+                                    <input class="input" type="email" id="admin-email" placeholder="admin@example.com" required />
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="label">Password</label>
+                                <div class="control">
+                                    <input class="input" type="password" id="admin-password" placeholder="••••••••" required />
+                                </div>
+                            </div>
+                        </form>
+                        <div id="admin-error" class="notification is-danger" style="display: none;"></div>
+                    </section>
+                    <footer class="modal-card-foot">
+                        <button class="button is-link" onclick="document.getElementById('invite-admin-form').requestSubmit()">Create</button>
+                        <button class="button" onclick="hideModal('invite-admin-modal')">Cancel</button>
+                    </footer>
                 </div>
-            </dialog>
+            </div>
 
             <script dangerouslySetInnerHTML={{
                 __html: `
@@ -865,8 +889,7 @@ app.get('/admins', async (c) => {
                     const email = document.getElementById('admin-email').value;
                     const password = document.getElementById('admin-password').value;
                     const errorDiv = document.getElementById('admin-error');
-                    errorDiv.classList.add('hidden');
-                    errorDiv.classList.remove('flex');
+                    errorDiv.style.display = 'none';
 
                     try {
                         const res = await fetch('/v1/auth/register', {
@@ -879,52 +902,53 @@ app.get('/admins', async (c) => {
                         } else {
                             const data = await res.json();
                             errorDiv.textContent = data.error || 'Failed to create admin';
-                            errorDiv.classList.remove('hidden');
-                             errorDiv.style.display = 'grid';
+                            errorDiv.style.display = 'block';
                         }
                     } catch (err) {
                         errorDiv.textContent = 'An error occurred';
-                        errorDiv.classList.remove('hidden');
-                         errorDiv.style.display = 'grid';
+                        errorDiv.style.display = 'block';
                     }
                 });
             `}} />
-            <div class="card bg-base-100 shadow-xl overflow-x-auto">
-                <table class="table table-zebra">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Roles</th>
-                            <th>Created At</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {admins.map(admin => (
+
+            <div class="box">
+                <div class="table-container">
+                    <table class="table is-fullwidth is-striped is-hoverable">
+                        <thead>
                             <tr>
-                                <td>
-                                    <div class="flex items-center gap-3">
-                                        <div class="avatar placeholder">
-                                            <div class="bg-primary text-primary-content rounded-full w-8">
-                                                <span class="text-xs">{admin.name.charAt(0).toUpperCase()}</span>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Roles</th>
+                                <th>Created At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {admins.map(admin => (
+                                <tr>
+                                    <td>
+                                        <div class="media">
+                                            <div class="media-left">
+                                                <span class="tag is-link is-medium is-rounded">{admin.name.charAt(0).toUpperCase()}</span>
+                                            </div>
+                                            <div class="media-content">
+                                                <p>{admin.name}</p>
                                             </div>
                                         </div>
-                                        <div class="font-bold">{admin.name}</div>
-                                    </div>
-                                </td>
-                                <td>{admin.email}</td>
-                                <td>
-                                    <div class="flex gap-2">
-                                        {admin.roles?.map((role: any) => (
-                                            <span class="badge badge-outline">{role}</span>
-                                        ))}
-                                    </div>
-                                </td>
-                                <td>{admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : '-'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                                    </td>
+                                    <td>{admin.email}</td>
+                                    <td>
+                                        <div class="tags">
+                                            {admin.roles?.map((role: any) => (
+                                                <span class="tag">{role}</span>
+                                            ))}
+                                        </div>
+                                    </td>
+                                    <td>{admin.createdAt ? new Date(admin.createdAt).toLocaleDateString() : '-'}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </Layout>
     )
