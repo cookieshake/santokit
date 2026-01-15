@@ -15,19 +15,14 @@ describe('Collection Module E2E', () => {
         cookie = await createAdminAndLogin(app)
 
         // Setup Project
-        const dsRes = await request(app, '/admin/v1/sources', {
+        const projRes = await request(app, '/v1/projects', {
             method: 'POST',
-            body: JSON.stringify({ name: 'ds1', connectionString: 'postgres://...', prefix: '1_' }),
+            body: JSON.stringify({ name: 'P1', connectionString: 'memory://p1', prefix: 'p1_' }),
             headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
         })
-        const ds = await dsRes.json()
-
-        const projRes = await request(app, '/admin/v1/projects', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'P1', dataSourceId: ds.id }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
-        })
-        const project = await projRes.json()
+        const text = await projRes.text()
+        console.log('Project Create Response:', projRes.status, text)
+        const project = JSON.parse(text)
         projectId = project.id
     })
 

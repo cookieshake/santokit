@@ -1,28 +1,50 @@
-import { db } from '@/db/index.js'
-import { collections } from '@/db/schema.js'
-import { eq, and } from 'drizzle-orm'
-import { connectionManager } from '@/db/connection-manager.js'
-// dataSourceRepository import removed
 import { sql } from 'drizzle-orm'
+import { connectionManager } from '@/db/connection-manager.js'
 
 export const collectionRepository = {
-    create: async (data: typeof collections.$inferInsert) => {
-        return (await db.insert(collections).values(data).returning())[0]
+    // Introspection Operations
+    listPhysicalTables: async (dataSourceName: string, prefix: string, projectId: number) => {
+        const targetDb = await connectionManager.getConnection(dataSourceName)
+        if (!targetDb) throw new Error('Could not connect to data source')
+
+        // Pattern: {prefix}p{projectId}_{name}
+        const namespacePrefix = `${prefix}p${projectId}_`
+        const query = sql.raw(`
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name LIKE '${namespacePrefix}%'
+        `)
+
+        const rows = (await targetDb.execute(query)).rows
+
+        return rows.map((row: any) => {
+            const physicalName = row.table_name as string
+            const name = physicalName.substring(namespacePrefix.length)
+            return {
+                projectId,
+                name,
+                physicalName,
+                // We assume idType is not easily known without deeper inspection, 
+                // but for listing it might optionally be fetched if needed.
+                // For now, we return minimal info.
+            }
+        })
     },
 
-    findByProjectAndName: async (projectId: number, name: string) => {
-        return await db.query.collections.findFirst({
-            where: and(
-                eq(collections.projectId, projectId),
-                eq(collections.name, name)
+    checkPhysicalTableExists: async (dataSourceName: string, physicalName: string) => {
+        const targetDb = await connectionManager.getConnection(dataSourceName)
+        if (!targetDb) return false
+
+        const result = await targetDb.execute(sql.raw(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = '${physicalName}'
             )
-        })
-    },
+        `))
 
-    findByProject: async (projectId: number) => {
-        return await db.query.collections.findMany({
-            where: eq(collections.projectId, projectId)
-        })
+        return result.rows[0].exists === true
     },
 
     // Physical Table Operations

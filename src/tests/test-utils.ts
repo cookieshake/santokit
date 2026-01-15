@@ -37,7 +37,7 @@ export async function clearDb(db: any) {
 
     // Ordered to avoid foreign key constraints if cascading isn't reliable, 
     // but CASCADE usually handles it.
-    await db.execute(sql`TRUNCATE TABLE users, projects, collections RESTART IDENTITY CASCADE`)
+    await db.execute(sql`TRUNCATE TABLE accounts, projects RESTART IDENTITY CASCADE`)
 }
 
 /**

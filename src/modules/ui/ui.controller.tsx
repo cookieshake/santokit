@@ -13,7 +13,7 @@ const app = new Hono<{
     };
 }>()
 
-const Layout = (props: { title: string; children: any; active: string; account?: any }) => (
+const Layout = (props: { title: string; children: any; active: string; account?: any; projects?: any[]; currentProjectId?: number }) => (
     <html lang="en" data-theme="corporate">
         <head>
             <meta charset="UTF-8" />
@@ -26,14 +26,61 @@ const Layout = (props: { title: string; children: any; active: string; account?:
             <div class="drawer lg:drawer-open">
                 <input id="my-drawer-2" type="checkbox" class="drawer-toggle" />
                 <div class="drawer-content flex flex-col">
-                    {/* Navbar for mobile */}
-                    <div class="w-full navbar bg-base-100 lg:hidden shadow-sm">
-                        <div class="flex-none">
+                    {/* Top Navbar */}
+                    <div class="w-full navbar bg-base-100 shadow-sm border-b border-base-300">
+                        <div class="flex-none lg:hidden">
                             <label for="my-drawer-2" aria-label="open sidebar" class="btn btn-square btn-ghost">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-6 h-6 stroke-current"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                             </label>
                         </div>
-                        <div class="flex-1 px-2 mx-2 text-xl font-bold">Santoki Admin</div>
+                        <div class="flex-1 px-2 lg:px-4">
+                            {props.projects && props.projects.length > 0 ? (
+                                <div class="dropdown">
+                                    <label tabindex={0} class="btn btn-ghost gap-2 normal-case">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M12 2L2 7L12 12L22 7L12 2Z"></path>
+                                            <path d="M2 17L12 22L22 17"></path>
+                                            <path d="M2 12L12 17L22 12"></path>
+                                        </svg>
+                                        <span class="font-semibold">
+                                            {props.currentProjectId
+                                                ? props.projects.find(p => p.id === props.currentProjectId)?.name || 'Select Project'
+                                                : 'Select Project'}
+                                        </span>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </label>
+                                    <ul tabindex={0} class="dropdown-content z-[1] menu p-2 shadow-lg bg-base-100 rounded-box w-64 mt-2 border border-base-300">
+                                        {props.projects.map(project => (
+                                            <li>
+                                                <a
+                                                    href={`/ui/projects/${project.id}`}
+                                                    class={props.currentProjectId === project.id ? 'active' : ''}
+                                                >
+                                                    <div class="flex flex-col items-start gap-1">
+                                                        <span class="font-semibold">{project.name}</span>
+                                                        <span class="text-xs opacity-60">ID: {project.id}</span>
+                                                    </div>
+                                                </a>
+                                            </li>
+                                        ))}
+                                        <div class="divider my-1"></div>
+                                        <li>
+                                            <a href="/ui/projects" class="text-primary">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                                                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                                                </svg>
+                                                Manage All Projects
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            ) : (
+                                <span class="text-xl font-bold lg:hidden">Santoki Admin</span>
+                            )}
+                        </div>
                     </div>
 
                     <main class="p-6 md:p-10">
@@ -195,7 +242,7 @@ app.get('/', async (c) => {
     ])
 
     return c.html(
-        <Layout title="Dashboard" active="dashboard">
+        <Layout title="Dashboard" active="dashboard" projects={projects}>
             <div class="mb-8">
                 <h1 class="text-3xl font-bold">Dashboard</h1>
             </div>
@@ -252,7 +299,7 @@ app.get('/projects', async (c) => {
     const projects = await projectService.list()
     const account = c.get('account')
     return c.html(
-        <Layout title="Projects" active="projects" account={account}>
+        <Layout title="Projects" active="projects" account={account} projects={projects}>
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-3xl font-bold">Projects</h1>
                 <button class="btn btn-primary" onclick="showModal('new-project-modal')">
@@ -302,8 +349,8 @@ app.get('/projects', async (c) => {
                     const errorDiv = document.getElementById('project-error');
                     errorDiv.style.display = 'none';
                     try {
-                        const body = { 
-                            name, 
+                        const body = {
+                            name,
                             connectionString,
                             prefix
                         };
@@ -364,10 +411,11 @@ app.get('/projects/:id', async (c) => {
     if (!project) return c.notFound()
 
     const collections = await collectionService.listByProject(projectId)
+    const projects = await projectService.list()
     const account = c.get('account')
 
     return c.html(
-        <Layout title={`Project: ${project.name}`} active="projects" account={account}>
+        <Layout title={`Project: ${project.name}`} active="projects" account={account} projects={projects} currentProjectId={projectId}>
             <div class="flex justify-between items-center mb-6">
                 <div class="flex items-center gap-4">
                     <a href="/ui/projects" class="btn btn-square btn-ghost">
@@ -377,7 +425,7 @@ app.get('/projects/:id', async (c) => {
                 </div>
                 <button class="btn btn-primary" onclick="showModal('new-collection-modal')">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    New Collection
+                    NewCollection
                 </button>
             </div>
 
@@ -421,13 +469,13 @@ app.get('/projects/:id', async (c) => {
                     try {
                         const res = await fetch('/v1/projects/collections', {
                             method: 'POST',
-                            headers: { 
+                            headers: {
                                 'Content-Type': 'application/json',
-                                'x-project-id': String(projectId) 
+                                'x-project-id': String(projectId)
                             },
-                            body: JSON.stringify({ 
-                                name, 
-                                idType: document.getElementById('collection-id-type').value 
+                            body: JSON.stringify({
+                                name,
+                                idType: document.getElementById('collection-id-type').value
                             })
                         });
                         if (res.ok) {
@@ -461,8 +509,6 @@ app.get('/projects/:id', async (c) => {
                                         <tr>
                                             <th>Name</th>
                                             <th>Physical Name</th>
-                                            <th>ID Type</th>
-                                            <th>Created At</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
@@ -471,8 +517,6 @@ app.get('/projects/:id', async (c) => {
                                             <tr>
                                                 <td class="font-bold">{col.name}</td>
                                                 <td><code class="badge badge-ghost">{col.physicalName}</code></td>
-                                                <td><div class="badge badge-outline">{col.idType || 'serial'}</div></td>
-                                                <td>{col.createdAt ? new Date(col.createdAt).toLocaleDateString() : '-'}</td>
                                                 <td>
                                                     <a href={`/ui/projects/${projectId}/collections/${col.name}`} class="btn btn-sm btn-secondary">Design</a>
                                                 </td>
@@ -520,9 +564,10 @@ app.get('/projects/:id/collections/:colName', async (c) => {
     try {
         const detail = await collectionService.getDetail(projectId, collectionName)
         const rows = (await dataService.findAll(projectId, collectionName)) as any[]
+        const projects = await projectService.list()
 
         return c.html(
-            <Layout title={`Collection: ${collectionName}`} active="projects" account={account}>
+            <Layout title={`Collection: ${collectionName}`} active="projects" account={account} projects={projects} currentProjectId={projectId}>
                 <div class="flex justify-between items-center mb-6">
                     <div class="flex items-center gap-4">
                         <a href={`/ui/projects/${projectId}`} class="btn btn-square btn-ghost">
@@ -609,7 +654,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                         try {
                             const res = await fetch('/v1/data/' + collectionName, {
                                 method: 'POST',
-                                headers: { 
+                                headers: {
                                     'Content-Type': 'application/json',
                                     'x-project-id': String(projectId)
                                 },
@@ -642,7 +687,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                         try {
                             const res = await fetch('/v1/projects/collections/' + collectionName + '/fields', {
                                 method: 'POST',
-                                headers: { 
+                                headers: {
                                     'Content-Type': 'application/json',
                                     'x-project-id': String(projectId)
                                 },
@@ -776,9 +821,10 @@ app.get('/projects/:id/collections/:colName', async (c) => {
 
 app.get('/admins', async (c) => {
     const admins = await db.execute(sql`SELECT * FROM accounts WHERE roles @> '{"admin"}'`).then(res => res.rows as any[])
+    const projects = await projectService.list()
     const account = c.get('account')
     return c.html(
-        <Layout title="Admins" active="admins" account={account}>
+        <Layout title="Admins" active="admins" account={account} projects={projects}>
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-3xl font-bold">Administrators</h1>
                 <button class="btn btn-primary" onclick="showModal('invite-admin-modal')">

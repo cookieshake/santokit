@@ -17,17 +17,8 @@ export const projects = pgTable('projects', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// Collections (Logical Tables)
-export const collections = pgTable('collections', {
-    id: serial('id').primaryKey(),
-    projectId: integer('project_id').references(() => projects.id).notNull(),
-    name: text('name').notNull(), // Logical name e.g. 'posts'
-    physicalName: text('physical_name').notNull(), // Physical name e.g. 'p1_posts'
-    idType: text('id_type').notNull().default('serial'),
-    createdAt: timestamp('created_at').defaultNow(),
-}, (t) => ({
-    unq: unique().on(t.projectId, t.name),
-}));
+// Collections table removed - using dynamic introspection
+
 
 // Casbin Rules for Authorization
 // Casbin table removed

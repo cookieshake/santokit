@@ -14,84 +14,98 @@ export const collectionService = {
         // 3. Create Physical Table
         await collectionRepository.createPhysicalTable(project.name, physicalName, idType)
 
-        // 4. Save Metadata
-        return await collectionRepository.create({
+        // 4. Return "Virtual" Collection Object
+        return {
             projectId,
             name,
             physicalName,
             idType
-        })
+        }
     },
 
     listByProject: async (projectId: number) => {
-        return await collectionRepository.findByProject(projectId)
-    },
-
-    getDetail: async (projectId: number, collectionName: string) => {
-        const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
-        if (!col) throw new Error('Collection not found')
-
         const project = await projectRepository.findById(projectId)
         if (!project) throw new Error('Project not found')
 
-        const fields = await collectionRepository.getFields(project.name, col.physicalName)
-        const indexes = await collectionRepository.getIndexes(project.name, col.physicalName)
+        return await collectionRepository.listPhysicalTables(project.name, project.prefix, projectId)
+    },
 
-        return { meta: col, fields, indexes }
+    getDetail: async (projectId: number, collectionName: string) => {
+        const project = await projectRepository.findById(projectId)
+        if (!project) throw new Error('Project not found')
+
+        const physicalName = `${project.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const exists = await collectionRepository.checkPhysicalTableExists(project.name, physicalName)
+
+        if (!exists) throw new Error('Collection not found')
+
+        const fields = await collectionRepository.getFields(project.name, physicalName)
+        const indexes = await collectionRepository.getIndexes(project.name, physicalName)
+
+        return {
+            meta: { projectId, name: collectionName, physicalName },
+            fields,
+            indexes
+        }
     },
 
     // Field Management
     addField: async (projectId: number, collectionName: string, fieldName: string, type: string, isNullable: boolean) => {
-        const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
-        if (!col) throw new Error('Collection not found')
-
         const project = await projectRepository.findById(projectId)
         if (!project) throw new Error('Project not found')
 
-        await collectionRepository.addField(project.name, col.physicalName, fieldName, type, isNullable)
+        const physicalName = `${project.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const exists = await collectionRepository.checkPhysicalTableExists(project.name, physicalName)
+        if (!exists) throw new Error('Collection not found')
+
+        await collectionRepository.addField(project.name, physicalName, fieldName, type, isNullable)
     },
 
     removeField: async (projectId: number, collectionName: string, fieldName: string) => {
-        const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
-        if (!col) throw new Error('Collection not found')
-
         const project = await projectRepository.findById(projectId)
         if (!project) throw new Error('Project not found')
 
-        await collectionRepository.removeField(project.name, col.physicalName, fieldName)
+        const physicalName = `${project.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const exists = await collectionRepository.checkPhysicalTableExists(project.name, physicalName)
+        if (!exists) throw new Error('Collection not found')
+
+        await collectionRepository.removeField(project.name, physicalName, fieldName)
     },
 
     renameField: async (projectId: number, collectionName: string, oldName: string, newName: string) => {
-        const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
-        if (!col) throw new Error('Collection not found')
-
         const project = await projectRepository.findById(projectId)
         if (!project) throw new Error('Project not found')
 
-        await collectionRepository.renameField(project.name, col.physicalName, oldName, newName)
+        const physicalName = `${project.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const exists = await collectionRepository.checkPhysicalTableExists(project.name, physicalName)
+        if (!exists) throw new Error('Collection not found')
+
+        await collectionRepository.renameField(project.name, physicalName, oldName, newName)
     },
 
     // Index Management
     createIndex: async (projectId: number, collectionName: string, indexName: string, fields: string[], unique: boolean) => {
-        const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
-        if (!col) throw new Error('Collection not found')
-
         const project = await projectRepository.findById(projectId)
         if (!project) throw new Error('Project not found')
 
-        const fullIndexName = `${project.prefix}idx_${col.physicalName}_${indexName}`
-        await collectionRepository.createIndex(project.name, col.physicalName, fullIndexName, fields, unique)
+        const physicalName = `${project.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const exists = await collectionRepository.checkPhysicalTableExists(project.name, physicalName)
+        if (!exists) throw new Error('Collection not found')
+
+        const fullIndexName = `${project.prefix}idx_${physicalName}_${indexName}`
+        await collectionRepository.createIndex(project.name, physicalName, fullIndexName, fields, unique)
         return fullIndexName
     },
 
     removeIndex: async (projectId: number, collectionName: string, indexName: string) => {
-        const col = await collectionRepository.findByProjectAndName(projectId, collectionName)
-        if (!col) throw new Error('Collection not found')
-
         const project = await projectRepository.findById(projectId)
         if (!project) throw new Error('Project not found')
 
-        const fullIndexName = `${project.prefix}idx_${col.physicalName}_${indexName}`
+        const physicalName = `${project.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const exists = await collectionRepository.checkPhysicalTableExists(project.name, physicalName)
+        if (!exists) throw new Error('Collection not found')
+
+        const fullIndexName = `${project.prefix}idx_${physicalName}_${indexName}`
         await collectionRepository.removeIndex(project.name, fullIndexName)
         return fullIndexName
     }

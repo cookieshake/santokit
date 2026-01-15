@@ -1,4 +1,4 @@
-import { collectionRepository } from '@/modules/collection/collection.repository.js'
+import { collectionService } from '@/modules/collection/collection.service.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { sql, eq } from 'drizzle-orm'
@@ -14,8 +14,9 @@ export const dataService = {
         const pid = Number(projectId)
 
         // 2. Resolve Meta
-        const col = await collectionRepository.findByProjectAndName(pid, collectionName)
-        if (!col) throw new Error('Collection not found')
+        // Use service to get detail (which resolves physical name via introspection)
+        const detail = await collectionService.getDetail(pid, collectionName)
+        const physicalName = detail.meta.physicalName
 
         const project = await projectRepository.findById(pid)
         if (!project) throw new Error('Project not found')
@@ -28,9 +29,6 @@ export const dataService = {
         const values = Object.values(data)
 
         const cols = keys.map(k => `"${k}"`).join(', ')
-        // Drizzle PGLite driver parameterization is tricky with raw SQL, usually requires $1, $2 etc or ? depending on driver
-        // For simplicity and safety in this demo, strict type checking or casting should be done.
-        // But for now we use safe string escaping for values.
 
         const valueString = values.map(v => {
             if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`
@@ -38,7 +36,7 @@ export const dataService = {
             return v
         }).join(', ')
 
-        const query = `INSERT INTO "${col.physicalName}" (${cols}) VALUES (${valueString}) RETURNING id`
+        const query = `INSERT INTO "${physicalName}" (${cols}) VALUES (${valueString}) RETURNING id`
         const result = await targetDb.execute(sql.raw(query))
         return result.rows[0]
     },
@@ -52,8 +50,8 @@ export const dataService = {
 
         const pid = Number(projectId)
 
-        const col = await collectionRepository.findByProjectAndName(pid, collectionName)
-        if (!col) throw new Error('Collection not found')
+        const detail = await collectionService.getDetail(pid, collectionName)
+        const physicalName = detail.meta.physicalName
 
         const project = await projectRepository.findById(pid)
         if (!project) throw new Error('Project not found')
@@ -61,7 +59,7 @@ export const dataService = {
         const targetDb = await connectionManager.getConnection(project.name)
         if (!targetDb) throw new Error('Could not connect')
 
-        const result = await targetDb.execute(sql.raw(`SELECT * FROM "${col.physicalName}"`))
+        const result = await targetDb.execute(sql.raw(`SELECT * FROM "${physicalName}"`))
         return result.rows
     },
 
@@ -86,7 +84,7 @@ export const dataService = {
 
 // --- Internal Helpers for System Project ---
 import { db } from '@/db/index.js'
-import { projects, collections } from '@/db/schema.js'
+import { projects } from '@/db/schema.js'
 import { projectService } from '@/modules/project/project.service.js'
 import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 
@@ -103,8 +101,7 @@ const accounts = pgTable("accounts", {
 
 const SYSTEM_COLLECTIONS: Record<string, any> = {
     'projects': projects,
-    'accounts': accounts, // Renamed from users
-    'collections': collections
+    'accounts': accounts
 }
 
 async function handleSystemCreate(collectionName: string, data: Record<string, any>) {
@@ -112,7 +109,7 @@ async function handleSystemCreate(collectionName: string, data: Record<string, a
     if (!table) throw new Error(`System collection '${collectionName}' not found`)
 
     // Insert into internal DB
-    // @ts-ignore - Dynamic table insertion with Drizzle is tricky for TS, suppressing for this generic handler
+    // @ts-ignore
     const result = await db.insert(table).values(data).returning() as any[];
     const inserted = result[0];
 
@@ -122,12 +119,6 @@ async function handleSystemCreate(collectionName: string, data: Record<string, a
         // Provisioning: Create DB/Schema on the data source
         await projectService.initializeDataSource(newProject.name)
     }
-
-    // Hooks for data sources? 
-    // Usually connection validation happens before insert in standard controllers, 
-    // but here we might want to do it or trust the input. 
-    // Ideally user 'validates' via a separate RPC call or we do it here.
-    // For now, we assume simple insert.
 
     return inserted
 }
@@ -151,7 +142,6 @@ async function handleSystemUpdate(collectionName: string, id: string | number, d
     if (collectionName.toLowerCase() === 'projects') {
         const project = updated as typeof projects.$inferSelect
         // If connectionString changed, re-init?
-        // simple re-init check
         await projectService.initializeDataSource(project.name)
     }
     return updated
