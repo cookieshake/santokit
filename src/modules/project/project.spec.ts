@@ -34,12 +34,12 @@ describe('Project Service (Integration)', () => {
     // Basic table creation for tests (since we don't have migrations)
     // Schema is already setup by createTestDb in the mock
     // Clear tables
-    await db.execute(sql`TRUNCATE TABLE projects, data_sources, users RESTART IDENTITY CASCADE`)
+    await db.execute(sql`TRUNCATE TABLE projects, data_sources, accounts RESTART IDENTITY CASCADE`)
 
     // Create a dummy user
     const dummyId = 'user-1'
     await pgliteInstance.exec(`
-      INSERT INTO users (id, name, email, password, email_verified, created_at, updated_at) 
+      INSERT INTO accounts (id, name, email, password, email_verified, created_at, updated_at) 
       VALUES ('${dummyId}', 'Test User', 'test@example.com', 'pass123', true, NOW(), NOW())
     `)
 

@@ -5,18 +5,18 @@ import { collectionService } from '@/modules/collection/collection.service.js'
 
 const app = new Hono()
 
-// Mounted at /:projectId/collections
+// Mounted at /collections
 
 // List Collections
 app.get('/', async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const result = await collectionService.listByProject(projectId)
     return c.json(result)
 })
 
 // Create Collection
 app.post('/', zValidator('json', CreateCollectionSchema), async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const { name, idType } = c.req.valid('json')
     const result = await collectionService.create(projectId, name, idType as 'serial' | 'uuid')
     return c.json(result)
@@ -24,7 +24,7 @@ app.post('/', zValidator('json', CreateCollectionSchema), async (c) => {
 
 // Get Collection Details
 app.get('/:collectionName', async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const collectionName = c.req.param('collectionName')!
     const result = await collectionService.getDetail(projectId, collectionName)
     return c.json(result)
@@ -32,7 +32,7 @@ app.get('/:collectionName', async (c) => {
 
 // Add Field
 app.post('/:collectionName/fields', zValidator('json', AddFieldSchema), async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const collectionName = c.req.param('collectionName')!
     const { name, type, isNullable } = c.req.valid('json')
     await collectionService.addField(projectId, collectionName, name, type, !!isNullable)
@@ -41,7 +41,7 @@ app.post('/:collectionName/fields', zValidator('json', AddFieldSchema), async (c
 
 // Update Field (Pop Quiz: Why PUT? Because it's an update)
 app.put('/:collectionName/fields/:fieldName', zValidator('json', RenameFieldSchema), async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const collectionName = c.req.param('collectionName')!
     const oldName = c.req.param('fieldName')!
     const { newName } = c.req.valid('json')
@@ -51,7 +51,7 @@ app.put('/:collectionName/fields/:fieldName', zValidator('json', RenameFieldSche
 
 // Delete Field
 app.delete('/:collectionName/fields/:fieldName', async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const collectionName = c.req.param('collectionName')!
     const fieldName = c.req.param('fieldName')!
     await collectionService.removeField(projectId, collectionName, fieldName)
@@ -60,7 +60,7 @@ app.delete('/:collectionName/fields/:fieldName', async (c) => {
 
 // Create Index
 app.post('/:collectionName/indexes', zValidator('json', CreateIndexSchema), async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const collectionName = c.req.param('collectionName')!
     const { indexName, fields, unique } = c.req.valid('json')
     const fullIndexName = await collectionService.createIndex(projectId, collectionName, indexName, fields, !!unique)
@@ -69,7 +69,7 @@ app.post('/:collectionName/indexes', zValidator('json', CreateIndexSchema), asyn
 
 // Delete Index
 app.delete('/:collectionName/indexes/:indexName', async (c) => {
-    const projectId = parseInt(c.req.param('projectId')!)
+    const projectId = parseInt(c.req.header('x-project-id')!)
     const collectionName = c.req.param('collectionName')!
     const indexName = c.req.param('indexName')!
     const fullIndexName = await collectionService.removeIndex(projectId, collectionName, indexName)

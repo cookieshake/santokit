@@ -28,7 +28,7 @@ const pgliteInstance = pglite as any
 describe('Collection Service (Integration)', () => {
   beforeEach(async () => {
     // Schema is already setup by createTestDb in the mock
-    await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, users RESTART IDENTITY CASCADE`)
+    await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, accounts RESTART IDENTITY CASCADE`)
 
     // Setup test data
     await pgliteInstance.exec(`INSERT INTO data_sources (name, connection_string, prefix) VALUES ('test_source', 'pg://test', 'test_')`)

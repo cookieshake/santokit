@@ -1,6 +1,6 @@
 import { pgTable, serial, text, timestamp, boolean, integer, unique } from 'drizzle-orm/pg-core';
 
-export const users = pgTable("users", {
+export const accounts = pgTable("accounts", {
     id: text("id").primaryKey(),
     name: text('name').notNull(),
     email: text('email').notNull().unique(),
@@ -23,14 +23,14 @@ export const sessions = pgTable("sessions", {
     updatedAt: timestamp('updated_at').notNull(),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
-    userId: text('user_id').notNull().references(() => users.id),
+    accountId: text('account_id').notNull().references(() => accounts.id),
 });
 
-export const accounts = pgTable("accounts", {
+export const oauthAccounts = pgTable("oauth_accounts", {
     id: text("id").primaryKey(),
-    accountId: text('account_id').notNull(),
     providerId: text('provider_id').notNull(),
-    userId: text('user_id').notNull().references(() => users.id),
+    accountId: text('account_id').notNull().references(() => accounts.id), // Link to internal account
+    providerAccountId: text('provider_account_id').notNull(),
     accessToken: text('access_token'),
     refreshToken: text('refresh_token'),
     idToken: text('id_token'),

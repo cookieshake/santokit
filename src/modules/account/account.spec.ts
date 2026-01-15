@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { userService } from './user.service.js'
+import { accountService } from './account.service.js'
 import { projectService } from '../project/project.service.js'
 import { sql } from 'drizzle-orm'
 
@@ -36,13 +36,13 @@ describe('User Service (Project Level)', () => {
     // Schema is already setup by createTestDb in the mock
 
     // Clear tables
-    await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, users RESTART IDENTITY CASCADE`)
-    await projectDb.execute(sql`TRUNCATE TABLE users RESTART IDENTITY CASCADE`)
+    await db.execute(sql`TRUNCATE TABLE collections, projects, data_sources, accounts RESTART IDENTITY CASCADE`)
+    await projectDb.execute(sql`TRUNCATE TABLE accounts RESTART IDENTITY CASCADE`)
     // No need to try users separately now it's consolidated
 
     // Create initial setup
     await systemPgliteInstance.exec(`
-      INSERT INTO users (id, name, email, password, roles, email_verified, created_at, updated_at) 
+      INSERT INTO accounts (id, name, email, password, roles, email_verified, created_at, updated_at) 
       VALUES ('admin-1', 'Admin', 'admin@example.com', 'password', '{"admin"}', true, NOW(), NOW())
     `)
     await systemPgliteInstance.exec(`INSERT INTO data_sources (name, connection_string) VALUES ('ds1', 'memory'), ('ds2', 'memory')`)
@@ -55,23 +55,23 @@ describe('User Service (Project Level)', () => {
   })
 
   it('should create a user for a project (in physical DB)', async () => {
-    const user = await userService.createUser(projectId1, {
+    const user = await accountService.createUser(projectId1, {
       email: 'test@example.com',
       password: 'password123'
     })
     expect(user.email).toBe('test@example.com')
 
     // Verify it's in the DB (which is projectPglite)
-    const res = await projectPglite.query(`SELECT * FROM users WHERE email = 'test@example.com'`)
+    const res = await projectPglite.query(`SELECT * FROM accounts WHERE email = 'test@example.com'`)
     expect(res.rows.length).toBe(1)
   })
 
   it('should list users for a project', async () => {
-    await userService.createUser(projectId1, {
+    await accountService.createUser(projectId1, {
       email: 'list@example.com',
       password: 'pw'
     })
-    const list = await userService.listUsers(projectId1)
+    const list = await accountService.listUsers(projectId1)
     expect(list.length).toBe(1)
     const found = list.find(u => u.email === 'list@example.com')
     expect(found).toBeDefined()
@@ -79,12 +79,12 @@ describe('User Service (Project Level)', () => {
   })
 
   it('should delete a user', async () => {
-    const user = await userService.createUser(projectId1, {
+    const user = await accountService.createUser(projectId1, {
       email: 'del@example.com',
       password: 'pw'
     })
-    await userService.deleteUser(projectId1, user.id as number)
-    const list = await userService.listUsers(projectId1)
+    await accountService.deleteUser(projectId1, user.id as number)
+    const list = await accountService.listUsers(projectId1)
     expect(list.length).toBe(0)
   })
 })

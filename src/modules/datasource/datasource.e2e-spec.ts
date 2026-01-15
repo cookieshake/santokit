@@ -3,7 +3,7 @@ import { request, setupDbMock, clearDb, createAdminAndLogin } from '@/tests/test
 
 setupDbMock()
 
-import app from '@/apps/admin.js'
+import app from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
 describe('Datasource Module E2E', () => {

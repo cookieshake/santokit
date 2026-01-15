@@ -1,6 +1,6 @@
 import { authAdmin } from './auth-admin.js'
 import { db } from '../db/index.js'
-import { users } from '../db/schema.js'
+import { accounts } from '../db/schema.js'
 import { arrayContains, eq } from 'drizzle-orm'
 import { config } from '../config/index.js'
 
@@ -11,8 +11,8 @@ export async function ensureAdminExists() {
     try {
         // Check if any admin exists
         const admins = await db.select()
-            .from(users)
-            .where(arrayContains(users.roles, ['admin']))
+            .from(accounts)
+            .where(arrayContains(accounts.roles, ['admin']))
             .limit(1)
 
         if (admins.length > 0) {
@@ -33,9 +33,9 @@ export async function ensureAdminExists() {
 
         if (user) {
             // Ensure roles are set correctly
-            await db.update(users)
+            await db.update(accounts)
                 .set({ roles: ['admin'] })
-                .where(eq(users.email, email))
+                .where(eq(accounts.email, email))
 
 
 

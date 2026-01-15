@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { CreateProjectSchema } from '@/validators.js'
 import { projectService } from '@/modules/project/project.service.js'
 import collectionController from '@/modules/collection/collection.controller.js'
-import userController from '@/modules/user/user.controller.js'
+import accountController from '@/modules/account/account.controller.js'
 
 const app = new Hono()
 
@@ -18,8 +18,8 @@ app.get('/', async (c) => {
     return c.json(result)
 })
 
-app.post('/:projectId/associate-datasource', async (c) => {
-    const projectId = Number(c.req.param('projectId'))
+app.post('/associate-datasource', async (c) => {
+    const projectId = Number(c.req.header('x-project-id'))
     const { dataSourceId } = await c.req.json()
     const project = await projectService.associateDataSource(projectId, dataSourceId)
     return c.json(project)
@@ -27,8 +27,10 @@ app.post('/:projectId/associate-datasource', async (c) => {
 
 // Recursively mount routes: Project -> Collections/Users
 // e.g. /projects/:projectId/collections
-app.route('/:projectId/collections', collectionController)
-app.route('/:projectId/users', userController)
+// Recursively mount routes: Project -> Collections/Users
+// e.g. /projects/collections
+app.route('/collections', collectionController)
+app.route('/users', accountController)
 
 
 export default app

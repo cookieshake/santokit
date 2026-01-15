@@ -3,8 +3,8 @@ import { request, setupDbMock, clearDb, createAdminAndLogin } from '@/tests/test
 
 setupDbMock()
 
-import clientApp from '@/apps/client.js'
-import adminApp from '@/apps/admin.js'
+import clientApp from '@/apps/app.js'
+import adminApp from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
 describe('Data Module (Client) E2E', () => {
@@ -66,12 +66,13 @@ describe('Data Module (Client) E2E', () => {
             })
             const cookie = loginRes.headers.get('set-cookie')
 
-            const res = await request(clientApp, `/v1/data/${projectId}/${collectionName}`, {
+            const res = await request(clientApp, '/v1/data/' + collectionName, {
                 method: 'POST',
                 body: JSON.stringify({ title: 'Hello World' }),
                 headers: {
                     'Content-Type': 'application/json',
-                    'Cookie': cookie || ''
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
                 }
             })
 
@@ -98,15 +99,22 @@ describe('Data Module (Client) E2E', () => {
             const cookie = loginRes.headers.get('set-cookie')
 
             // Insert data
-            await request(clientApp, `/v1/data/${projectId}/${collectionName}`, {
+            await request(clientApp, '/v1/data/' + collectionName, {
                 method: 'POST',
                 body: JSON.stringify({ title: 'Post 1' }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
             })
 
             // List
-            const res = await request(clientApp, `/v1/data/${projectId}/${collectionName}`, {
-                headers: { 'Cookie': cookie || '' }
+            const res = await request(clientApp, '/v1/data/' + collectionName, {
+                headers: {
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
             })
 
             expect(res.status).toBe(200)

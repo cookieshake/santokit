@@ -3,7 +3,7 @@ import { request, setupDbMock, clearDb, createAdminAndLogin } from '@/tests/test
 
 setupDbMock()
 
-import app from '@/apps/admin.js'
+import app from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
 describe('Collection Module E2E', () => {
@@ -33,10 +33,14 @@ describe('Collection Module E2E', () => {
 
     describe('POST /admin/v1/projects/:projectId/collections', () => {
         it('should create a collection', async () => {
-            const res = await request(app, `/admin/v1/projects/${projectId}/collections`, {
+            const res = await request(app, '/v1/projects/collections', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'users', idType: 'serial' }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
             })
 
             expect(res.status).toBe(200)
@@ -48,32 +52,47 @@ describe('Collection Module E2E', () => {
     describe('Fields Management', () => {
         it('should add, rename and delete fields', async () => {
             // Create collection
-            await request(app, `/admin/v1/projects/${projectId}/collections`, {
+            await request(app, '/v1/projects/collections', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'articles', idType: 'uuid' }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
             })
 
             // Add Field
-            const addRes = await request(app, `/admin/v1/projects/${projectId}/collections/articles/fields`, {
+            const addRes = await request(app, '/v1/projects/collections/articles/fields', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'title', type: 'text', isNullable: false }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
             })
             expect(addRes.status).toBe(200)
 
             // Rename Field
-            const renameRes = await request(app, `/admin/v1/projects/${projectId}/collections/articles/fields/title`, {
+            const renameRes = await request(app, '/v1/projects/collections/articles/fields/title', {
                 method: 'PUT', // Controller uses PUT
                 body: JSON.stringify({ newName: 'headline' }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
             })
             expect(renameRes.status).toBe(200)
 
             // Delete Field
-            const delRes = await request(app, `/admin/v1/projects/${projectId}/collections/articles/fields/headline`, {
+            const delRes = await request(app, '/v1/projects/collections/articles/fields/headline', {
                 method: 'DELETE',
-                headers: { 'Cookie': cookie || '' }
+                headers: {
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
             })
             expect(delRes.status).toBe(200)
         })

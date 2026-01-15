@@ -3,8 +3,8 @@ import { request, setupDbMock, clearDb, createAdminAndLogin } from '@/tests/test
 
 setupDbMock()
 
-import clientApp from '@/apps/client.js'
-import adminApp from '@/apps/admin.js'
+import clientApp from '@/apps/app.js'
+import adminApp from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
 describe('User Auth (Client) E2E', () => {
@@ -23,7 +23,7 @@ describe('User Auth (Client) E2E', () => {
         })
         const ds = await dsRes.json()
 
-        const projRes = await request(adminApp, '/admin/v1/projects', {
+        const projRes = await request(adminApp, '/v1/projects', {
             method: 'POST',
             body: JSON.stringify({ name: 'Client App', dataSourceId: ds.id }),
             headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie || '' }
@@ -32,16 +32,19 @@ describe('User Auth (Client) E2E', () => {
         projectId = project.id
     })
 
-    describe('POST /v1/auth/:projectId/register', () => {
+    describe('POST /v1/auth/register', () => {
         it('should register a new user for the project', async () => {
-            const res = await request(clientApp, `/v1/auth/${projectId}/register`, {
+            const res = await request(clientApp, '/v1/auth/register', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: 'client@app.com',
                     password: 'password123',
                     name: 'Client User'
                 }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-project-id': String(projectId)
+                }
             })
 
             expect(res.status).toBe(200)
@@ -50,27 +53,33 @@ describe('User Auth (Client) E2E', () => {
         })
     })
 
-    describe('POST /v1/auth/:projectId/sign-in/email', () => {
+    describe('POST /v1/auth/sign-in/email', () => {
         it('should login a user', async () => {
             // Register first
-            await request(clientApp, `/v1/auth/${projectId}/register`, {
+            await request(clientApp, '/v1/auth/register', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: 'login@app.com',
                     password: 'password123',
                     name: 'Login User'
                 }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-project-id': String(projectId)
+                }
             })
 
             // Login
-            const res = await request(clientApp, `/v1/auth/${projectId}/sign-in/email`, {
+            const res = await request(clientApp, '/v1/auth/sign-in/email', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: 'login@app.com',
                     password: 'password123'
                 }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-project-id': String(projectId)
+                }
             })
 
             expect(res.status).toBe(200)

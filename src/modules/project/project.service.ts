@@ -25,8 +25,8 @@ export const projectService = {
         if (!targetDb) throw new Error('Could not connect to data source')
 
         await targetDb.execute(sql.raw(`
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS accounts (
+                id TEXT PRIMARY KEY,
                 email TEXT NOT NULL UNIQUE,
                 password TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'user',

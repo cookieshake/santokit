@@ -5,16 +5,16 @@ import { dataSourceService } from '@/modules/datasource/datasource.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { dataService } from '@/modules/data/data.service.js'
 import { db } from '@/db/index.js'
-import { users } from '@/db/schema.js'
+import { accounts } from '@/db/schema.js'
 import { arrayContains } from 'drizzle-orm'
 
 const app = new Hono<{
     Variables: {
-        user: any;
+        account: any;
     };
 }>()
 
-const Layout = (props: { title: string; children: any; active: string; user?: any }) => (
+const Layout = (props: { title: string; children: any; active: string; account?: any }) => (
     <html lang="en" data-theme="corporate">
         <head>
             <meta charset="UTF-8" />
@@ -53,22 +53,22 @@ const Layout = (props: { title: string; children: any; active: string; user?: an
                             Santoki
                         </div>
                         <ul class="menu w-full text-base-content text-base font-medium">
-                            <li><a href="/admin/_" class={props.active === 'dashboard' ? 'active' : ''}>Dashboard</a></li>
-                            <li><a href="/admin/_/projects" class={props.active === 'projects' ? 'active' : ''}>Projects</a></li>
-                            <li><a href="/admin/_/sources" class={props.active === 'sources' ? 'active' : ''}>Data Sources</a></li>
-                            <li><a href="/admin/_/admins" class={props.active === 'admins' ? 'active' : ''}>Admins</a></li>
+                            <li><a href="/ui" class={props.active === 'dashboard' ? 'active' : ''}>Dashboard</a></li>
+                            <li><a href="/ui/projects" class={props.active === 'projects' ? 'active' : ''}>Projects</a></li>
+                            <li><a href="/ui/sources" class={props.active === 'sources' ? 'active' : ''}>Data Sources</a></li>
+                            <li><a href="/ui/admins" class={props.active === 'admins' ? 'active' : ''}>Admins</a></li>
                         </ul>
-                        {props.user && (
+                        {props.account && (
                             <div class="mt-auto p-4 border-t border-base-200">
                                 <div class="flex items-center gap-3">
                                     <div class="avatar placeholder">
                                         <div class="bg-neutral-focus text-neutral-content rounded-full w-10">
-                                            <span class="text-xs">{props.user.email?.charAt(0).toUpperCase()}</span>
+                                            <span class="text-xs">{props.account.email?.charAt(0).toUpperCase()}</span>
                                         </div>
                                     </div>
                                     <div class="text-sm overflow-hidden text-ellipsis">
-                                        <div class="font-bold">{props.user.name || 'Admin'}</div>
-                                        <div class="opacity-70 text-xs">{props.user.email}</div>
+                                        <div class="font-bold">{props.account.name || 'Admin'}</div>
+                                        <div class="opacity-70 text-xs">{props.account.email}</div>
                                     </div>
                                 </div>
                             </div>
@@ -163,14 +163,14 @@ app.get('/login', (c) => {
               const password = document.getElementById('password').value;
               
               try {
-                const res = await fetch('/admin/v1/auth/sign-in/email', {
+                const res = await fetch('/v1/auth/sign-in/email', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ email, password })
                 });
                 
                 if (res.ok) {
-                  window.location.href = '/admin/_';
+                  window.location.href = '/ui';
                 } else {
                   const data = await res.json();
                   errorText.textContent = data.message || 'Login failed';
@@ -194,7 +194,7 @@ app.get('/', async (c) => {
     const [projects, sources, admins] = await Promise.all([
         projectService.list(),
         dataSourceService.list(),
-        db.select().from(users).where(arrayContains(users.roles, ['admin']))
+        db.select().from(accounts).where(arrayContains(accounts.roles, ['admin']))
     ])
 
     return c.html(
@@ -228,7 +228,7 @@ app.get('/', async (c) => {
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="card-title">Recent Projects</h2>
                         {projects.length > 5 && (
-                            <a href="/admin/_/projects" class="btn btn-outline btn-sm">View All</a>
+                            <a href="/ui/projects" class="btn btn-outline btn-sm">View All</a>
                         )}
                     </div>
                     <div class="overflow-x-auto">
@@ -262,9 +262,9 @@ app.get('/projects', async (c) => {
         projectService.list(),
         dataSourceService.list()
     ])
-    const user = c.get('user')
+    const account = c.get('account')
     return c.html(
-        <Layout title="Projects" active="projects" user={user}>
+        <Layout title="Projects" active="projects" account={account}>
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-3xl font-bold">Projects</h1>
                 <button class="btn btn-primary" onclick="showModal('new-project-modal')">
@@ -330,7 +330,7 @@ app.get('/projects', async (c) => {
                             return;
                         }
 
-                        const res = await fetch('/admin/v1/projects', {
+                        const res = await fetch('/v1/projects', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(body)
@@ -367,7 +367,7 @@ app.get('/projects', async (c) => {
                                 <td class="font-bold">{p.name}</td>
                                 <td>{sources.find(s => s.id === p.dataSourceId)?.name || <span class="opacity-50">None</span>}</td>
                                 <td>
-                                    <a href={`/admin/_/projects/${p.id}`} class="btn btn-sm btn-outline">Manage</a>
+                                    <a href={`/ui/projects/${p.id}`} class="btn btn-sm btn-outline">Manage</a>
                                 </td>
                             </tr>
                         ))}
@@ -380,9 +380,9 @@ app.get('/projects', async (c) => {
 
 app.get('/sources', async (c) => {
     const sources = await dataSourceService.list()
-    const user = c.get('user')
+    const account = c.get('account')
     return c.html(
-        <Layout title="Data Sources" active="sources" user={user}>
+        <Layout title="Data Sources" active="sources" account={account}>
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-3xl font-bold">Data Sources</h1>
                 <button class="btn btn-primary" onclick="showModal('add-source-modal')">
@@ -434,7 +434,7 @@ app.get('/sources', async (c) => {
                     errorDiv.classList.remove('flex');
 
                     try {
-                        const res = await fetch('/admin/v1/sources', {
+                        const res = await fetch('/v1/sources', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name, connectionString, prefix })
@@ -486,13 +486,13 @@ app.get('/projects/:id', async (c) => {
     if (!project) return c.notFound()
 
     const collections = await collectionService.listByProject(projectId)
-    const user = c.get('user')
+    const account = c.get('account')
 
     return c.html(
-        <Layout title={`Project: ${project.name}`} active="projects" user={user}>
+        <Layout title={`Project: ${project.name}`} active="projects" account={account}>
             <div class="flex justify-between items-center mb-6">
                 <div class="flex items-center gap-4">
-                    <a href="/admin/_/projects" class="btn btn-square btn-ghost">
+                    <a href="/ui/projects" class="btn btn-square btn-ghost">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                     </a>
                     <h1 class="text-3xl font-bold">{project.name}</h1>
@@ -541,9 +541,12 @@ app.get('/projects/:id', async (c) => {
                     errorDiv.classList.remove('flex');
 
                     try {
-                        const res = await fetch('/admin/v1/projects/${projectId}/collections', {
+                        const res = await fetch('/v1/projects/collections', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 
+                                'Content-Type': 'application/json',
+                                'x-project-id': String(projectId) 
+                            },
                             body: JSON.stringify({ 
                                 name, 
                                 idType: document.getElementById('collection-id-type').value 
@@ -593,7 +596,7 @@ app.get('/projects/:id', async (c) => {
                                                 <td><div class="badge badge-outline">{col.idType || 'serial'}</div></td>
                                                 <td>{col.createdAt ? new Date(col.createdAt).toLocaleDateString() : '-'}</td>
                                                 <td>
-                                                    <a href={`/admin/_/projects/${projectId}/collections/${col.name}`} class="btn btn-sm btn-secondary">Design</a>
+                                                    <a href={`/ui/projects/${projectId}/collections/${col.name}`} class="btn btn-sm btn-secondary">Design</a>
                                                 </td>
                                             </tr>
                                         ))}
@@ -634,17 +637,17 @@ app.get('/projects/:id', async (c) => {
 app.get('/projects/:id/collections/:colName', async (c) => {
     const projectId = parseInt(c.req.param('id'))
     const collectionName = c.req.param('colName')
-    const user = c.get('user')
+    const account = c.get('account')
 
     try {
         const detail = await collectionService.getDetail(projectId, collectionName)
         const rows = (await dataService.findAll(projectId, collectionName)) as any[]
 
         return c.html(
-            <Layout title={`Collection: ${collectionName}`} active="projects" user={user}>
+            <Layout title={`Collection: ${collectionName}`} active="projects" account={account}>
                 <div class="flex justify-between items-center mb-6">
                     <div class="flex items-center gap-4">
-                        <a href={`/admin/_/projects/${projectId}`} class="btn btn-square btn-ghost">
+                        <a href={`/ui/projects/${projectId}`} class="btn btn-square btn-ghost">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                         </a>
                         <h1 class="text-3xl font-bold">{collectionName}</h1>
@@ -726,9 +729,12 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                         errorDiv.classList.remove('flex'); // likely grid or flex
 
                         try {
-                            const res = await fetch('/admin/v1/projects/${projectId}/collections/${collectionName}/data', {
+                            const res = await fetch('/v1/data/' + collectionName, {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 
+                                    'Content-Type': 'application/json',
+                                    'x-project-id': String(projectId)
+                                },
                                 body: JSON.stringify(data)
                             });
                             if (res.ok) {
@@ -756,39 +762,43 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                         errorDiv.classList.remove('flex');
 
                         try {
-                            const res = await fetch('/admin/v1/projects/${projectId}/collections/${collectionName}/fields', {
+                            const res = await fetch('/v1/projects/collections/' + collectionName + '/fields', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 
+                                    'Content-Type': 'application/json',
+                                    'x-project-id': String(projectId)
+                                },
                                 body: JSON.stringify({ name, type, isNullable })
                             });
-                            if (res.ok) {
-                                window.location.reload();
+                if (res.ok) {
+                    window.location.reload();
                             } else {
                                 const data = await res.json();
-                                errorDiv.textContent = data.error || data.details || 'Failed to add field';
-                                errorDiv.classList.remove('hidden');
-                                errorDiv.style.display = 'grid';
+                errorDiv.textContent = data.error || data.details || 'Failed to add field';
+                errorDiv.classList.remove('hidden');
+                errorDiv.style.display = 'grid';
                             }
                         } catch (err) {
-                            errorDiv.textContent = 'An error occurred';
-                            errorDiv.classList.remove('hidden');
-                            errorDiv.style.display = 'grid';
+                    errorDiv.textContent = 'An error occurred';
+                errorDiv.classList.remove('hidden');
+                errorDiv.style.display = 'grid';
                         }
                     });
 
-                    async function deleteField(fieldName) {
+                async function deleteField(fieldName) {
                         if (!confirm('Are you sure you want to delete this field?')) return;
-                        try {
-                            const res = await fetch('/admin/v1/projects/${projectId}/collections/${collectionName}/fields/' + fieldName, {
-                                method: 'DELETE'
+                try {
+                            const res = await fetch('/v1/projects/collections/' + collectionName + '/fields/' + fieldName, {
+                                method: 'DELETE',
+                                headers: { 'x-project-id': String(projectId) }
                             });
-                            if (res.ok) {
-                                window.location.reload();
+                if (res.ok) {
+                    window.location.reload();
                             } else {
-                                alert('Failed to delete field');
+                    alert('Failed to delete field');
                             }
                         } catch (err) {
-                            alert('An error occurred');
+                    alert('An error occurred');
                         }
                     }
                 `}} />
@@ -882,15 +892,15 @@ app.get('/projects/:id/collections/:colName', async (c) => {
             </Layout>
         )
     } catch (e) {
-        return c.html(<Layout title="Error" active="projects" user={user}><div>Error: {String(e)}</div></Layout>)
+        return c.html(<Layout title="Error" active="projects" account={c.get('account')}><div>Error: {String(e)}</div></Layout>)
     }
 })
 
 app.get('/admins', async (c) => {
-    const admins = await db.select().from(users).where(arrayContains(users.roles, ['admin']))
-    const user = c.get('user')
+    const admins = await db.select().from(accounts).where(arrayContains(accounts.roles, ['admin']))
+    const account = c.get('account')
     return c.html(
-        <Layout title="Admins" active="admins" user={user}>
+        <Layout title="Admins" active="admins" account={account}>
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-3xl font-bold">Administrators</h1>
                 <button class="btn btn-primary" onclick="showModal('invite-admin-modal')">
@@ -935,7 +945,7 @@ app.get('/admins', async (c) => {
                     errorDiv.classList.remove('flex');
 
                     try {
-                        const res = await fetch('/admin/v1/auth/register', {
+                        const res = await fetch('/v1/auth/register', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ email, password, role: 'admin' })
