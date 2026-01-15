@@ -1,16 +1,8 @@
+
+
+
+
 import { pgTable, serial, text, timestamp, boolean, integer, unique } from 'drizzle-orm/pg-core';
-
-export const accounts = pgTable("accounts", {
-    id: text("id").primaryKey(),
-    name: text('name').notNull(),
-    email: text('email').notNull().unique(),
-    password: text('password').notNull(), // Made required for simple email/pass auth
-    roles: text('roles').array().notNull().default(['user']),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
-});
-
-
 
 // Admins table removed, users table used instead with role='admin'
 

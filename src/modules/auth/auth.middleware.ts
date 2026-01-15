@@ -3,7 +3,7 @@ import { getCookie } from "hono/cookie";
 import { verify } from "hono/jwt";
 import { config } from "@/config/index.js";
 import { db } from "@/db/index.js";
-import { accounts } from "@/db/schema.js";
+// accounts import removed
 import { eq } from "drizzle-orm";
 
 type AuthEnv = {

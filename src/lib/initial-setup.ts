@@ -1,6 +1,6 @@
 import { db } from '../db/index.js'
-import { accounts } from '../db/schema.js'
-import { arrayContains, eq } from 'drizzle-orm'
+// accounts import removed
+import { sql } from 'drizzle-orm'
 import { config } from '../config/index.js'
 import { hashPassword } from './password.js'
 
@@ -10,23 +10,28 @@ export async function ensureAdminExists() {
 
     try {
         // Check if any admin exists
-        const admins = await db.select()
-            .from(accounts)
-            .where(arrayContains(accounts.roles, ['admin']))
-            .limit(1)
+        // Ensure system accounts table exists
+        const { ACCOUNTS_TABLE_SQL } = await import('../modules/account/account-schema.js')
+        await db.execute(sql.raw(ACCOUNTS_TABLE_SQL))
 
-        if (admins && admins.length > 0) {
+        // Check if any admin exists using raw SQL since accounts is not in schema anymore
+        // or use accountRepository if possible, but accountRepository.findByProjectId('system') is cleaner
+        const { accountRepository } = await import('../modules/account/account.repository.js')
+        const admins = await accountRepository.findByProjectId('system')
+        const adminExists = admins.some((a: any) =>
+            Array.isArray(a.roles) && a.roles.includes('admin')
+        )
+
+        if (adminExists) {
             console.log('Admin account found.')
             return
         }
 
         console.log('No admin account found. Creating default admin...')
         const { email, password, name } = config.auth.initialAdmin
-
         const hashedPassword = await hashPassword(password)
 
-        await db.insert(accounts).values({
-            id: crypto.randomUUID(),
+        await accountRepository.create('system', {
             email,
             password: hashedPassword,
             name: name,
@@ -36,9 +41,8 @@ export async function ensureAdminExists() {
         console.log('Default admin account created successfully!')
         console.log(`Email: ${email}`)
         console.log('Please change the default password after your first login.')
-
     } catch (error) {
         console.error('Failed to ensure admin exists:', error)
     }
-}
 
+}

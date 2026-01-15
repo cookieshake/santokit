@@ -1,4 +1,5 @@
 import { projectRepository } from '@/modules/project/project.repository.js'
+import { ACCOUNTS_TABLE_SQL } from '../account/account-schema.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { sql } from 'drizzle-orm'
 
@@ -19,15 +20,6 @@ export const projectService = {
         const targetDb = await connectionManager.getConnection(name)
         if (!targetDb) throw new Error('Could not connect to data source')
 
-        await targetDb.execute(sql.raw(`
-            CREATE TABLE IF NOT EXISTS accounts (
-                id TEXT PRIMARY KEY,
-                email TEXT NOT NULL UNIQUE,
-                password TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'user',
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        `))
+        await targetDb.execute(sql.raw(ACCOUNTS_TABLE_SQL))
     }
 }

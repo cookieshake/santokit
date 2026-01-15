@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { accountService } from './account.service.js'
 import { db } from '@/db/index.js'
-import { accounts } from '@/db/schema.js'
+// accounts import removed
 import { sql } from 'drizzle-orm'
 
 vi.mock('@/db/index.js', async () => {

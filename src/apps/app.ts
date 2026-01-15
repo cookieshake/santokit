@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { authController } from '@/modules/auth/auth.controller.js'
 import { authMiddleware } from '@/modules/auth/auth.middleware.js'
 import { db } from '@/db/index.js'
-import { accounts } from '@/db/schema.js'
+// accounts import removed
 import { eq } from 'drizzle-orm'
 import { handleDbError, AppError } from '@/lib/errors.js'
 import { serveStatic } from '@hono/node-server/serve-static'

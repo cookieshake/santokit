@@ -1,10 +1,8 @@
 
-
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { db } from "@/db/index.js";
-import { accounts } from "@/db/schema.js";
 import { eq } from "drizzle-orm";
 import { verifyPassword } from "@/lib/password.js";
 import { setCookie, deleteCookie, getCookie } from "hono/cookie";

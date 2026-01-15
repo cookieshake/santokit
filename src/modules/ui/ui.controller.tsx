@@ -1,12 +1,11 @@
 /** @jsxImportSource hono/jsx */
 import { Hono } from 'hono'
 import { projectService } from '@/modules/project/project.service.js'
-import { dataSourceService } from '@/modules/datasource/datasource.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { dataService } from '@/modules/data/data.service.js'
 import { db } from '@/db/index.js'
-import { accounts } from '@/db/schema.js'
-import { arrayContains } from 'drizzle-orm'
+// accounts import removed
+import { arrayContains, sql } from 'drizzle-orm'
 
 const app = new Hono<{
     Variables: {
@@ -55,7 +54,6 @@ const Layout = (props: { title: string; children: any; active: string; account?:
                         <ul class="menu w-full text-base-content text-base font-medium">
                             <li><a href="/ui" class={props.active === 'dashboard' ? 'active' : ''}>Dashboard</a></li>
                             <li><a href="/ui/projects" class={props.active === 'projects' ? 'active' : ''}>Projects</a></li>
-                            <li><a href="/ui/sources" class={props.active === 'sources' ? 'active' : ''}>Data Sources</a></li>
                             <li><a href="/ui/admins" class={props.active === 'admins' ? 'active' : ''}>Admins</a></li>
                         </ul>
                         {props.account && (
@@ -191,10 +189,9 @@ app.get('/login', (c) => {
 })
 
 app.get('/', async (c) => {
-    const [projects, sources, admins] = await Promise.all([
+    const [projects, admins] = await Promise.all([
         projectService.list(),
-        dataSourceService.list(),
-        db.select().from(accounts).where(arrayContains(accounts.roles, ['admin']))
+        db.execute(sql`SELECT * FROM accounts WHERE roles @> '{"admin"}'`).then(res => res.rows)
     ])
 
     return c.html(
@@ -202,17 +199,11 @@ app.get('/', async (c) => {
             <div class="mb-8">
                 <h1 class="text-3xl font-bold">Dashboard</h1>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div class="stats shadow bg-base-100">
                     <div class="stat">
                         <div class="stat-title">Total Projects</div>
                         <div class="stat-value text-primary">{projects.length}</div>
-                    </div>
-                </div>
-                <div class="stats shadow bg-base-100">
-                    <div class="stat">
-                        <div class="stat-title">Data Sources</div>
-                        <div class="stat-value text-secondary">{sources.length}</div>
                     </div>
                 </div>
                 <div class="stats shadow bg-base-100">
@@ -258,10 +249,7 @@ app.get('/', async (c) => {
 })
 
 app.get('/projects', async (c) => {
-    const [projects, sources] = await Promise.all([
-        projectService.list(),
-        dataSourceService.list()
-    ])
+    const projects = await projectService.list()
     const account = c.get('account')
     return c.html(
         <Layout title="Projects" active="projects" account={account}>
@@ -286,20 +274,15 @@ app.get('/projects', async (c) => {
                         </div>
                         <div class="form-control">
                             <label class="label">
-                                <span class="label-text">Data Source</span>
+                                <span class="label-text">Connection String</span>
                             </label>
-                            <select id="project-source" class="select select-bordered w-full" required>
-                                {sources.length === 0 ? (
-                                    <option value="" disabled selected>No data sources available. Please create one first.</option>
-                                ) : (
-                                    <>
-                                        <option value="" disabled selected>Select a data source</option>
-                                        {sources.map(s => (
-                                            <option value={s.id}>{s.name} ({s.prefix})</option>
-                                        ))}
-                                    </>
-                                )}
-                            </select>
+                            <input type="text" id="project-conn" class="input input-bordered w-full" placeholder="postgres://..." required />
+                        </div>
+                        <div class="form-control">
+                            <label class="label">
+                                <span class="label-text">Prefix</span>
+                            </label>
+                            <input type="text" id="project-prefix" class="input input-bordered w-full" value="santoki_" required />
                         </div>
                         <div class="modal-action">
                             <button type="submit" class="btn btn-primary w-full">Create Project</button>
@@ -314,21 +297,16 @@ app.get('/projects', async (c) => {
                 document.getElementById('new-project-form').addEventListener('submit', async (e) => {
                     e.preventDefault();
                     const name = document.getElementById('project-name').value;
-                    const dataSourceId = document.getElementById('project-source').value;
+                    const connectionString = document.getElementById('project-conn').value;
+                    const prefix = document.getElementById('project-prefix').value;
                     const errorDiv = document.getElementById('project-error');
                     errorDiv.style.display = 'none';
                     try {
                         const body = { 
                             name, 
-                            dataSourceId: parseInt(dataSourceId) 
+                            connectionString,
+                            prefix
                         };
-
-                        if (isNaN(body.dataSourceId)) {
-                            errorDiv.textContent = 'Please select a data source';
-                            errorDiv.classList.remove('hidden');
-                             errorDiv.style.display = 'grid'; // alert class usually flex or grid
-                            return;
-                        }
 
                         const res = await fetch('/v1/projects', {
                             method: 'POST',
@@ -356,7 +334,7 @@ app.get('/projects', async (c) => {
                         <tr>
                             <th>ID</th>
                             <th>Name</th>
-                            <th>Data Source</th>
+                            <th>Prefix</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -365,7 +343,7 @@ app.get('/projects', async (c) => {
                             <tr>
                                 <td>{p.id}</td>
                                 <td class="font-bold">{p.name}</td>
-                                <td>{sources.find(s => s.id === p.dataSourceId)?.name || <span class="opacity-50">None</span>}</td>
+                                <td><code class="badge badge-ghost">{p.prefix}</code></td>
                                 <td>
                                     <a href={`/ui/projects/${p.id}`} class="btn btn-sm btn-outline">Manage</a>
                                 </td>
@@ -378,107 +356,7 @@ app.get('/projects', async (c) => {
     )
 })
 
-app.get('/sources', async (c) => {
-    const sources = await dataSourceService.list()
-    const account = c.get('account')
-    return c.html(
-        <Layout title="Data Sources" active="sources" account={account}>
-            <div class="flex justify-between items-center mb-6">
-                <h1 class="text-3xl font-bold">Data Sources</h1>
-                <button class="btn btn-primary" onclick="showModal('add-source-modal')">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Add Source
-                </button>
-            </div>
-
-            <dialog id="add-source-modal" class="modal">
-                <div class="modal-box">
-                    <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" onclick="hideModal('add-source-modal')">✕</button>
-                    <h3 class="font-bold text-lg mb-4">Add Data Source</h3>
-                    <form id="add-source-form" class="space-y-4">
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Source Name</span>
-                            </label>
-                            <input type="text" id="source-name" class="input input-bordered w-full" placeholder="Primary DB" required />
-                        </div>
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Connection String</span>
-                            </label>
-                            <input type="text" id="source-conn" class="input input-bordered w-full" placeholder="postgres://..." required />
-                        </div>
-                        <div class="form-control">
-                            <label class="label">
-                                <span class="label-text">Table Prefix</span>
-                            </label>
-                            <input type="text" id="source-prefix" class="input input-bordered w-full" value="santoki_" required />
-                        </div>
-                        <div class="modal-action">
-                            <button type="submit" class="btn btn-primary w-full">Add Source</button>
-                        </div>
-                    </form>
-                    <div id="source-error" class="alert alert-error mt-4 hidden"></div>
-                </div>
-            </dialog>
-
-            <script dangerouslySetInnerHTML={{
-                __html: `
-                document.getElementById('add-source-form').addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const name = document.getElementById('source-name').value;
-                    const connectionString = document.getElementById('source-conn').value;
-                    const prefix = document.getElementById('source-prefix').value;
-                    const errorDiv = document.getElementById('source-error');
-                    errorDiv.classList.add('hidden');
-                    errorDiv.classList.remove('flex');
-
-                    try {
-                        const res = await fetch('/v1/sources', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name, connectionString, prefix })
-                        });
-                        if (res.ok) {
-                            window.location.reload();
-                        } else {
-                            const data = await res.json();
-                            errorDiv.textContent = data.error || 'Failed to add data source';
-                            errorDiv.classList.remove('hidden');
-                             errorDiv.style.display = 'grid';
-                        }
-                    } catch (err) {
-                        errorDiv.textContent = 'An error occurred';
-                         errorDiv.classList.remove('hidden');
-                          errorDiv.style.display = 'grid';
-                    }
-                });
-            `}} />
-            <div class="card bg-base-100 shadow-xl overflow-x-auto">
-                <table class="table table-zebra">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Name</th>
-                            <th>Prefix</th>
-                            <th>Created At</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sources.map(s => (
-                            <tr>
-                                <td>{s.id}</td>
-                                <td class="font-bold">{s.name}</td>
-                                <td><code class="badge badge-ghost">{s.prefix}</code></td>
-                                <td>{s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '-'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </Layout>
-    )
-})
+// Sources route removed
 
 app.get('/projects/:id', async (c) => {
     const projectId = parseInt(c.req.param('id'))
@@ -617,9 +495,9 @@ app.get('/projects/:id', async (c) => {
                         </div>
                         <div class="form-control w-full">
                             <label class="label">
-                                <span class="label-text">Data Source ID</span>
+                                <span class="label-text">Connection String</span>
                             </label>
-                            <input type="text" value={String(project.dataSourceId)} readonly class="input input-bordered w-full bg-base-200" />
+                            <input type="text" value={project.connectionString} readonly class="input input-bordered w-full bg-base-200" />
                         </div>
                         <div class="form-control w-full">
                             <label class="label">
@@ -897,7 +775,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
 })
 
 app.get('/admins', async (c) => {
-    const admins = await db.select().from(accounts).where(arrayContains(accounts.roles, ['admin']))
+    const admins = await db.execute(sql`SELECT * FROM accounts WHERE roles @> '{"admin"}'`).then(res => res.rows as any[])
     const account = c.get('account')
     return c.html(
         <Layout title="Admins" active="admins" account={account}>
@@ -991,7 +869,7 @@ app.get('/admins', async (c) => {
                                 <td>{admin.email}</td>
                                 <td>
                                     <div class="flex gap-2">
-                                        {admin.roles?.map(role => (
+                                        {admin.roles?.map((role: any) => (
                                             <span class="badge badge-outline">{role}</span>
                                         ))}
                                     </div>

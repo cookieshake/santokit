@@ -1,5 +1,4 @@
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
-import { dataSourceRepository } from '@/modules/datasource/datasource.repository.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { sql, eq } from 'drizzle-orm'
@@ -19,12 +18,9 @@ export const dataService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(pid)
-        if (!project || !project.dataSourceId) throw new Error('Project or Data Source not found')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        const targetDb = await connectionManager.getConnection(source.name)
+        const targetDb = await connectionManager.getConnection(project.name)
         if (!targetDb) throw new Error('Could not connect')
 
         // 3. Dynamic Insert
@@ -60,12 +56,9 @@ export const dataService = {
         if (!col) throw new Error('Collection not found')
 
         const project = await projectRepository.findById(pid)
-        if (!project || !project.dataSourceId) throw new Error('Project or Data Source not found')
+        if (!project) throw new Error('Project not found')
 
-        const source = await dataSourceRepository.findById(project.dataSourceId)
-        if (!source) throw new Error('Data Source not found')
-
-        const targetDb = await connectionManager.getConnection(source.name)
+        const targetDb = await connectionManager.getConnection(project.name)
         if (!targetDb) throw new Error('Could not connect')
 
         const result = await targetDb.execute(sql.raw(`SELECT * FROM "${col.physicalName}"`))
@@ -93,13 +86,23 @@ export const dataService = {
 
 // --- Internal Helpers for System Project ---
 import { db } from '@/db/index.js'
-import { projects, dataSources, accounts, collections } from '@/db/schema.js'
+import { projects, collections } from '@/db/schema.js'
 import { projectService } from '@/modules/project/project.service.js'
-import { dataSourceService } from '@/modules/datasource/datasource.service.js'
+import { pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+
+// Define accounts table locally since it was removed from global schema
+const accounts = pgTable("accounts", {
+    id: text("id").primaryKey(),
+    name: text('name').notNull(),
+    email: text('email').notNull().unique(),
+    password: text('password').notNull(),
+    roles: text('roles').array().notNull().default(['user']),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
 
 const SYSTEM_COLLECTIONS: Record<string, any> = {
     'projects': projects,
-    'datasources': dataSources,
     'accounts': accounts, // Renamed from users
     'collections': collections
 }
@@ -117,9 +120,7 @@ async function handleSystemCreate(collectionName: string, data: Record<string, a
     if (collectionName.toLowerCase() === 'projects') {
         const newProject = inserted as typeof projects.$inferSelect
         // Provisioning: Create DB/Schema on the data source
-        if (newProject.dataSourceId) {
-            await projectService.initializeDataSource(newProject.dataSourceId)
-        }
+        await projectService.initializeDataSource(newProject.name)
     }
 
     // Hooks for data sources? 
@@ -149,10 +150,9 @@ async function handleSystemUpdate(collectionName: string, id: string | number, d
     // --- HOOKS ---
     if (collectionName.toLowerCase() === 'projects') {
         const project = updated as typeof projects.$inferSelect
-        // If dataSourceId changed/set, re-init
-        if (data.dataSourceId) {
-            await projectService.initializeDataSource(project.dataSourceId)
-        }
+        // If connectionString changed, re-init?
+        // simple re-init check
+        await projectService.initializeDataSource(project.name)
     }
     return updated
 }
