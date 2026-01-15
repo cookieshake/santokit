@@ -1,21 +1,28 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { accountService } from './account.service.js'
 import { projectService } from '../project/project.service.js'
 import { sql } from 'drizzle-orm'
+import type { Pool } from 'pg'
+
+let testPool: Pool
+let projectTestPool: Pool
 
 vi.mock('../../db/index.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
-  return await createTestDb()
+  const { db, pool } = await createTestDb()
+  testPool = pool
+  return { db, pool }
 })
 
 vi.mock('../../db/connection-manager.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
-  const { db, pglite } = await createTestDb()
+  const { db, pool } = await createTestDb()
+  projectTestPool = pool
   return {
     connectionManager: {
       getConnection: vi.fn().mockResolvedValue(db)
     },
-    projectPglite: pglite,
+    projectPool: pool,
     projectDb: db
   }
 })
@@ -24,9 +31,8 @@ vi.mock('../../db/connection-manager.js', async () => {
 import * as dbModule from '@/db/index.js'
 import * as cmModule from '@/db/connection-manager.js'
 
-const { db, pglite: systemPglite } = dbModule as any
-const systemPgliteInstance = systemPglite as any
-const { projectPglite, projectDb } = cmModule as any
+const { db, pool: systemPool } = dbModule as any
+const { projectPool, projectDb } = cmModule as any
 
 describe('User Service (Project Level)', () => {
   let projectId1: number
@@ -41,7 +47,7 @@ describe('User Service (Project Level)', () => {
     // No need to try users separately now it's consolidated
 
     // Create initial setup
-    await systemPgliteInstance.exec(`
+    await db.execute(sql`
       INSERT INTO accounts (id, name, email, password, roles, created_at, updated_at) 
       VALUES ('admin-1', 'Admin', 'admin@example.com', 'password', '{"admin"}', NOW(), NOW())
     `)
@@ -54,6 +60,15 @@ describe('User Service (Project Level)', () => {
     projectId2 = p2.id
   })
 
+  afterAll(async () => {
+    if (testPool) {
+      await testPool.end()
+    }
+    if (projectTestPool) {
+      await projectTestPool.end()
+    }
+  })
+
   it('should create a user for a project (in physical DB)', async () => {
     const user = await accountService.createUser(projectId1, {
       email: 'test@example.com',
@@ -61,8 +76,8 @@ describe('User Service (Project Level)', () => {
     })
     expect(user.email).toBe('test@example.com')
 
-    // Verify it's in the DB (which is projectPglite)
-    const res = await projectPglite.query(`SELECT * FROM accounts WHERE email = 'test@example.com'`)
+    // Verify it's in the DB (using Drizzle ORM)
+    const res = await projectDb.execute(sql`SELECT * FROM accounts WHERE email = 'test@example.com'`)
     expect(res.rows.length).toBe(1)
   })
 

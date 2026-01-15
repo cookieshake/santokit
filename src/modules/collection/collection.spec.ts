@@ -1,18 +1,21 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { PGlite } from '@electric-sql/pglite'
-import { drizzle } from 'drizzle-orm/pglite'
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import * as schema from '@/db/schema.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { sql } from 'drizzle-orm'
+import type { Pool } from 'pg'
+
+let testPool: Pool
 
 // Mock the global db and the connection manager
 vi.mock('../../db/index.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
-  return await createTestDb()
+  const { db, pool } = await createTestDb()
+  testPool = pool
+  return { db, pool }
 })
 
 import * as dbModule from '@/db/index.js'
-const { db, pglite } = dbModule as any
+const { db, pool } = dbModule as any
 import { connectionManager } from '@/db/connection-manager.js'
 
 // Mock connectionManager to return the SAME in-memory DB for all "physical" connections
@@ -23,18 +26,22 @@ vi.mock('@/db/connection-manager.js', () => ({
   }
 }))
 
-const pgliteInstance = pglite as any
-
 describe('Collection Service (Integration)', () => {
   beforeEach(async () => {
     // Schema is already setup by createTestDb in the mock
     await db.execute(sql`TRUNCATE TABLE projects, accounts RESTART IDENTITY CASCADE`)
 
     // Setup test data
-    await pgliteInstance.exec(`INSERT INTO projects (name, connection_string, prefix) VALUES ('test_project', 'pg://test', 'test_')`)
+    await db.execute(sql`INSERT INTO projects (name, connection_string, prefix) VALUES ('test_project', 'pg://test', 'test_')`)
 
     // Setup mock connection
     vi.mocked(connectionManager.getConnection).mockResolvedValue(db as any)
+  })
+
+  afterAll(async () => {
+    if (testPool) {
+      await testPool.end()
+    }
   })
 
   it('should create a collection and a physical table', async () => {
@@ -42,8 +49,8 @@ describe('Collection Service (Integration)', () => {
     expect(col).toBeDefined()
     expect(col.physicalName).toBe('test_p1_posts')
 
-    // Verify physical table exists in pglite
-    const tables = await pgliteInstance.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
+    // Verify physical table exists using information_schema
+    const tables = await db.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
     const tableNames = tables.rows.map((r: any) => r.tablename)
     expect(tableNames).toContain('test_p1_posts')
   })
@@ -53,12 +60,12 @@ describe('Collection Service (Integration)', () => {
     expect(col.idType).toBe('uuid')
 
     // Verify physical table exists
-    const tables = await pgliteInstance.query(`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
+    const tables = await db.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
     const tableNames = tables.rows.map((r: any) => r.tablename)
     expect(tableNames).toContain('test_p1_uuid_posts')
 
     // Verify 'id' column type is uuid
-    const columns = await pgliteInstance.query(`
+    const columns = await db.execute(sql`
       SELECT data_type FROM information_schema.columns 
       WHERE table_name = 'test_p1_uuid_posts' AND column_name = 'id'
     `)
@@ -70,7 +77,7 @@ describe('Collection Service (Integration)', () => {
     await collectionService.addField(1, 'users', 'age', 'integer', true)
 
     // Verify column exists
-    const columns = await pgliteInstance.query(`
+    const columns = await db.execute(sql`
             SELECT column_name FROM information_schema.columns 
             WHERE table_name = 'test_p1_users' AND column_name = 'age'
         `)

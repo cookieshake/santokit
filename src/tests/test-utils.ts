@@ -31,8 +31,8 @@ export function setupDbMock() {
 export async function clearDb(db: any) {
     if (!db) return;
     // Get all table names would be ideal, but for now hardcode or truncate specifics
-    // A better approach is usually to just truncate known tables or restart the pglite instance
-    // Since we are using pglite, we might just want to create a new one, but that might be slow.
+    // A better approach is usually to just truncate known tables or restart the database
+    // Since we are using testcontainers, we can truncate tables between tests for speed.
     // Let's try truncating user related tables for now.
 
     // Ordered to avoid foreign key constraints if cascading isn't reliable, 

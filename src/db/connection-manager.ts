@@ -20,26 +20,21 @@ class ConnectionManager {
 
         if (!project) return null;
 
-        let dbInstance: Database;
-
-        // 3. Create new pool or client
-        if (project.connectionString.startsWith('postgres://') || project.connectionString.startsWith('postgresql://')) {
-            const { Pool } = await import('pg');
-            const { drizzle } = await import('drizzle-orm/node-postgres');
-            const pool = new Pool({
-                connectionString: project.connectionString
-            });
-            dbInstance = drizzle(pool) as unknown as Database;
-            // Store the raw pool on the instance for closing
-            (dbInstance as any)._raw = pool;
-        } else {
-            const { PGlite } = await import('@electric-sql/pglite');
-            const { drizzle } = await import('drizzle-orm/pglite');
-            const client = new PGlite(project.connectionString);
-            dbInstance = drizzle(client) as unknown as Database;
-            // Store the raw client on the instance for closing
-            (dbInstance as any)._raw = client;
+        // 3. Validate connection string
+        if (!project.connectionString.startsWith('postgres://') &&
+            !project.connectionString.startsWith('postgresql://')) {
+            throw new Error(`Invalid connection string for project "${sourceName}". Only PostgreSQL connections are supported.`);
         }
+
+        // 4. Create new pool
+        const { Pool } = await import('pg');
+        const { drizzle } = await import('drizzle-orm/node-postgres');
+        const pool = new Pool({
+            connectionString: project.connectionString
+        });
+        const dbInstance = drizzle(pool) as unknown as Database;
+        // Store the raw pool on the instance for closing
+        (dbInstance as any)._raw = pool;
 
         this.instances.set(sourceName, dbInstance);
         return dbInstance;
@@ -50,12 +45,8 @@ class ConnectionManager {
         const instance = this.instances.get(sourceName);
         if (instance) {
             const raw = (instance as any)._raw;
-            if (raw) {
-                if (typeof raw.end === 'function') {
-                    await raw.end();
-                } else if (typeof raw.close === 'function') {
-                    await raw.close();
-                }
+            if (raw && typeof raw.end === 'function') {
+                await raw.end();
             }
             this.instances.delete(sourceName);
         }
