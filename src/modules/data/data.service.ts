@@ -2,12 +2,13 @@ import { collectionService } from '@/modules/collection/collection.service.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { sql, eq } from 'drizzle-orm'
+import { CONSTANTS } from '@/constants.js'
 
 export const dataService = {
     // Insert Data
     create: async (projectId: string | number, collectionName: string, data: Record<string, any>) => {
         // --- 1. SYSTEM PROJECT HANDLING ---
-        if (projectId === 'system') {
+        if (projectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
             return await handleSystemCreate(collectionName, data)
         }
 
@@ -44,7 +45,7 @@ export const dataService = {
     // Query Data
     findAll: async (projectId: string | number, collectionName: string) => {
         // --- SYSTEM PROJECT HANDLING ---
-        if (projectId === 'system') {
+        if (projectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
             return await handleSystemFindAll(collectionName)
         }
 
@@ -65,7 +66,7 @@ export const dataService = {
 
     // Update Data
     update: async (projectId: string | number, collectionName: string, id: string | number, data: Record<string, any>) => {
-        if (projectId === 'system') {
+        if (projectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
             return await handleSystemUpdate(collectionName, id, data)
         }
         // TODO: Implement generic update for user projects
@@ -74,7 +75,7 @@ export const dataService = {
 
     // Delete Data
     delete: async (projectId: string | number, collectionName: string, id: string | number) => {
-        if (projectId === 'system') {
+        if (projectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
             return await handleSystemDelete(collectionName, id)
         }
         // TODO: Implement generic delete for user projects

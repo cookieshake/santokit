@@ -3,10 +3,11 @@ import { connectionManager } from '@/db/connection-manager.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { sql } from 'drizzle-orm'
 import { db } from '@/db/index.js'
+import { CONSTANTS } from '@/constants.js'
 
 export const accountRepository = {
     async getDbForProject(projectId: number | string) {
-        if (projectId === 'system') {
+        if (projectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
             return db
         }
 

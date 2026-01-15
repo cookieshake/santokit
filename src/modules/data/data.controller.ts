@@ -2,22 +2,23 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { DynamicDataInsertSchema } from '@/validators.js'
 import { dataService } from '@/modules/data/data.service.js'
+import { CONSTANTS } from '@/constants.js'
 
 const app = new Hono()
 
 // Mounted at /:projectId/:collectionName
 
 app.get('/', async (c) => {
-    const rawId = c.req.header('x-project-id')!
-    const projectId = rawId === 'system' ? 'system' : parseInt(rawId)
+    const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!
+    const projectId = rawId === CONSTANTS.PROJECTS.SYSTEM_ID ? CONSTANTS.PROJECTS.SYSTEM_ID : parseInt(rawId)
     const collectionName = c.req.param('collectionName')!
     const data = await dataService.findAll(projectId, collectionName)
     return c.json(data)
 })
 
 app.post('/', zValidator('json', DynamicDataInsertSchema), async (c) => {
-    const rawId = c.req.header('x-project-id')!
-    const projectId = rawId === 'system' ? 'system' : parseInt(rawId)
+    const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!
+    const projectId = rawId === CONSTANTS.PROJECTS.SYSTEM_ID ? CONSTANTS.PROJECTS.SYSTEM_ID : parseInt(rawId)
     const collectionName = c.req.param('collectionName')!
     const body = c.req.valid('json')
     const result = await dataService.create(projectId, collectionName, body)
@@ -25,8 +26,8 @@ app.post('/', zValidator('json', DynamicDataInsertSchema), async (c) => {
 })
 
 app.patch('/:id', zValidator('json', DynamicDataInsertSchema), async (c) => {
-    const rawId = c.req.header('x-project-id')!
-    const projectId = rawId === 'system' ? 'system' : parseInt(rawId)
+    const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!
+    const projectId = rawId === CONSTANTS.PROJECTS.SYSTEM_ID ? CONSTANTS.PROJECTS.SYSTEM_ID : parseInt(rawId)
     const collectionName = c.req.param('collectionName')!
     const id = c.req.param('id')
     const body = c.req.valid('json')
@@ -35,8 +36,8 @@ app.patch('/:id', zValidator('json', DynamicDataInsertSchema), async (c) => {
 })
 
 app.delete('/:id', async (c) => {
-    const rawId = c.req.header('x-project-id')!
-    const projectId = rawId === 'system' ? 'system' : parseInt(rawId)
+    const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!
+    const projectId = rawId === CONSTANTS.PROJECTS.SYSTEM_ID ? CONSTANTS.PROJECTS.SYSTEM_ID : parseInt(rawId)
     const collectionName = c.req.param('collectionName')!
     const id = c.req.param('id')
     const result = await dataService.delete(projectId, collectionName, id)

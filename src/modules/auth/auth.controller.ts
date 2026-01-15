@@ -9,6 +9,7 @@ import { setCookie, deleteCookie, getCookie } from "hono/cookie";
 import { sign, verify } from "hono/jwt";
 import { config } from "@/config/index.js";
 import { accountRepository } from "@/modules/account/account.repository.js";
+import { CONSTANTS } from "@/constants.js";
 
 const app = new Hono();
 
@@ -23,8 +24,8 @@ app.post(
     ),
     async (c) => {
         const { email, password } = c.req.valid("json");
-        const projectIdHeader = c.req.header("x-project-id") || "system";
-        const projectId = projectIdHeader === "system" ? "system" : parseInt(projectIdHeader);
+        const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID) || CONSTANTS.PROJECTS.SYSTEM_ID;
+        const projectId = projectIdHeader === CONSTANTS.PROJECTS.SYSTEM_ID ? CONSTANTS.PROJECTS.SYSTEM_ID : parseInt(projectIdHeader);
 
         try {
             const user = await accountRepository.findByEmail(projectId, email);
@@ -43,17 +44,17 @@ app.post(
                 email: user.email,
                 roles: user.roles,
                 projectId: projectId,
-                exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
+                exp: Math.floor(Date.now() / 1000) + CONSTANTS.AUTH.TOKEN_EXPIRY_SECONDS,
             };
 
             const token = await sign(payload, config.auth.jwtSecret);
 
-            setCookie(c, "auth_token", token, {
+            setCookie(c, CONSTANTS.AUTH.COOKIE_NAME, token, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === "production",
                 sameSite: "Lax",
                 path: "/",
-                maxAge: 60 * 60 * 24, // 1 day
+                maxAge: CONSTANTS.AUTH.TOKEN_EXPIRY_SECONDS,
             });
 
             return c.json({
@@ -74,12 +75,12 @@ app.post(
 );
 
 app.post("/sign-out", async (c) => {
-    deleteCookie(c, "auth_token");
+    deleteCookie(c, CONSTANTS.AUTH.COOKIE_NAME);
     return c.json({ success: true });
 });
 
 app.get("/me", async (c) => {
-    let token = getCookie(c, "auth_token");
+    let token = getCookie(c, CONSTANTS.AUTH.COOKIE_NAME);
     const authHeader = c.req.header("Authorization");
     if (authHeader && authHeader.startsWith("Bearer ")) {
         token = authHeader.substring(7);
@@ -100,7 +101,7 @@ app.get("/me", async (c) => {
             }
         });
     } catch (e) {
-        deleteCookie(c, "auth_token");
+        deleteCookie(c, CONSTANTS.AUTH.COOKIE_NAME);
         return c.json({ user: null });
     }
 });

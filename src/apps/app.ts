@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm'
 import { handleDbError, AppError } from '@/lib/errors.js'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { getCookie } from 'hono/cookie'
+import { CONSTANTS } from '@/constants.js'
 
 
 // Controllers
@@ -60,15 +61,15 @@ api.route('/auth', authController)
 // 2. Data Routes (Protected)
 api.use('/data/*', authMiddleware)
 api.use('/data/*', async (c, next) => {
-    const rawId = c.req.header('x-project-id')
+    const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)
     const user = c.get('user')
 
     if (!rawId) {
-        return c.json({ error: "Missing Project ID Header (x-project-id)" }, 400);
+        return c.json({ error: `Missing Project ID Header (${CONSTANTS.HEADERS.PROJECT_ID})` }, 400);
     }
 
     // System Project (Admin Access)
-    if (rawId === 'system') {
+    if (rawId === CONSTANTS.PROJECTS.SYSTEM_ID) {
         if (!user || !user.roles.includes('admin')) {
             return c.json({ error: "Unauthorized System Access" }, 401);
         }
@@ -116,7 +117,7 @@ import { config } from '@/config/index.js'
 app.use('/ui/*', async (c, next) => {
     if (c.req.path === '/ui/login') return next()
 
-    const token = getCookie(c, 'auth_token')
+    const token = getCookie(c, CONSTANTS.AUTH.COOKIE_NAME)
     if (!token) {
         return c.redirect('/ui/login')
     }

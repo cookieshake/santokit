@@ -3,6 +3,7 @@ import { db } from '../db/index.js'
 import { sql } from 'drizzle-orm'
 import { config } from '../config/index.js'
 import { hashPassword } from './password.js'
+import { CONSTANTS } from '../constants.js'
 
 
 export async function ensureAdminExists() {
@@ -17,7 +18,7 @@ export async function ensureAdminExists() {
         // Check if any admin exists using raw SQL since accounts is not in schema anymore
         // or use accountRepository if possible, but accountRepository.findByProjectId('system') is cleaner
         const { accountRepository } = await import('../modules/account/account.repository.js')
-        const admins = await accountRepository.findByProjectId('system')
+        const admins = await accountRepository.findByProjectId(CONSTANTS.PROJECTS.SYSTEM_ID)
         const adminExists = admins.some((a: any) =>
             Array.isArray(a.roles) && a.roles.includes('admin')
         )
@@ -31,7 +32,7 @@ export async function ensureAdminExists() {
         const { email, password, name } = config.auth.initialAdmin
         const hashedPassword = await hashPassword(password)
 
-        await accountRepository.create('system', {
+        await accountRepository.create(CONSTANTS.PROJECTS.SYSTEM_ID, {
             email,
             password: hashedPassword,
             name: name,
