@@ -9,7 +9,7 @@ export * from './db-setup.js'
  * Helper to create a request to the Hono app.
  * This wraps the app.request method.
  */
-export async function request(app: Hono, path: string, options: RequestInit = {}) {
+export async function request(app: Hono<any, any, any>, path: string, options: RequestInit = {}) {
     return app.request(path, options)
 }
 
@@ -43,7 +43,7 @@ export async function clearDb(db: any) {
 /**
  * Creates an admin user and logs them in, returning the session cookie.
  */
-export async function createAdminAndLogin(app: Hono) {
+export async function createAdminAndLogin(app: Hono<any, any, any>) {
     const email = `admin-${Date.now()}@example.com`
     const password = 'password123'
 
