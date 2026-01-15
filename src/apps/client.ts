@@ -4,7 +4,7 @@ import { handleDbError, AppError } from '@/lib/errors.js'
 import { userRepository } from '@/modules/user/user.repository.js'
 import dataController from '@/modules/data/data.controller.js'
 import userAuthController from '@/modules/user/user.auth.controller.js'
-import { authzMiddleware } from '@/lib/authz.middleware.js'
+
 
 const app = new Hono<{
     Variables: {
@@ -60,7 +60,7 @@ app.use('/data/:projectId/*', async (c, next) => {
 })
 
 // Apply Authorization Middleware to data routes
-app.use('/data/:projectId/*', authzMiddleware((c) => c.req.param('projectId')!))
+
 
 app.get('/', (c) => c.text('Client API (Modular Architecture)'))
 

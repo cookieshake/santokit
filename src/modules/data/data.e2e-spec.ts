@@ -50,8 +50,7 @@ describe('Data Module (Client) E2E', () => {
     describe('POST /v1/data/:projectId/:collectionName', () => {
         it('should insert data into collection', async () => {
             // Need to be authenticated as a user of the project?
-            // client.ts says: app.use('/data/:projectId/*', authzMiddleware...)
-            // and getAuthProject(db)
+
 
             // Register a client user and login
             await request(clientApp, `/v1/auth/${projectId}/register`, {

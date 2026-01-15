@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { authAdmin } from '@/lib/auth-admin.js'
-import { authzMiddleware } from '@/lib/authz.middleware.js'
+
 import { handleDbError, AppError } from '@/lib/errors.js'
 import datasourceController from '@/modules/datasource/datasource.controller.js'
 import projectController from '@/modules/project/project.controller.js'
@@ -72,7 +72,7 @@ api.route('/auth', adminController)
 
 // API routes (prefixed with /v1 in the final app)
 api.use('/*', authMiddleware)
-api.use('/*', authzMiddleware(() => 'admin'))
+
 
 api.get('/', (c) => c.text('Admin API (Modular Architecture)'))
 
