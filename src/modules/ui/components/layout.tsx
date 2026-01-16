@@ -139,9 +139,8 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                                 </>
                             ) : (
                                 <>
-                                    <li><a href="/ui" class={props.active === 'dashboard' ? 'is-active' : ''}>Dashboard</a></li>
                                     <li><a href="/ui/projects" class={props.active === 'projects' ? 'is-active' : ''}>Projects</a></li>
-                                    <li><a href="/ui/admins" class={props.active === 'admins' ? 'is-active' : ''}>Admins</a></li>
+
                                 </>
                             )}
                         </ul>

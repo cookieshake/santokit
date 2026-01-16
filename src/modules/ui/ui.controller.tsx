@@ -6,11 +6,11 @@ import { dataService } from '@/modules/data/data.service.js'
 import { db } from '@/db/index.js'
 import { sql } from 'drizzle-orm'
 import { Login } from './pages/login.js'
-import { Dashboard } from './pages/dashboard.js'
+
 import { Projects } from './pages/projects.js'
 import { ProjectDetail } from './pages/project-detail.js'
 import { CollectionDetail } from './pages/collection-detail.js'
-import { Admins } from './pages/admins.js'
+
 import { Layout } from './components/layout.js'
 
 const app = new Hono<{
@@ -23,13 +23,8 @@ app.get('/login', (c) => {
     return c.html(<Login />)
 })
 
-app.get('/', async (c) => {
-    const [projects, admins] = await Promise.all([
-        projectService.list(),
-        db.execute(sql`SELECT * FROM accounts WHERE roles @> '{"admin"}'`).then(res => res.rows)
-    ])
-
-    return c.html(<Dashboard projects={projects} admins={admins} />)
+app.get('/', (c) => {
+    return c.redirect('/ui/projects')
 })
 
 app.get('/projects', async (c) => {
@@ -78,11 +73,6 @@ app.get('/projects/:id/collections/:colName', async (c) => {
     }
 })
 
-app.get('/admins', async (c) => {
-    const admins = await db.execute(sql`SELECT * FROM accounts WHERE roles @> '{"admin"}'`).then(res => res.rows as any[])
-    const projects = await projectService.list()
-    const account = c.get('account')
-    return c.html(<Admins admins={admins} projects={projects} account={account} />)
-})
+
 
 export default app

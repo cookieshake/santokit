@@ -103,6 +103,9 @@ export const Projects = (props: { projects: any[]; account: any }) => (
                                 <td><code>{p.prefix}</code></td>
                                 <td>
                                     <a href={`/ui/projects/${p.id}`} class="button is-small">Manage</a>
+                                    {p.name !== 'system' && (
+                                        <button class="button is-small is-danger ml-2" onclick={`showDeleteModal(${p.id}, '${p.name}')`}>Delete</button>
+                                    )}
                                 </td>
                             </tr>
                         ))}
@@ -110,5 +113,68 @@ export const Projects = (props: { projects: any[]; account: any }) => (
                 </table>
             </div>
         </div>
+
+        <div id="delete-project-modal" class="modal">
+            <div class="modal-background"></div>
+            <div class="modal-card">
+                <header class="modal-card-head">
+                    <p class="modal-card-title">Delete Project</p>
+                    <button class="delete" onclick="hideModal('delete-project-modal')"></button>
+                </header>
+                <section class="modal-card-body">
+                    <p>Are you sure you want to delete project <strong id="delete-project-name"></strong>?</p>
+                    <br />
+                    <div class="field">
+                        <div class="control">
+                            <label class="checkbox">
+                                <input type="checkbox" id="delete-project-data" />
+                                <span class="ml-2">Also delete all data (tables) associated with this project</span>
+                            </label>
+                        </div>
+                        <p class="help is-danger">Warning: checking this will permanently delete all data tables for this project.</p>
+                    </div>
+                    <input type="hidden" id="delete-project-id" />
+                    <div id="delete-error" class="notification is-danger" style="display: none;"></div>
+                </section>
+                <footer class="modal-card-foot">
+                    <button class="button is-danger" onclick="confirmDeleteProject()">Delete</button>
+                    <button class="button" onclick="hideModal('delete-project-modal')">Cancel</button>
+                </footer>
+            </div>
+        </div>
+
+        <script dangerouslySetInnerHTML={{
+            __html: `
+            function showDeleteModal(id, name) {
+                document.getElementById('delete-project-id').value = id;
+                document.getElementById('delete-project-name').innerText = name;
+                document.getElementById('delete-project-data').checked = false;
+                document.getElementById('delete-error').style.display = 'none';
+                showModal('delete-project-modal');
+            }
+
+            async function confirmDeleteProject() {
+                const id = document.getElementById('delete-project-id').value;
+                const deleteData = document.getElementById('delete-project-data').checked;
+                const errorDiv = document.getElementById('delete-error');
+                
+                try {
+                    const res = await fetch(\`/v1/projects/\${id}?deleteData=\${deleteData}\`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        const data = await res.json();
+                        errorDiv.textContent = data.error || 'Failed to delete project';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (err) {
+                    errorDiv.textContent = 'An error occurred';
+                    errorDiv.style.display = 'block';
+                }
+            }
+        `}} />
     </Layout>
 )

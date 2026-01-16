@@ -18,5 +18,8 @@ export const projectRepository = {
     update: async (id: number, data: Partial<typeof projects.$inferInsert>) => {
         const result = await db.update(projects).set(data).where(eq(projects.id, id)).returning()
         return result[0]
+    },
+    delete: async (id: number) => {
+        await db.delete(projects).where(eq(projects.id, id))
     }
 }

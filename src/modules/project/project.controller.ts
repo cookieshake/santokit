@@ -13,6 +13,18 @@ app.post('/', zValidator('json', CreateProjectSchema), async (c) => {
     return c.json(result)
 })
 
+app.delete('/:id', async (c) => {
+    const id = parseInt(c.req.param('id'))
+    const deleteData = c.req.query('deleteData') === 'true'
+
+    try {
+        await projectService.delete(id, deleteData)
+        return c.json({ success: true })
+    } catch (e) {
+        return c.json({ error: (e as Error).message }, 400)
+    }
+})
+
 app.get('/', async (c) => {
     const result = await projectService.list()
     return c.json(result)

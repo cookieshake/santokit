@@ -4,6 +4,8 @@ import { authMiddleware } from '@/modules/auth/auth.middleware.js'
 import { db } from '@/db/index.js'
 // accounts import removed
 import { eq } from 'drizzle-orm'
+import collectionController from '@/modules/collection/collection.controller.js'
+
 import { handleDbError, AppError } from '@/lib/errors.js'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { getCookie } from 'hono/cookie'
@@ -58,9 +60,9 @@ const api = new Hono<{ Variables: Variables }>()
 // 1. Auth Routes
 api.route('/auth', authController)
 
-// 2. Data Routes (Protected)
-api.use('/data/*', authMiddleware)
-api.use('/data/*', async (c, next) => {
+// 2. Collection Routes (Protected)
+api.use('/collections/*', authMiddleware)
+api.use('/collections/*', async (c, next) => {
     const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)
     const user = c.get('user')
 
@@ -96,9 +98,8 @@ api.use('/data/*', async (c, next) => {
     await next()
 })
 
-// Mount Unified Data Controller
-// Removed :projectId from path, now just /data/:collectionName
-api.route('/data/:collectionName', dataController)
+// Mount Collection Controller (which includes Data Controller)
+api.route('/collections', collectionController)
 api.get('/', (c) => c.text('Santoki Unified API'))
 
 // Project management routes (added if they were missing or implicitly handled)

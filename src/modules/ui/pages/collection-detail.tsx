@@ -131,7 +131,7 @@ export const CollectionDetail = (props: {
                     errorDiv.style.display = 'none';
 
                     try {
-                        const res = await fetch('/v1/data/' + collectionName, {
+                        const res = await fetch('/v1/collections/' + collectionName + '/records', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',

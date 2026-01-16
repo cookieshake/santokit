@@ -1,0 +1,110 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.17 [39m[90m/Users/cookie.shake/workspace/santoki[39m
+
+[⣷] Pulling schema from database...
+[2K[1G[✓] Pulling schema from database...
+[⣷] Pulling schema from database...
+[2K[1G[✓] Pulling schema from database...
+[⣷] Pulling schema from database...
+[2K[1G[✓] Pulling schema from database...
+[90mstderr[2m | src/modules/data/data_verification.spec.ts[2m > [22m[2mData Module (Client) E2E[2m > [22m[2mPOST /v1/collections/:projectId/:collectionName/data[2m > [22m[2mshould insert data into collection
+[22m[39m[Error] POST /v1/collections/articles/data: Error: Collection not found
+    at Object.getDetail [90m(/Users/cookie.shake/workspace/santoki/[39msrc/modules/collection/collection.service.ts:79:28[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at Object.create [90m(/Users/cookie.shake/workspace/santoki/[39msrc/modules/data/data.service.ts:19:24[90m)[39m
+    at [90m/Users/cookie.shake/workspace/santoki/[39msrc/modules/data/data.controller.ts:27:20
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at [90mfile:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/validator/validator.js:81:12
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at [90m/Users/cookie.shake/workspace/santoki/[39msrc/apps/app.ts:98:5
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+
+[90mstderr[2m | src/modules/data/data_verification.spec.ts[2m > [22m[2mData Module (Client) E2E[2m > [22m[2mPOST /v1/collections/:projectId/:collectionName/data[2m > [22m[2mshould insert data into collection
+[22m[39mPOST Error Body: {"error":"Internal Server Error"}
+
+[⣷] Pulling schema from database...
+[2K[1G[✓] Pulling schema from database...
+[90mstderr[2m | src/modules/data/data_verification.spec.ts[2m > [22m[2mData Module (Client) E2E[2m > [22m[2mGET /v1/collections/:projectId/:collectionName/data[2m > [22m[2mshould list data
+[22m[39m[Error] POST /v1/collections/articles/data: Error: Collection not found
+    at Object.getDetail [90m(/Users/cookie.shake/workspace/santoki/[39msrc/modules/collection/collection.service.ts:79:28[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at Object.create [90m(/Users/cookie.shake/workspace/santoki/[39msrc/modules/data/data.service.ts:19:24[90m)[39m
+    at [90m/Users/cookie.shake/workspace/santoki/[39msrc/modules/data/data.controller.ts:27:20
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at [90mfile:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/validator/validator.js:81:12
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at [90m/Users/cookie.shake/workspace/santoki/[39msrc/apps/app.ts:98:5
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+
+[90mstdout[2m | src/modules/data/data_verification.spec.ts[2m > [22m[2mData Module (Client) E2E[2m > [22m[2mGET /v1/collections/:projectId/:collectionName/data[2m > [22m[2mshould list data
+[22m[39mValid params: { collectionName: [32m'articles'[39m }
+Debug DataController: { rawId: [32m'1'[39m, projectId: [33m1[39m, collectionName: [32m'articles'[39m }
+
+[90mstderr[2m | src/modules/data/data_verification.spec.ts[2m > [22m[2mData Module (Client) E2E[2m > [22m[2mGET /v1/collections/:projectId/:collectionName/data[2m > [22m[2mshould list data
+[22m[39m[Error] GET /v1/collections/articles/data: Error: Collection not found
+    at Object.getDetail [90m(/Users/cookie.shake/workspace/santoki/[39msrc/modules/collection/collection.service.ts:79:28[90m)[39m
+[90m    at processTicksAndRejections (node:internal/process/task_queues:103:5)[39m
+    at Object.findAll [90m(/Users/cookie.shake/workspace/santoki/[39msrc/modules/data/data.service.ts:54:24[90m)[39m
+    at [90m/Users/cookie.shake/workspace/santoki/[39msrc/modules/data/data.controller.ts:18:18
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at [90m/Users/cookie.shake/workspace/santoki/[39msrc/apps/app.ts:98:5
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at dispatch [90m(file:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/compose.js:22:17[90m)[39m
+    at [90mfile:///Users/cookie.shake/workspace/santoki/[39mnode_modules/[4mhono[24m/dist/hono-base.js:301:25
+    at [90m/Users/cookie.shake/workspace/santoki/[39msrc/modules/data/data_verification.spec.ts:113:25
+
+[90mstderr[2m | src/modules/data/data_verification.spec.ts[2m > [22m[2mData Module (Client) E2E[2m > [22m[2mGET /v1/collections/:projectId/:collectionName/data[2m > [22m[2mshould list data
+[22m[39mGET Error Body: {"error":"Internal Server Error"}
+
+ [31m❯[39m src/modules/data/data_verification.spec.ts [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 176[2mms[22m[39m
+[31m       [31m×[31m should insert data into collection[39m[32m 87[2mms[22m[39m
+[31m       [31m×[31m should list data[39m[32m 88[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/modules/data/data_verification.spec.ts[2m > [22mData Module (Client) E2E[2m > [22mPOST /v1/collections/:projectId/:collectionName/data[2m > [22mshould insert data into collection
+[31m[1mAssertionError[22m: expected 500 to be 200 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 500[39m
+
+[36m [2m❯[22m src/modules/data/data_verification.spec.ts:[2m79:32[22m[39m
+    [90m 77| [39m                console[33m.[39m[34merror[39m([32m'POST Error Body:'[39m[33m,[39m [35mawait[39m res[33m.[39m[34mtext[39m())
+    [90m 78| [39m            }
+    [90m 79| [39m            [34mexpect[39m(res[33m.[39mstatus)[33m.[39m[34mtoBe[39m([34m200[39m)
+    [90m   | [39m                               [31m^[39m
+    [90m 80| [39m            [35mconst[39m body [33m=[39m [35mawait[39m res[33m.[39m[34mjson[39m()
+    [90m 81| [39m            [34mexpect[39m(body[33m.[39mtitle)[33m.[39m[34mtoBe[39m([32m'Hello World'[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m src/modules/data/data_verification.spec.ts[2m > [22mData Module (Client) E2E[2m > [22mGET /v1/collections/:projectId/:collectionName/data[2m > [22mshould list data
+[31m[1mAssertionError[22m: expected 500 to be 200 // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 200[39m
+[31m+ 500[39m
+
+[36m [2m❯[22m src/modules/data/data_verification.spec.ts:[2m123:32[22m[39m
+    [90m121| [39m                console[33m.[39m[34merror[39m([32m'GET Error Body:'[39m[33m,[39m [35mawait[39m res[33m.[39m[34mtext[39m())
+    [90m122| [39m            }
+    [90m123| [39m            [34mexpect[39m(res[33m.[39mstatus)[33m.[39m[34mtoBe[39m([34m200[39m)
+    [90m   | [39m                               [31m^[39m
+    [90m124| [39m            [35mconst[39m body [33m=[39m [35mawait[39m res[33m.[39m[34mjson[39m()
+    [90m125| [39m            [34mexpect[39m([33mArray[39m[33m.[39m[34misArray[39m(body))[33m.[39m[34mtoBe[39m([35mtrue[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[90m (2)[39m
+[2m   Start at [22m 17:32:51
+[2m   Duration [22m 3.10s[2m (transform 144ms, setup 0ms, import 2.85s, tests 176ms, environment 0ms)[22m
+

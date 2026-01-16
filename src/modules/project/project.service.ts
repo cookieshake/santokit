@@ -1,5 +1,6 @@
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
+import { collectionRepository } from '@/modules/collection/collection.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { CONSTANTS } from '@/constants.js'
 import { sql } from 'drizzle-orm'
@@ -38,8 +39,39 @@ export const projectService = {
         // Actually, let's just check if it exists first using listByProject or getDetail logic, 
         // but create throws if exists usually. 
         // Let's modify logic to be safe: check existence is better.
-        // However, collectionService.create doesn't check 'virtual' existence, 
         // it goes straight to createPhysicalTable which might throw if table exists.
         // Let's rely on collectionService.create throwing if table exists, and ignore that specific error.
+    },
+    delete: async (id: number, deleteData: boolean) => {
+        const project = await projectRepository.findById(id)
+        if (!project) throw new Error('Project not found')
+
+        // Prevent system project deletion
+        if (project.name === CONSTANTS.PROJECTS.SYSTEM_ID) {
+            throw new Error('Cannot delete system project')
+        }
+
+        if (deleteData) {
+            // 1. List all collections
+            const collections = await collectionService.listByProject(id)
+
+            // 2. Delete all physical tables
+            for (const collection of collections) {
+                const collectionTableName = `${project.prefix}p${id}__collections`.toLowerCase()
+                await collectionRepository.deletePhysicalTable(project.name, collectionTableName, collection.physicalName as string)
+            }
+
+            // 3. Delete the _collections table itself
+            const collectionTableName = `${project.prefix}p${id}__collections`.toLowerCase()
+            // We can treat the collections table as a physical table in itself if we wanted to drop it cleanly,
+            // but collectionRepository.deletePhysicalTable expects a metadata table name.
+            // For the main collections table, we just need to drop it.
+            const targetDb = await connectionManager.getConnection(project.name)
+            if (targetDb) {
+                await targetDb.execute(sql.raw(`DROP TABLE IF EXISTS "${collectionTableName}"`))
+            }
+        }
+
+        await projectRepository.delete(id)
     }
 }
