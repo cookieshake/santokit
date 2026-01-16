@@ -27,10 +27,10 @@ describe('Collection Module E2E', () => {
     })
 
     describe('POST /admin/v1/projects/:projectId/collections', () => {
-        it('should create a collection', async () => {
+        it('should create a collection and return its type in detail', async () => {
             const res = await request(app, '/v1/projects/collections', {
                 method: 'POST',
-                body: JSON.stringify({ name: 'users', idType: 'serial' }),
+                body: JSON.stringify({ name: 'items', idType: 'serial' }),
                 headers: {
                     'Content-Type': 'application/json',
                     'Cookie': cookie || '',
@@ -40,7 +40,20 @@ describe('Collection Module E2E', () => {
 
             expect(res.status).toBe(200)
             const body = await res.json()
-            expect(body.name).toBe('users')
+            expect(body.name).toBe('items')
+
+            // Verify detail
+            const detailRes = await request(app, '/v1/projects/collections/items', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': String(projectId)
+                }
+            })
+            expect(detailRes.status).toBe(200)
+            const detail = await detailRes.json()
+            expect(detail.meta.type).toBe('base')
         })
     })
 

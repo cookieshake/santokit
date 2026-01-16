@@ -4,13 +4,12 @@ import { collectionService } from '@/modules/collection/collection.service.js'
 import { sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 
-let testPool: Pool
+// testPool removed
 
 // Mock the global db and the connection manager
 vi.mock('../../db/index.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  testPool = pool
   return { db, pool }
 })
 
@@ -39,8 +38,8 @@ describe('Collection Service (Integration)', () => {
   })
 
   afterAll(async () => {
-    if (testPool) {
-      await testPool.end()
+    if (pool) {
+      await pool.end()
     }
   })
 

@@ -22,22 +22,32 @@ export function setupDbMock() {
         const { createTestDb } = await import('./db-setup.js')
         return await createTestDb()
     })
+
+    vi.mock('@/db/connection-manager.js', async () => {
+        const { createTestDb } = await import('./db-setup.js')
+        const { db } = await createTestDb()
+        return {
+            connectionManager: {
+                getConnection: vi.fn().mockResolvedValue(db)
+            }
+        }
+    })
 }
 
 /**
- * Cleans up the database tables (truncates all data).
+ * Cleans up the database tables (drops schema and re-applies).
  * Useful to run in beforeEach.
  */
 export async function clearDb(db: any) {
     if (!db) return;
-    // Get all table names would be ideal, but for now hardcode or truncate specifics
-    // A better approach is usually to just truncate known tables or restart the database
-    // Since we are using testcontainers, we can truncate tables between tests for speed.
-    // Let's try truncating user related tables for now.
+    // Drop logic to be clean and handle dynamic tables
+    await db.execute(sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`)
 
-    // Ordered to avoid foreign key constraints if cascading isn't reliable, 
-    // but CASCADE usually handles it.
-    await db.execute(sql`TRUNCATE TABLE accounts, projects RESTART IDENTITY CASCADE`)
+    // Re-apply schema
+    const { pushSchema } = await import('drizzle-kit/api');
+    const schema = await import('@/db/schema.js'); // dynamic import
+    const { apply } = await pushSchema(schema, db);
+    await apply();
 }
 
 /**
@@ -46,6 +56,16 @@ export async function clearDb(db: any) {
 export async function createAdminAndLogin(app: Hono<any, any, any>) {
     const email = `admin-${Date.now()}@example.com`
     const password = 'password123'
+
+    // Ensure System project exists because we need it for admin login/register
+    const { projectService } = await import('@/modules/project/project.service.js')
+    const { CONSTANTS } = await import('@/constants.js')
+
+    try {
+        await projectService.create(CONSTANTS.PROJECTS.SYSTEM_ID, 'postgres://system')
+    } catch (e) {
+        // Ignore if exists
+    }
 
     await request(app, '/v1/auth/register', {
         method: 'POST',

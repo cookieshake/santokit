@@ -4,30 +4,37 @@ import { projectService } from '../project/project.service.js'
 import { sql } from 'drizzle-orm'
 import type { Pool } from 'pg'
 
-let testPool: Pool
-let projectTestPool: Pool
-
+// Mock everything first
 vi.mock('../../db/index.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  // removed testPool assignment
   return { db, pool }
 })
 
 vi.mock('../../db/connection-manager.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  // removed projectTestPool assignment
+  // We need to return the SAME db instance as above?
+  // Ideally yes. But here we create NEW instance?
+  // `createTestDb` in `db-setup.ts` reuses global container, but creates NEW pool each time.
+  // This means `db` in `index.js` mock is DIFFERENT from `db` in `connection-manager.js` mock!!
+  // This causes split brain if used in same test.
+  // `account.spec.ts` logic relies on `db` and `projectDb` being potentially separate or same?
+  // The test logic: `await db.execute(...)` (setup) then `accountService` uses `connectionManager (projectDb)`.
+  // If they are different pools on same container: it works (shared DB state).
+  // But if we drop schema in one, it affects other.
+  // The previous implementation imported `createTestDb` and called it twice.
+  // So we stick to that pattern for now, assuming they share the container.
   return {
     connectionManager: {
       getConnection: vi.fn().mockResolvedValue(db)
     },
+    // We export these for the test file to use if needed
     projectPool: pool,
     projectDb: db
   }
 })
 
-// Correctly import the mocked modules
 import * as dbModule from '@/db/index.js'
 import * as cmModule from '@/db/connection-manager.js'
 
@@ -39,20 +46,16 @@ describe('User Service (Project Level)', () => {
   let projectId2: number
 
   beforeEach(async () => {
-    // Schema is already setup by createTestDb in the mock
+    // Robust Cleanup: Drop schema
+    await db.execute(sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`)
 
-    // Clear tables
-    await db.execute(sql`TRUNCATE TABLE collections, projects, accounts RESTART IDENTITY CASCADE`)
-    await projectDb.execute(sql`TRUNCATE TABLE accounts RESTART IDENTITY CASCADE`)
-    // No need to try users separately now it's consolidated
+    // Re-apply schema
+    const { pushSchema } = await import('drizzle-kit/api');
+    const schema = await import('@/db/schema.js');
+    const { apply } = await pushSchema(schema, db);
+    await apply();
 
     // Create initial setup
-    await db.execute(sql`
-      INSERT INTO accounts (id, name, email, password, roles, created_at, updated_at) 
-      VALUES ('admin-1', 'Admin', 'admin@example.com', 'password', '{"admin"}', NOW(), NOW())
-    `)
-    // Data sources are now part of project creation
-
     const p1 = await projectService.create('Project 1', 'memory')
     const p2 = await projectService.create('Project 2', 'memory')
 
@@ -77,7 +80,8 @@ describe('User Service (Project Level)', () => {
     expect(user.email).toBe('test@example.com')
 
     // Verify it's in the DB (using Drizzle ORM)
-    const res = await projectDb.execute(sql`SELECT * FROM accounts WHERE email = 'test@example.com'`)
+    const tableName = `santoki_p${projectId1}_users`.toLowerCase()
+    const res = await projectDb.execute(sql.raw(`SELECT * FROM "${tableName}" WHERE email = 'test@example.com'`))
     expect(res.rows.length).toBe(1)
   })
 

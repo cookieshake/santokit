@@ -18,8 +18,8 @@ app.get('/', async (c) => {
 // Create Collection
 app.post('/', zValidator('json', CreateCollectionSchema), async (c) => {
     const projectId = parseInt(c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!)
-    const { name, idType } = c.req.valid('json')
-    const result = await collectionService.create(projectId, name, idType as 'serial' | 'uuid')
+    const { name, idType, type } = c.req.valid('json')
+    const result = await collectionService.create(projectId, name, idType as 'serial' | 'uuid', type as 'base' | 'auth')
     return c.json(result)
 })
 
