@@ -1,17 +1,18 @@
-import { sql, eq, like, and } from 'drizzle-orm'
-import { collections } from './collection.schema.js'
+import { sql } from 'drizzle-orm'
+
 import { connectionManager } from '@/db/connection-manager.js'
 
 export const collectionRepository = {
     // Introspection Operations
     // Metadata Table Operations
-    ensureMetadataTable: async (dataSourceName: string) => {
+    // Metadata Table Operations
+    ensureMetadataTable: async (dataSourceName: string, metadataTableName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
         // Check if table exists to avoid error logs or unnecessary calls
         await targetDb.execute(sql`
-            CREATE TABLE IF NOT EXISTS "_collections" (
+            CREATE TABLE IF NOT EXISTS ${sql.identifier(metadataTableName)} (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 physical_name TEXT NOT NULL UNIQUE,
@@ -23,26 +24,24 @@ export const collectionRepository = {
     },
 
     // Introspection Operations
-    listPhysicalTables: async (dataSourceName: string, prefix: string, projectId: number) => {
+    // Introspection Operations
+    listPhysicalTables: async (dataSourceName: string, metadataTableName: string, prefix: string, projectId: number) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
         // Check if metadata table exists
-        const check = await targetDb.execute(sql`SELECT to_regclass('public._collections')`)
+        const check = await targetDb.execute(sql`SELECT to_regclass(${metadataTableName})`)
         if (!check.rows[0].to_regclass) {
             return []
         }
 
-        const rows = await targetDb
-            .select({
-                name: collections.name,
-                physicalName: collections.physicalName,
-                type: collections.type
-            })
-            .from(collections)
-            .where(like(collections.physicalName, `${prefix}p${projectId}_%`))
+        const rows = await targetDb.execute(sql`
+            SELECT name, physical_name as "physicalName", type
+            FROM ${sql.identifier(metadataTableName)}
+            WHERE physical_name LIKE ${`${prefix}p${projectId}_%`}
+        `)
 
-        return rows.map(row => ({
+        return rows.rows.map(row => ({
             projectId,
             name: row.name,
             physicalName: row.physicalName,
@@ -65,19 +64,19 @@ export const collectionRepository = {
         return result.rows[0].exists === true
     },
 
-    getCollectionType: async (dataSourceName: string, physicalName: string) => {
+    getCollectionType: async (dataSourceName: string, metadataTableName: string, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) return 'base'
 
         try {
-            const result = await targetDb
-                .select({ type: collections.type })
-                .from(collections)
-                .where(eq(collections.physicalName, physicalName))
-                .limit(1)
+            const result = await targetDb.execute(sql`
+                SELECT type FROM ${sql.identifier(metadataTableName)}
+                WHERE physical_name = ${physicalName}
+                LIMIT 1
+            `)
 
-            if (result.length > 0) {
-                return result[0].type
+            if (result.rows.length > 0) {
+                return result.rows[0].type
             }
             return 'base'
         } catch (e) {
@@ -86,12 +85,13 @@ export const collectionRepository = {
     },
 
     // Physical Table Operations
-    createPhysicalTable: async (dataSourceName: string, name: string, physicalName: string, idType: 'serial' | 'uuid' = 'serial', type: 'base' | 'auth' = 'base') => {
+    // Physical Table Operations
+    createPhysicalTable: async (dataSourceName: string, metadataTableName: string, name: string, physicalName: string, idType: 'serial' | 'uuid' = 'serial', type: 'base' | 'auth' = 'base') => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
         // Ensure metadata table
-        await collectionRepository.ensureMetadataTable(dataSourceName)
+        await collectionRepository.ensureMetadataTable(dataSourceName, metadataTableName)
 
         const idCol = idType === 'uuid'
             ? 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
@@ -100,14 +100,13 @@ export const collectionRepository = {
         await targetDb.execute(sql`CREATE TABLE ${sql.identifier(physicalName)} (${sql.raw(idCol)}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`)
 
         // Insert metadata
-        await targetDb.insert(collections).values({
-            name,
-            physicalName,
-            type
-        })
+        await targetDb.execute(sql`
+            INSERT INTO ${sql.identifier(metadataTableName)} (name, physical_name, type)
+            VALUES (${name}, ${physicalName}, ${type})
+        `)
     },
 
-    deletePhysicalTable: async (dataSourceName: string, physicalName: string) => {
+    deletePhysicalTable: async (dataSourceName: string, metadataTableName: string, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
@@ -116,9 +115,10 @@ export const collectionRepository = {
 
         // Remove metadata if exists
         try {
-            await targetDb
-                .delete(collections)
-                .where(eq(collections.physicalName, physicalName))
+            await targetDb.execute(sql`
+                DELETE FROM ${sql.identifier(metadataTableName)}
+                WHERE physical_name = ${physicalName}
+            `)
         } catch (e) {
             // ignore
         }

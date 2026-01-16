@@ -12,9 +12,10 @@ export const collectionService = {
 
         // 2. Generate Physical Name
         const physicalName = `${project.prefix}p${projectId}_${name}`.toLowerCase()
+        const collectionTableName = `${project.prefix}p${projectId}__collections`.toLowerCase()
 
         // 3. Create Physical Table
-        await collectionRepository.createPhysicalTable(project.name, name, physicalName, idType, type)
+        await collectionRepository.createPhysicalTable(project.name, collectionTableName, name, physicalName, idType, type)
 
         // 3.1 If type is 'auth', add default fields
         if (type === 'auth') {
@@ -51,7 +52,8 @@ export const collectionService = {
         const project = await projectRepository.findById(projectId)
         if (!project) throw new Error('Project not found')
 
-        return await collectionRepository.listPhysicalTables(project.name, project.prefix, projectId)
+        const collectionTableName = `${project.prefix}p${projectId}__collections`.toLowerCase()
+        return await collectionRepository.listPhysicalTables(project.name, collectionTableName, project.prefix, projectId)
     },
 
     getDetail: async (projectId: number, collectionName: string) => {
@@ -63,9 +65,10 @@ export const collectionService = {
 
         if (!exists) throw new Error('Collection not found')
 
+        const collectionTableName = `${project.prefix}p${projectId}__collections`.toLowerCase()
         const fields = await collectionRepository.getFields(project.name, physicalName)
         const indexes = await collectionRepository.getIndexes(project.name, physicalName)
-        const type = await collectionRepository.getCollectionType(project.name, physicalName)
+        const type = await collectionRepository.getCollectionType(project.name, collectionTableName, physicalName)
 
         return {
             meta: { projectId, name: collectionName, physicalName, type },
