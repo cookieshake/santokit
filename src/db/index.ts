@@ -1,29 +1,19 @@
 import * as schema from '@/db/schema.js';
 import { config } from '@/config/index.js';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import pg from 'pg';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 export type Database = NodePgDatabase<typeof schema>;
 
-let _db: Database | null = null;
+const { Pool } = pg;
 
-async function initDb(): Promise<Database> {
-    if (!config.db.url) {
-        throw new Error('DATABASE_URL environment variable is required');
-    }
-
-    const { drizzle } = await import('drizzle-orm/node-postgres');
-    const { Pool } = await import('pg');
-    const pool = new Pool({
-        connectionString: config.db.url,
-    });
-    return drizzle(pool, { schema }) as unknown as Database;
+if (!config.db.url) {
+    throw new Error('DATABASE_URL environment variable is required');
 }
 
-export const db = new Proxy({} as Database, {
-    get(_target, prop) {
-        if (!_db) {
-            _db = initDb() as any;
-        }
-        return (_db as any)[prop];
-    }
+const pool = new Pool({
+    connectionString: config.db.url,
 });
+
+export const db = drizzle(pool, { schema });

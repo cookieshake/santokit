@@ -38,7 +38,7 @@ export const accountService = {
             email: user.email,
             roles: user.roles,
             projectId: projectId,
-            exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
+            exp: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(), // 24h
         }
 
         const key = Buffer.from(config.auth.pasetoKey, 'hex')

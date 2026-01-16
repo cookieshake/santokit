@@ -119,6 +119,7 @@ app.use('/ui/*', async (c, next) => {
 
     const token = getCookie(c, CONSTANTS.AUTH.COOKIE_NAME)
     if (!token) {
+        console.log('[UI Auth] No token found in cookie, redirecting to login');
         return c.redirect('/ui/login')
     }
 
@@ -131,6 +132,7 @@ app.use('/ui/*', async (c, next) => {
         // Payload has { id, email, roles, projectId }
 
         if (!payload.roles || !(payload.roles as string[]).includes('admin')) {
+            console.log('[UI Auth] User is not admin', payload.roles);
             return c.redirect('/ui/login')
         }
 
@@ -147,6 +149,7 @@ app.use('/ui/*', async (c, next) => {
 
         await next()
     } catch (e) {
+        console.error('[UI Auth] Token verification failed:', e);
         return c.redirect('/ui/login')
     }
 })
