@@ -1,6 +1,6 @@
 import { db } from '@/db/index.js'
-import { projects } from '@/db/schema.js'
-import { eq } from 'drizzle-orm'
+import { projects, databases } from '@/db/schema.js'
+import { eq, and } from 'drizzle-orm'
 
 export const projectRepository = {
     create: async (data: typeof projects.$inferInsert) => {
@@ -21,5 +21,26 @@ export const projectRepository = {
     },
     delete: async (id: number) => {
         await db.delete(projects).where(eq(projects.id, id))
+    },
+
+    // Database Methods
+    createDatabase: async (data: typeof databases.$inferInsert) => {
+        const result = await db.insert(databases).values(data).returning()
+        return result[0]
+    },
+    findDatabasesByProjectId: async (projectId: number) => {
+        return await db.query.databases.findMany({
+            where: eq(databases.projectId, projectId)
+        })
+    },
+    findDatabaseById: async (id: number) => {
+        return await db.query.databases.findFirst({
+            where: eq(databases.id, id)
+        })
+    },
+    findDatabaseByName: async (projectId: number, name: string) => {
+        return await db.query.databases.findFirst({
+            where: and(eq(databases.projectId, projectId), eq(databases.name, name))
+        })
     }
 }

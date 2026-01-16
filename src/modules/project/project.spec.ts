@@ -55,7 +55,11 @@ describe('Project Service (Integration)', () => {
     const project = await projectService.create('New Project', 'postgresql://localhost/test')
     expect(project).toBeDefined()
     expect(project.name).toBe('New Project')
-    expect(project.connectionString).toBe('postgresql://localhost/test')
+
+    // Check Database
+    const databases = await projectRepository.findDatabasesByProjectId(project.id)
+    expect(databases.length).toBe(1)
+    expect(databases[0].connectionString).toBe('postgresql://localhost/test')
   })
 
   it('should list projects', async () => {
@@ -69,15 +73,15 @@ describe('Project Service (Integration)', () => {
 
   it('should have a connection string upon creation', async () => {
     const project = await projectService.create('To Check', 'postgresql://localhost/test')
-    expect(project.connectionString).toBe('postgresql://localhost/test')
+    const databases = await projectRepository.findDatabasesByProjectId(project.id)
+    expect(databases[0].connectionString).toBe('postgresql://localhost/test')
   })
 
   it('should create a project with correct prefix', async () => {
     const project = await projectService.create('Project with Prefix', 'postgresql://localhost/test', 'p_')
     expect(project).toBeDefined()
-    expect(project.prefix).toBe('p_')
 
-    const found = await projectService.getById(project.id)
-    expect(found?.prefix).toBe('p_')
+    const databases = await projectRepository.findDatabasesByProjectId(project.id)
+    expect(databases[0].prefix).toBe('p_')
   })
 })

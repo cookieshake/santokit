@@ -60,11 +60,16 @@ const api = new Hono<{ Variables: Variables }>()
 // 1. Auth Routes
 api.route('/auth', authController)
 
+// 1. Auth Routes
+api.route('/auth', authController)
+
 // 2. Collection Routes (Protected)
-api.use('/collections/*', authMiddleware)
-api.use('/collections/*', async (c, next) => {
-    const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)
+// Mount at new path with database in URL, Project in Header
+api.use('/databases/:databaseName/collections/*', authMiddleware)
+api.use('/databases/:databaseName/collections/*', async (c, next) => {
     const user = c.get('user')
+    // Project ID from Header
+    const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)
 
     if (!rawId) {
         return c.json({ error: `Missing Project ID Header (${CONSTANTS.HEADERS.PROJECT_ID})` }, 400);
@@ -75,34 +80,29 @@ api.use('/collections/*', async (c, next) => {
         if (!user || !user.roles.includes('admin')) {
             return c.json({ error: "Unauthorized System Access" }, 401);
         }
-        c.set('account', user); // Alias for legacy code
+        c.set('account', user);
         return next()
     }
 
-    // Standard Project (User Access)
+    // Standard Project
     const projectId = parseInt(rawId)
     if (isNaN(projectId)) return c.json({ error: "Invalid Project ID" }, 400);
 
-    // TODO: Implement proper project-level permissions if needed.
-    // For now, if logged in, you can access.
-    // Ideally check if user is member of project or is admin.
     if (!user) {
         return c.json({ error: "Unauthorized" }, 401);
     }
-
-    // Temporary: allow admins to access all projects, regular users only their own? 
-    // Since we don't have project_members table in schema yet (or we used to but it's not clear), 
-    // we'll allow access if authenticated for now.
 
     c.set('account', user);
     await next()
 })
 
-// Mount Collection Controller (which includes Data Controller)
-api.route('/collections', collectionController)
+// Mount Collection Controller
+// Matches /databases/:databaseName/collections
+api.route('/databases/:databaseName/collections', collectionController)
+
 api.get('/', (c) => c.text('Santoki Unified API'))
 
-// Project management routes (added if they were missing or implicitly handled)
+// Project management routes
 api.route('/projects', projectController)
 
 app.route('/v1', api)

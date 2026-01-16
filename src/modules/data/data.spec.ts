@@ -19,6 +19,7 @@ import { projectService } from '@/modules/project/project.service.js'
 import { sql } from 'drizzle-orm' // imported in test-utils? No.
 import { connectionManager } from '@/db/connection-manager.js'
 import { getTestConnectionString } from '@/tests/db-setup.js'
+import { projectRepository } from '@/modules/project/project.repository.js'
 
 describe('Data Module (Client) E2E', () => {
     let projectId: number
@@ -31,24 +32,24 @@ describe('Data Module (Client) E2E', () => {
         const project = await projectService.create('Client App', connectionString, '1_')
         projectId = project.id
 
+        const databases = await projectRepository.findDatabasesByProjectId(projectId)
+        const database = databases[0]
+
         // Create Collection Table in Project DB
-        const projectDb = await connectionManager.getConnection(project.name)
+        const projectDb = await connectionManager.getConnection(database.id)
         if (!projectDb) throw new Error('No project db')
 
         // Simple table creation for 'articles' with 'title'
         await projectDb.execute(sql.raw(`
-            CREATE TABLE IF NOT EXISTS "${project.prefix}p${projectId}_${collectionName}" (
+            CREATE TABLE IF NOT EXISTS "${database.prefix}p${projectId}_${collectionName}" (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL
             )
         `))
     })
 
-    describe('POST /v1/collections/:projectId/:collectionName/records', () => {
+    describe('POST /v1/databases/default/collections/:collectionName/records', () => {
         it('should insert data into collection', async () => {
-            // Need to be authenticated as a user of the project?
-
-
             // Register a client user and login
             await request(clientApp, `/v1/auth/register`, {
                 method: 'POST',
@@ -63,7 +64,9 @@ describe('Data Module (Client) E2E', () => {
             })
             const cookie = loginRes.headers.get('set-cookie')
 
-            const res = await request(clientApp, '/v1/collections/' + collectionName + '/records', {
+            // Updated URL structure with Header
+            const url = `/v1/databases/default/collections/${collectionName}/records`
+            const res = await request(clientApp, url, {
                 method: 'POST',
                 body: JSON.stringify({ title: 'Hello World' }),
                 headers: {
@@ -78,12 +81,11 @@ describe('Data Module (Client) E2E', () => {
             }
             expect(res.status).toBe(200)
             const body = await res.json()
-            // expect(body.title).toBe('Hello World')
             expect(body.id).toBeDefined()
         })
     })
 
-    describe('GET /v1/collections/:projectId/:collectionName/records', () => {
+    describe('GET /v1/databases/default/collections/:collectionName/records', () => {
         it('should list data', async () => {
             // Auth
             await request(clientApp, `/v1/auth/register`, {
@@ -99,7 +101,8 @@ describe('Data Module (Client) E2E', () => {
             const cookie = loginRes.headers.get('set-cookie')
 
             // Insert data
-            await request(clientApp, '/v1/collections/' + collectionName + '/records', {
+            const url = `/v1/databases/default/collections/${collectionName}/records`
+            await request(clientApp, url, {
                 method: 'POST',
                 body: JSON.stringify({ title: 'Post 1' }),
                 headers: {
@@ -110,7 +113,7 @@ describe('Data Module (Client) E2E', () => {
             })
 
             // List
-            const res = await request(clientApp, '/v1/collections/' + collectionName + '/records', {
+            const res = await request(clientApp, url, {
                 headers: {
                     'Cookie': cookie || '',
                     'x-project-id': String(projectId)

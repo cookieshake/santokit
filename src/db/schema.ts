@@ -10,6 +10,14 @@ import { pgTable, serial, text, timestamp, boolean, integer, unique } from 'driz
 export const projects = pgTable('projects', {
     id: serial('id').primaryKey(),
     name: text('name').notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Databases (Project Databases)
+export const databases = pgTable('databases', {
+    id: serial('id').primaryKey(),
+    projectId: integer('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
     connectionString: text('connection_string').notNull(),
     prefix: text('prefix').notNull().default('santoki_'),
     createdAt: timestamp('created_at').defaultNow(),

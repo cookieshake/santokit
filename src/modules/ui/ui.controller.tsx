@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { projectService } from '@/modules/project/project.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { dataService } from '@/modules/data/data.service.js'
+import { projectRepository } from '@/modules/project/project.repository.js'
 import { db } from '@/db/index.js'
 import { sql } from 'drizzle-orm'
 import { Login } from './pages/login.js'
@@ -38,7 +39,18 @@ app.get('/projects/:id', async (c) => {
     const project = await projectService.getById(projectId)
     if (!project) return c.notFound()
 
-    const collections = await collectionService.listByProject(projectId)
+    let collections: any[] = []
+    try {
+        const databases = await projectRepository.findDatabasesByProjectId(projectId)
+        if (databases.length > 0) {
+            // For UI simplicity, just load from the first database for now
+            // or we might need to update UI to support multiple DBs later
+            collections = await collectionService.listByDatabase(databases[0].id)
+        }
+    } catch (e) {
+        console.error('Failed to load collections', e)
+    }
+
     const projects = await projectService.list()
     const account = c.get('account')
 
@@ -51,11 +63,15 @@ app.get('/projects/:id/collections/:colName', async (c) => {
     const account = c.get('account')
 
     try {
-        const detail = await collectionService.getDetail(projectId, collectionName)
-        const rows = (await dataService.findAll(projectId, collectionName)) as any[]
+        const databases = await projectRepository.findDatabasesByProjectId(projectId)
+        if (databases.length === 0) throw new Error('No databases found')
+        const dbId = databases[0].id
+
+        const detail = await collectionService.getDetail(dbId, collectionName)
+        const rows = (await dataService.findAll(dbId, collectionName)) as any[]
         const projects = await projectService.list()
 
-        const collections = await collectionService.listByProject(projectId)
+        const collections = await collectionService.listByDatabase(dbId)
 
         return c.html(
             <CollectionDetail
@@ -72,7 +88,5 @@ app.get('/projects/:id/collections/:colName', async (c) => {
         return c.html(<Layout title="Error" active="projects" account={c.get('account')}><div class="notification is-danger">Error: {String(e)}</div></Layout>)
     }
 })
-
-
 
 export default app

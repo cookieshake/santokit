@@ -9,6 +9,15 @@ export const Layout = (props: { title: string; children: any; active: string; ac
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css" />
             <script dangerouslySetInnerHTML={{
                 __html: `
+                // Initialize theme immediately to prevent flash
+                const savedTheme = localStorage.getItem('theme');
+                const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                if (savedTheme === 'dark' || (!savedTheme && systemDark)) {
+                  document.documentElement.setAttribute('data-theme', 'dark');
+                } else {
+                  document.documentElement.setAttribute('data-theme', 'light');
+                }
+
                 let sqlConfirmResolve = null;
                 window.executeWithSqlConfirmation = async (url, options) => {
                     try {
@@ -89,6 +98,25 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                         });
                     });
                 });
+                
+                function toggleTheme() {
+                    const current = document.documentElement.getAttribute('data-theme');
+                    const next = current === 'dark' ? 'light' : 'dark';
+                    document.documentElement.setAttribute('data-theme', next);
+                    localStorage.setItem('theme', next);
+                    updateThemeIcon();
+                }
+                window.toggleTheme = toggleTheme;
+
+                function updateThemeIcon() {
+                    const current = document.documentElement.getAttribute('data-theme');
+                    const icon = document.getElementById('theme-toggle-icon');
+                    if (icon) {
+                        icon.innerText = current === 'dark' ? '☀️' : '🌙';
+                    }
+                }
+
+                window.addEventListener('DOMContentLoaded', updateThemeIcon);
             `}} />
         </head>
         <body>
@@ -114,12 +142,61 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                 </div>
             </div>
 
+            <nav class="navbar has-shadow" role="navigation" aria-label="main navigation">
+                <div class="navbar-brand">
+                    <a class="navbar-item" href="/ui/projects">
+                        <span class="is-size-4 has-text-link has-text-weight-bold">Santoki</span>
+                    </a>
+                    {props.projects && props.projects.length > 0 && (
+                        <div class="navbar-item">
+                            <div class="dropdown" id="project-dropdown">
+                                <div class="dropdown-trigger">
+                                    <button class="button" onclick="toggleDropdown('project-dropdown')">
+                                        <span>
+                                            {props.currentProjectId
+                                                ? props.projects.find(p => p.id === props.currentProjectId)?.name || 'Select Project'
+                                                : 'Select Project'}
+                                        </span>
+                                        <span class="icon is-small">
+                                            <i>▼</i>
+                                        </span>
+                                    </button>
+                                </div>
+                                <div class="dropdown-menu">
+                                    <div class="dropdown-content">
+                                        {props.projects.map(project => (
+                                            <a
+                                                href={`/ui/projects/${project.id}`}
+                                                class={`dropdown-item ${props.currentProjectId === project.id ? 'is-active' : ''}`}
+                                            >
+                                                <p class="has-text-weight-semibold">{project.name}</p>
+                                                <p class="is-size-7 has-text-grey">ID: {project.id}</p>
+                                            </a>
+                                        ))}
+                                        <hr class="dropdown-divider" />
+                                        <a href="/ui/projects" class="dropdown-item">
+                                            Manage All Projects
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <div class="navbar-end">
+                    <div class="navbar-item">
+                        <button class="button is-ghost" onclick="toggleTheme()" title="Toggle Dark Mode">
+                            <span class="icon is-medium" id="theme-toggle-icon">
+                                🌙
+                            </span>
+                        </button>
+                    </div>
+                </div>
+            </nav>
+
             <div class="columns is-gapless">
                 <div class="column is-2">
-                    <aside class="menu section">
-                        <p class="menu-label is-size-4 has-text-link">
-                            Santoki
-                        </p>
+                    <aside class="menu section pt-4">
                         <ul class="menu-list">
                             {props.currentProjectId ? (
                                 <>
@@ -162,45 +239,6 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                     </aside>
                 </div>
                 <div class="column">
-                    <nav class="navbar">
-                        <div class="navbar-brand">
-                            {props.projects && props.projects.length > 0 && (
-                                <div class="navbar-item">
-                                    <div class="dropdown" id="project-dropdown">
-                                        <div class="dropdown-trigger">
-                                            <button class="button" onclick="toggleDropdown('project-dropdown')">
-                                                <span>
-                                                    {props.currentProjectId
-                                                        ? props.projects.find(p => p.id === props.currentProjectId)?.name || 'Select Project'
-                                                        : 'Select Project'}
-                                                </span>
-                                                <span class="icon is-small">
-                                                    <i>▼</i>
-                                                </span>
-                                            </button>
-                                        </div>
-                                        <div class="dropdown-menu">
-                                            <div class="dropdown-content">
-                                                {props.projects.map(project => (
-                                                    <a
-                                                        href={`/ui/projects/${project.id}`}
-                                                        class={`dropdown-item ${props.currentProjectId === project.id ? 'is-active' : ''}`}
-                                                    >
-                                                        <p class="has-text-weight-semibold">{project.name}</p>
-                                                        <p class="is-size-7 has-text-grey">ID: {project.id}</p>
-                                                    </a>
-                                                ))}
-                                                <hr class="dropdown-divider" />
-                                                <a href="/ui/projects" class="dropdown-item">
-                                                    Manage All Projects
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </nav>
                     <section class="section">
                         {props.children}
                     </section>

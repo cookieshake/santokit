@@ -8,29 +8,30 @@ import { connectionManager } from '@/db/connection-manager.js'
 export const accountRepository = {
     // Helper to get DB and Table Name
     async getContext(projectId: number | string) {
-        let dataSourceName = ''
-        let prefix = ''
         let numericId = 0
+        let databaseId: number
+        let prefix = ''
 
         if (projectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
-            const sysProject = (await projectRepository.findAll()).find(p => p.name === CONSTANTS.PROJECTS.SYSTEM_ID)
+            const projects = await projectRepository.findAll()
+            const sysProject = projects.find(p => p.name === CONSTANTS.PROJECTS.SYSTEM_ID)
             if (!sysProject) throw new Error('System project not found')
-            dataSourceName = sysProject.name
-            prefix = sysProject.prefix
             numericId = sysProject.id
         } else {
-            const project = await projectRepository.findById(projectId as number)
-            if (!project) throw new Error('Project not found')
-            dataSourceName = project.name
-            prefix = project.prefix
-            numericId = project.id
+            numericId = Number(projectId)
         }
 
-        const targetDb = await connectionManager.getConnection(dataSourceName)
-        if (!targetDb) throw new Error('Could not connect to data source')
+        const databases = await projectRepository.findDatabasesByProjectId(numericId)
+        if (databases.length === 0) throw new Error(`No databases found for project ${projectId}`)
+        const database = databases[0]
+        databaseId = database.id
+        prefix = database.prefix
+
+        const targetDb = await connectionManager.getConnection(databaseId)
+        if (!targetDb) throw new Error('Could not connect to database')
 
         const collectionTableName = `${prefix}p${numericId}__collections`.toLowerCase()
-        const tables = await collectionRepository.listPhysicalTables(dataSourceName, collectionTableName, prefix, numericId)
+        const tables = await collectionRepository.listPhysicalTables(databaseId, collectionTableName, prefix, numericId)
         const authTable = tables.find(t => t.type === 'auth')
 
         if (!authTable) {
