@@ -161,7 +161,7 @@ export const CollectionDetail = (props: {
                     errorDiv.style.display = 'none';
 
                     try {
-                        const res = await fetch('/v1/projects/collections/' + collectionName + '/fields', {
+                        const res = await window.executeWithSqlConfirmation('/v1/projects/collections/' + collectionName + '/fields', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -183,9 +183,8 @@ export const CollectionDetail = (props: {
                 });
 
                 async function deleteField(fieldName) {
-                    if (!confirm('Are you sure you want to delete this field?')) return;
                     try {
-                        const res = await fetch('/v1/projects/collections/' + collectionName + '/fields/' + fieldName, {
+                        const res = await window.executeWithSqlConfirmation('/v1/projects/collections/' + collectionName + '/fields/' + fieldName, {
                             method: 'DELETE',
                             headers: { 'x-project-id': String(projectId) }
                         });

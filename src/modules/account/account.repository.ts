@@ -29,7 +29,8 @@ export const accountRepository = {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
-        const tables = await collectionRepository.listPhysicalTables(dataSourceName, prefix, numericId)
+        const collectionTableName = `${prefix}p${numericId}__collections`.toLowerCase()
+        const tables = await collectionRepository.listPhysicalTables(dataSourceName, collectionTableName, prefix, numericId)
         const authTable = tables.find(t => t.type === 'auth')
 
         if (!authTable) {

@@ -70,7 +70,7 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                 errorDiv.style.display = 'none';
 
                 try {
-                    const res = await fetch('/v1/projects/collections', {
+                    const res = await window.executeWithSqlConfirmation('/v1/projects/collections', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

@@ -9,16 +9,73 @@ export const Layout = (props: { title: string; children: any; active: string; ac
             <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css" />
             <script dangerouslySetInnerHTML={{
                 __html: `
-                function showModal(id) {
-                    document.getElementById(id)?.classList.add('is-active');
-                }
-                function hideModal(id) {
-                    document.getElementById(id)?.classList.remove('is-active');
-                }
-                function toggleDropdown(id) {
-                    document.getElementById(id)?.classList.toggle('is-active');
-                }
+                let sqlConfirmResolve = null;
+                window.executeWithSqlConfirmation = async (url, options) => {
+                    try {
+                        // 1. Preview
+                        const sep = url.includes('?') ? '&' : '?';
+                        const previewUrl = url + sep + 'preview=true';
+                        // Clone options body because it might be consumed? fetch body is not consumed but good practice.
+                        // Actually fetch body if string is fine.
+                        const previewRes = await fetch(previewUrl, options);
+                        
+                        if (!previewRes.ok) {
+                            const err = await previewRes.json();
+                            alert(err.message || err.error || 'Error getting preview');
+                            throw new Error('Preview failed');
+                        }
+                        
+                        const previewData = await previewRes.json();
+                        
+                        // 2. Show Modal
+                        const sqlContent = document.getElementById('sql-preview-content');
+                        if (sqlContent) sqlContent.textContent = previewData.sql || '-- No SQL generated or preview not supported --';
+                        showModal('sql-preview-modal');
+
+                        // 3. Wait for confirmation
+                        return new Promise((resolve, reject) => {
+                            sqlConfirmResolve = async () => {
+                                try {
+                                    hideModal('sql-preview-modal');
+                                    // 4. Execute Real
+                                    const res = await fetch(url, options);
+                                    resolve(res);
+                                } catch (e) {
+                                    reject(e);
+                                }
+                            };
+                            // Also handle cancel?
+                            // For now simple.
+                        });
+                    } catch (e) {
+                        console.error(e);
+                        throw e;
+                    }
+                };
+
                 document.addEventListener('DOMContentLoaded', () => {
+                    const confirmBtn = document.getElementById('sql-confirm-btn');
+                    if (confirmBtn) {
+                        confirmBtn.addEventListener('click', () => {
+                            if (sqlConfirmResolve) sqlConfirmResolve();
+                        });
+                    }
+
+                    function showModal(id) {
+                        document.getElementById(id)?.classList.add('is-active');
+                    }
+                    window.showModal = showModal; // Expose globally
+
+                    function hideModal(id) {
+                        document.getElementById(id)?.classList.remove('is-active');
+                    }
+                    window.hideModal = hideModal; // Expose globally
+
+                    function toggleDropdown(id) {
+                        document.getElementById(id)?.classList.toggle('is-active');
+                    }
+                    window.toggleDropdown = toggleDropdown; 
+
                     // Close dropdowns when clicking outside
                     document.addEventListener('click', (e) => {
                         if (!e.target.closest('.dropdown')) {
@@ -26,7 +83,7 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                         }
                     });
                     // Close modals
-                    document.querySelectorAll('.modal-background, .modal-close, .delete').forEach(el => {
+                    document.querySelectorAll('.modal-background, .modal-close, .delete, .modal-cancel').forEach(el => {
                         el.addEventListener('click', () => {
                             el.closest('.modal')?.classList.remove('is-active');
                         });
@@ -35,6 +92,28 @@ export const Layout = (props: { title: string; children: any; active: string; ac
             `}} />
         </head>
         <body>
+            <div id="sql-preview-modal" class="modal" style="z-index: 9999;">
+                <div class="modal-background"></div>
+                <div class="modal-card" style="width: 800px; max-width: 90vw;">
+                    <header class="modal-card-head has-background-warning-light">
+                        <p class="modal-card-title">⚠️ Confirm SQL Execution</p>
+                        <button class="delete" aria-label="close"></button>
+                    </header>
+                    <section class="modal-card-body">
+                        <div class="notification is-warning is-light">
+                            The following SQL statements will be executed against the database. Please review them carefully.
+                        </div>
+                        <div class="control">
+                            <textarea id="sql-preview-content" class="textarea is-family-monospace" readonly rows={10} style="white-space: pre;"></textarea>
+                        </div>
+                    </section>
+                    <footer class="modal-card-foot">
+                        <button id="sql-confirm-btn" class="button is-danger">Execute SQL</button>
+                        <button class="button modal-cancel">Cancel</button>
+                    </footer>
+                </div>
+            </div>
+
             <div class="columns is-gapless">
                 <div class="column is-2">
                     <aside class="menu section">

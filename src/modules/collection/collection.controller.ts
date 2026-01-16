@@ -19,7 +19,8 @@ app.get('/', async (c) => {
 app.post('/', zValidator('json', CreateCollectionSchema), async (c) => {
     const projectId = parseInt(c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!)
     const { name, idType, type } = c.req.valid('json')
-    const result = await collectionService.create(projectId, name, idType as 'serial' | 'uuid', type as 'base' | 'auth')
+    const dryRun = c.req.query('preview') === 'true'
+    const result = await collectionService.create(projectId, name, idType as 'serial' | 'uuid', type as 'base' | 'auth', dryRun)
     return c.json(result)
 })
 
@@ -36,7 +37,9 @@ app.post('/:collectionName/fields', zValidator('json', AddFieldSchema), async (c
     const projectId = parseInt(c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!)
     const collectionName = c.req.param('collectionName')!
     const { name, type, isNullable } = c.req.valid('json')
-    await collectionService.addField(projectId, collectionName, name, type, !!isNullable)
+    const dryRun = c.req.query('preview') === 'true'
+    const result = await collectionService.addField(projectId, collectionName, name, type, !!isNullable, dryRun)
+    if (dryRun) return c.json(result)
     return c.json({ message: `Field ${name} added` })
 })
 
@@ -46,7 +49,9 @@ app.put('/:collectionName/fields/:fieldName', zValidator('json', RenameFieldSche
     const collectionName = c.req.param('collectionName')!
     const oldName = c.req.param('fieldName')!
     const { newName } = c.req.valid('json')
-    await collectionService.renameField(projectId, collectionName, oldName, newName)
+    const dryRun = c.req.query('preview') === 'true'
+    const result = await collectionService.renameField(projectId, collectionName, oldName, newName, dryRun)
+    if (dryRun) return c.json(result)
     return c.json({ message: `Field renamed` })
 })
 
@@ -55,7 +60,9 @@ app.delete('/:collectionName/fields/:fieldName', async (c) => {
     const projectId = parseInt(c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!)
     const collectionName = c.req.param('collectionName')!
     const fieldName = c.req.param('fieldName')!
-    await collectionService.removeField(projectId, collectionName, fieldName)
+    const dryRun = c.req.query('preview') === 'true'
+    const result = await collectionService.removeField(projectId, collectionName, fieldName, dryRun)
+    if (dryRun) return c.json(result)
     return c.json({ message: `Field deleted` })
 })
 
@@ -64,8 +71,11 @@ app.post('/:collectionName/indexes', zValidator('json', CreateIndexSchema), asyn
     const projectId = parseInt(c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!)
     const collectionName = c.req.param('collectionName')!
     const { indexName, fields, unique } = c.req.valid('json')
-    const fullIndexName = await collectionService.createIndex(projectId, collectionName, indexName, fields, !!unique)
-    return c.json({ message: `Index ${fullIndexName} created` })
+    const dryRun = c.req.query('preview') === 'true'
+    const result = await collectionService.createIndex(projectId, collectionName, indexName, fields, !!unique, dryRun)
+    if (dryRun) return c.json(result)
+    // result is fullIndexName (string) if not dryRun
+    return c.json({ message: `Index ${result} created` })
 })
 
 // Delete Index
@@ -73,8 +83,10 @@ app.delete('/:collectionName/indexes/:indexName', async (c) => {
     const projectId = parseInt(c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!)
     const collectionName = c.req.param('collectionName')!
     const indexName = c.req.param('indexName')!
-    const fullIndexName = await collectionService.removeIndex(projectId, collectionName, indexName)
-    return c.json({ message: `Index ${fullIndexName} deleted` })
+    const dryRun = c.req.query('preview') === 'true'
+    const result = await collectionService.removeIndex(projectId, collectionName, indexName, dryRun)
+    if (dryRun) return c.json(result)
+    return c.json({ message: `Index ${result} deleted` })
 })
 
 import dataController from '@/modules/data/data.controller.js'

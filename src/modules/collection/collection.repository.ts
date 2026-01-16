@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm'
+import { previewSql } from './sql-preview.js'
 
 import { connectionManager } from '@/db/connection-manager.js'
 
@@ -86,18 +87,26 @@ export const collectionRepository = {
 
     // Physical Table Operations
     // Physical Table Operations
-    createPhysicalTable: async (dataSourceName: string, metadataTableName: string, name: string, physicalName: string, idType: 'serial' | 'uuid' = 'serial', type: 'base' | 'auth' = 'base') => {
+    createPhysicalTable: async (dataSourceName: string, metadataTableName: string, name: string, physicalName: string, idType: 'serial' | 'uuid' = 'serial', type: 'base' | 'auth' = 'base', dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
         // Ensure metadata table
-        await collectionRepository.ensureMetadataTable(dataSourceName, metadataTableName)
+        if (!dryRun) {
+            await collectionRepository.ensureMetadataTable(dataSourceName, metadataTableName)
+        }
 
         const idCol = idType === 'uuid'
             ? 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
             : 'id SERIAL PRIMARY KEY'
 
-        await targetDb.execute(sql`CREATE TABLE ${sql.identifier(physicalName)} (${sql.raw(idCol)}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`)
+        const createTableSql = sql`CREATE TABLE ${sql.identifier(physicalName)} (${sql.raw(idCol)}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
+
+        if (dryRun) {
+            return previewSql(createTableSql)
+        }
+
+        await targetDb.execute(createTableSql)
 
         // Insert metadata
         await targetDb.execute(sql`
@@ -106,12 +115,18 @@ export const collectionRepository = {
         `)
     },
 
-    deletePhysicalTable: async (dataSourceName: string, metadataTableName: string, physicalName: string) => {
+    deletePhysicalTable: async (dataSourceName: string, metadataTableName: string, physicalName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
+        const dropTableSql = sql`DROP TABLE IF EXISTS ${sql.identifier(physicalName)}`
+
+        if (dryRun) {
+            return previewSql(dropTableSql)
+        }
+
         // Drop table
-        await targetDb.execute(sql`DROP TABLE IF EXISTS ${sql.identifier(physicalName)}`)
+        await targetDb.execute(dropTableSql)
 
         // Remove metadata if exists
         try {
@@ -135,7 +150,7 @@ export const collectionRepository = {
         `)).rows
     },
 
-    addField: async (dataSourceName: string, physicalName: string, fieldName: string, type: string, isNullable: boolean) => {
+    addField: async (dataSourceName: string, physicalName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -144,19 +159,31 @@ export const collectionRepository = {
         if (type === 'boolean') sqlType = 'BOOLEAN'
         let sqlNullable = isNullable ? 'NULL' : 'NOT NULL'
 
-        await targetDb.execute(sql`ALTER TABLE ${sql.identifier(physicalName)} ADD COLUMN ${sql.identifier(fieldName)} ${sql.raw(sqlType)} ${sql.raw(sqlNullable)}`)
+        const query = sql`ALTER TABLE ${sql.identifier(physicalName)} ADD COLUMN ${sql.identifier(fieldName)} ${sql.raw(sqlType)} ${sql.raw(sqlNullable)}`
+
+        if (dryRun) return previewSql(query)
+
+        await targetDb.execute(query)
     },
 
-    removeField: async (dataSourceName: string, physicalName: string, fieldName: string) => {
+    removeField: async (dataSourceName: string, physicalName: string, fieldName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        await targetDb.execute(sql`ALTER TABLE ${sql.identifier(physicalName)} DROP COLUMN ${sql.identifier(fieldName)}`)
+
+        const query = sql`ALTER TABLE ${sql.identifier(physicalName)} DROP COLUMN ${sql.identifier(fieldName)}`
+        if (dryRun) return previewSql(query)
+
+        await targetDb.execute(query)
     },
 
-    renameField: async (dataSourceName: string, physicalName: string, oldName: string, newName: string) => {
+    renameField: async (dataSourceName: string, physicalName: string, oldName: string, newName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        await targetDb.execute(sql`ALTER TABLE ${sql.identifier(physicalName)} RENAME COLUMN ${sql.identifier(oldName)} TO ${sql.identifier(newName)}`)
+
+        const query = sql`ALTER TABLE ${sql.identifier(physicalName)} RENAME COLUMN ${sql.identifier(oldName)} TO ${sql.identifier(newName)}`
+        if (dryRun) return previewSql(query)
+
+        await targetDb.execute(query)
     },
 
     // Index Operations
@@ -170,7 +197,7 @@ export const collectionRepository = {
         `)).rows
     },
 
-    createIndex: async (dataSourceName: string, physicalName: string, indexName: string, columns: string[], unique: boolean) => {
+    createIndex: async (dataSourceName: string, physicalName: string, indexName: string, columns: string[], unique: boolean, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -179,12 +206,20 @@ export const collectionRepository = {
         // Drizzle sql tag does not automatically join array of identifiers with comma this way easily, but we can map
         const colsSql = sql.join(columns.map(c => sql.identifier(c)), sql`, `)
 
-        await targetDb.execute(sql`CREATE ${sql.raw(uniqueStr)} INDEX ${sql.identifier(indexName)} ON ${sql.identifier(physicalName)} (${colsSql})`)
+        const query = sql`CREATE ${sql.raw(uniqueStr)} INDEX ${sql.identifier(indexName)} ON ${sql.identifier(physicalName)} (${colsSql})`
+
+        if (dryRun) return previewSql(query)
+
+        await targetDb.execute(query)
     },
 
-    removeIndex: async (dataSourceName: string, indexName: string) => {
+    removeIndex: async (dataSourceName: string, indexName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        await targetDb.execute(sql`DROP INDEX ${sql.identifier(indexName)}`)
+
+        const query = sql`DROP INDEX ${sql.identifier(indexName)}`
+        if (dryRun) return previewSql(query)
+
+        await targetDb.execute(query)
     }
 }
