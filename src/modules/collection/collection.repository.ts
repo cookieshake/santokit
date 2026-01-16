@@ -1,4 +1,5 @@
-import { sql } from 'drizzle-orm'
+import { sql, eq, like, and } from 'drizzle-orm'
+import { collections } from './collection.schema.js'
 import { connectionManager } from '@/db/connection-manager.js'
 
 export const collectionRepository = {
@@ -9,8 +10,7 @@ export const collectionRepository = {
         if (!targetDb) throw new Error('Could not connect to data source')
 
         // Check if table exists to avoid error logs or unnecessary calls
-        // But CREATE TABLE IF NOT EXISTS is standard.
-        await targetDb.execute(sql.raw(`
+        await targetDb.execute(sql`
             CREATE TABLE IF NOT EXISTS "_collections" (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -19,7 +19,7 @@ export const collectionRepository = {
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             )
-        `))
+        `)
     },
 
     // Introspection Operations
@@ -27,29 +27,25 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect to data source')
 
-        // Ensure metadata table exists (just in case)
-        // In a read operation, maybe we shouldn't create it? 
-        // If it doesn't exist, it means no collections created yet via new system.
-        // We can check existence or just try query.
-        // Let's try query and catch error if strictly needed, or just assume it exists if we created project properly.
-        // But for safety/lazy init:
-        const check = await targetDb.execute(sql.raw(`SELECT to_regclass('public._collections')`))
+        // Check if metadata table exists
+        const check = await targetDb.execute(sql`SELECT to_regclass('public._collections')`)
         if (!check.rows[0].to_regclass) {
             return []
         }
 
-        const query = sql.raw(`
-            SELECT name, physical_name, type
-            FROM "_collections"
-            WHERE physical_name LIKE '${prefix}p${projectId}_%'
-        `)
+        const rows = await targetDb
+            .select({
+                name: collections.name,
+                physicalName: collections.physicalName,
+                type: collections.type
+            })
+            .from(collections)
+            .where(like(collections.physicalName, `${prefix}p${projectId}_%`))
 
-        const rows = (await targetDb.execute(query)).rows
-
-        return rows.map((row: any) => ({
+        return rows.map(row => ({
             projectId,
             name: row.name,
-            physicalName: row.physical_name,
+            physicalName: row.physicalName,
             type: row.type
         }))
     },
@@ -58,13 +54,13 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) return false
 
-        const result = await targetDb.execute(sql.raw(`
+        const result = await targetDb.execute(sql`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
                 WHERE table_schema = 'public' 
-                AND table_name = '${physicalName}'
+                AND table_name = ${physicalName}
             )
-        `))
+        `)
 
         return result.rows[0].exists === true
     },
@@ -74,16 +70,17 @@ export const collectionRepository = {
         if (!targetDb) return 'base'
 
         try {
-            const result = await targetDb.execute(sql.raw(`
-                SELECT type FROM "_collections" WHERE physical_name = '${physicalName}'
-            `))
+            const result = await targetDb
+                .select({ type: collections.type })
+                .from(collections)
+                .where(eq(collections.physicalName, physicalName))
+                .limit(1)
 
-            if (result.rows.length > 0) {
-                return result.rows[0].type
+            if (result.length > 0) {
+                return result[0].type
             }
             return 'base'
         } catch (e) {
-            // If table doesn't exist etc
             return 'base'
         }
     },
@@ -100,13 +97,14 @@ export const collectionRepository = {
             ? 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
             : 'id SERIAL PRIMARY KEY'
 
-        await targetDb.execute(sql.raw(`CREATE TABLE "${physicalName}" (${idCol}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`))
+        await targetDb.execute(sql`CREATE TABLE ${sql.identifier(physicalName)} (${sql.raw(idCol)}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`)
 
         // Insert metadata
-        await targetDb.execute(sql.raw(`
-            INSERT INTO "_collections" (name, physical_name, type)
-            VALUES ('${name}', '${physicalName}', '${type}')
-        `))
+        await targetDb.insert(collections).values({
+            name,
+            physicalName,
+            type
+        })
     },
 
     deletePhysicalTable: async (dataSourceName: string, physicalName: string) => {
@@ -114,16 +112,15 @@ export const collectionRepository = {
         if (!targetDb) throw new Error('Could not connect to data source')
 
         // Drop table
-        await targetDb.execute(sql.raw(`DROP TABLE IF EXISTS "${physicalName}"`))
+        await targetDb.execute(sql`DROP TABLE IF EXISTS ${sql.identifier(physicalName)}`)
 
         // Remove metadata if exists
-        // Check if _collections exists first? ensureMetadataTable checks might be overkill here but safe?
-        // Let's just try delete, if table doesn't exist it might throw.
-        // Better to check relation exists or just wrap in try-catch.
         try {
-            await targetDb.execute(sql.raw(`DELETE FROM "_collections" WHERE physical_name = '${physicalName}'`))
+            await targetDb
+                .delete(collections)
+                .where(eq(collections.physicalName, physicalName))
         } catch (e) {
-            // ignore if _collections doesn't exist
+            // ignore
         }
     },
 
@@ -131,11 +128,11 @@ export const collectionRepository = {
     getFields: async (dataSourceName: string, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        return (await targetDb.execute(sql.raw(`
+        return (await targetDb.execute(sql`
             SELECT column_name, data_type, is_nullable
             FROM information_schema.columns 
-            WHERE table_name = '${physicalName}'
-        `))).rows
+            WHERE table_name = ${physicalName}
+        `)).rows
     },
 
     addField: async (dataSourceName: string, physicalName: string, fieldName: string, type: string, isNullable: boolean) => {
@@ -147,45 +144,47 @@ export const collectionRepository = {
         if (type === 'boolean') sqlType = 'BOOLEAN'
         let sqlNullable = isNullable ? 'NULL' : 'NOT NULL'
 
-        await targetDb.execute(sql.raw(`ALTER TABLE "${physicalName}" ADD COLUMN "${fieldName}" ${sqlType} ${sqlNullable}`))
+        await targetDb.execute(sql`ALTER TABLE ${sql.identifier(physicalName)} ADD COLUMN ${sql.identifier(fieldName)} ${sql.raw(sqlType)} ${sql.raw(sqlNullable)}`)
     },
 
     removeField: async (dataSourceName: string, physicalName: string, fieldName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        await targetDb.execute(sql.raw(`ALTER TABLE "${physicalName}" DROP COLUMN "${fieldName}"`))
+        await targetDb.execute(sql`ALTER TABLE ${sql.identifier(physicalName)} DROP COLUMN ${sql.identifier(fieldName)}`)
     },
 
     renameField: async (dataSourceName: string, physicalName: string, oldName: string, newName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        await targetDb.execute(sql.raw(`ALTER TABLE "${physicalName}" RENAME COLUMN "${oldName}" TO "${newName}"`))
+        await targetDb.execute(sql`ALTER TABLE ${sql.identifier(physicalName)} RENAME COLUMN ${sql.identifier(oldName)} TO ${sql.identifier(newName)}`)
     },
 
     // Index Operations
     getIndexes: async (dataSourceName: string, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        return (await targetDb.execute(sql.raw(`
+        return (await targetDb.execute(sql`
             SELECT indexname, indexdef 
             FROM pg_indexes 
-            WHERE tablename = '${physicalName}'
-        `))).rows
+            WHERE tablename = ${physicalName}
+        `)).rows
     },
 
     createIndex: async (dataSourceName: string, physicalName: string, indexName: string, columns: string[], unique: boolean) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
 
-        const columnsStr = columns.map(f => `"${f}"`).join(', ')
         const uniqueStr = unique ? 'UNIQUE' : ''
 
-        await targetDb.execute(sql.raw(`CREATE ${uniqueStr} INDEX "${indexName}" ON "${physicalName}" (${columnsStr})`))
+        // Drizzle sql tag does not automatically join array of identifiers with comma this way easily, but we can map
+        const colsSql = sql.join(columns.map(c => sql.identifier(c)), sql`, `)
+
+        await targetDb.execute(sql`CREATE ${sql.raw(uniqueStr)} INDEX ${sql.identifier(indexName)} ON ${sql.identifier(physicalName)} (${colsSql})`)
     },
 
     removeIndex: async (dataSourceName: string, indexName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceName)
         if (!targetDb) throw new Error('Could not connect')
-        await targetDb.execute(sql.raw(`DROP INDEX "${indexName}"`))
+        await targetDb.execute(sql`DROP INDEX ${sql.identifier(indexName)}`)
     }
 }

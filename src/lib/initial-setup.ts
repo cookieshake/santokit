@@ -12,8 +12,8 @@ export async function ensureAdminExists() {
     try {
         // Check if any admin exists
         // Ensure system accounts table exists
-        const { ACCOUNTS_TABLE_SQL } = await import('../modules/account/account-schema.js')
-        await db.execute(sql.raw(ACCOUNTS_TABLE_SQL))
+        // const { ACCOUNTS_TABLE_SQL } = await import('../modules/account/account-schema.js')
+        // await db.execute(sql.raw(ACCOUNTS_TABLE_SQL))
 
         // Check if any admin exists using raw SQL since accounts is not in schema anymore
         // or use accountRepository if possible, but accountRepository.findByProjectId('system') is cleaner

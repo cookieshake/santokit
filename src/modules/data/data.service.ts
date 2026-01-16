@@ -118,7 +118,7 @@ async function handleSystemCreate(collectionName: string, data: Record<string, a
     if (collectionName.toLowerCase() === 'projects') {
         const newProject = inserted as typeof projects.$inferSelect
         // Provisioning: Create DB/Schema on the data source
-        await projectService.initializeDataSource(newProject.name)
+        await projectService.initializeDataSource(newProject.name, newProject.id)
     }
 
     return inserted
@@ -143,7 +143,7 @@ async function handleSystemUpdate(collectionName: string, id: string | number, d
     if (collectionName.toLowerCase() === 'projects') {
         const project = updated as typeof projects.$inferSelect
         // If connectionString changed, re-init?
-        await projectService.initializeDataSource(project.name)
+        await projectService.initializeDataSource(project.name, project.id)
     }
     return updated
 }
