@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import { getCookie } from "hono/cookie";
-import { verify } from "hono/jwt";
+import { V3 } from "paseto";
 import { config } from "@/config/index.js";
 import { db } from "@/db/index.js";
 // accounts import removed
@@ -27,7 +27,8 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
     }
 
     try {
-        const payload = await verify(token, config.auth.jwtSecret);
+        const key = Buffer.from(config.auth.pasetoKey, "hex");
+        const payload: any = await V3.decrypt(token, key);
 
         // Optional: Enforcement of projectId matching if needed in future
         // const projectIdHeader = c.req.header("x-project-id");
@@ -41,7 +42,7 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
             roles: payload.roles,
             projectId: payload.projectId
         });
-        c.set("jwtPayload", payload);
+        c.set("jwtPayload", payload); // name kept as jwtPayload for compatibility or rename? renaming might break other things so keeping it as variable name is safer for now.
 
     } catch (e) {
         c.set("user", null);

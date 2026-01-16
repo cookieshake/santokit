@@ -10,14 +10,14 @@ let projectTestPool: Pool
 vi.mock('../../db/index.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  testPool = pool
+  // removed testPool assignment
   return { db, pool }
 })
 
 vi.mock('../../db/connection-manager.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  projectTestPool = pool
+  // removed projectTestPool assignment
   return {
     connectionManager: {
       getConnection: vi.fn().mockResolvedValue(db)
@@ -61,11 +61,11 @@ describe('User Service (Project Level)', () => {
   })
 
   afterAll(async () => {
-    if (testPool) {
-      await testPool.end()
+    if (systemPool) {
+      await systemPool.end()
     }
-    if (projectTestPool) {
-      await projectTestPool.end()
+    if (projectPool) {
+      await projectPool.end()
     }
   })
 

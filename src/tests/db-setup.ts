@@ -12,7 +12,7 @@ export async function createTestDb() {
     // Reuse the same container for all tests to improve performance
     if (!globalContainer) {
         globalContainer = await new PostgreSqlContainer('postgres:16-alpine')
-            .withReuse()
+            //.withReuse() // Disable reuse to avoid schema conflict with existing data
             .start()
     }
 
@@ -27,9 +27,9 @@ export async function createTestDb() {
     const { apply } = await pushSchema(schema, db as any);
     await apply();
 
-    // Create accounts table manually since it's removed from schema
-    const { ACCOUNTS_TABLE_SQL } = await import('../modules/account/account-schema.js')
-    await db.execute(sql.raw(ACCOUNTS_TABLE_SQL))
+    // Create accounts table manually removed - schema handles it
+    // const { ACCOUNTS_TABLE_SQL } = await import('../modules/account/account-schema.js')
+    // await db.execute(sql.raw(ACCOUNTS_TABLE_SQL))
 
     return { db, pool }
 }
@@ -47,4 +47,9 @@ export async function stopGlobalContainer() {
         await globalContainer.stop()
         globalContainer = null
     }
+}
+
+export function getTestConnectionString() {
+    if (!globalContainer) throw new Error('Global container not started')
+    return globalContainer.getConnectionUri()
 }

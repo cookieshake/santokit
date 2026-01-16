@@ -75,7 +75,7 @@ describe('Admin Module E2E', () => {
             })
 
             // Login
-            const loginRes = await request(app, '/v1/auth/sign-in/email', {
+            const loginRes = await request(app, '/v1/auth/sign-in', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: 'admin@example.com',

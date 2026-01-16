@@ -10,11 +10,11 @@ let testPool: Pool
 vi.mock('@/db/index.js', async () => {
     const { createTestDb } = await import('../../tests/db-setup.js')
     const { db, pool } = await createTestDb()
-    testPool = pool
+    // removed testPool assignment
     return { db, pool }
 })
 
-const { db: mockedDb } = await import('@/db/index.js') as any
+const { db: mockedDb, pool } = await import('@/db/index.js') as any
 
 describe('Account Module (System Admin)', () => {
     beforeEach(async () => {
@@ -24,8 +24,8 @@ describe('Account Module (System Admin)', () => {
     })
 
     afterAll(async () => {
-        if (testPool) {
-            await testPool.end()
+        if (pool) {
+            await pool.end()
         }
     })
 

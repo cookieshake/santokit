@@ -6,8 +6,6 @@ import { pgTable, serial, text, timestamp, boolean, integer, unique } from 'driz
 
 // Admins table removed, users table used instead with role='admin'
 
-// Data Sources table removed, merged into projects
-
 // Projects
 export const projects = pgTable('projects', {
     id: serial('id').primaryKey(),
@@ -17,8 +15,17 @@ export const projects = pgTable('projects', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// Collections table removed - using dynamic introspection
-
+// Accounts
+export const accounts = pgTable('accounts', {
+    id: text('id').primaryKey(),
+    name: text('name'),
+    email: text('email').notNull().unique(),
+    password: text('password').notNull(),
+    roles: text('roles').array(),
+    projectId: integer('project_id'),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
 
 // Casbin Rules for Authorization
 // Casbin table removed

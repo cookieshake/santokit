@@ -7,6 +7,19 @@ import clientApp from '@/apps/app.js'
 import adminApp from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
+import { projectService } from '@/modules/project/project.service.js'
+// import collectionController ? We don't need controller, maybe service but data module handles it dynamically.
+// Actually data module creates collection implicitly?
+// No, data module needs collection to exist?
+// data.e2e-spec.ts used `/admin/v1/projects/${projectId}/collections`.
+// Does collection exist in schema? No. "Collections table removed - using dynamic introspection".
+// So data module might create tables on the fly?
+// Or we need to create table physically in project DB.
+// I'll assume we need to create it.
+import { sql } from 'drizzle-orm' // imported in test-utils? No.
+import { connectionManager } from '@/db/connection-manager.js'
+import { getTestConnectionString } from '@/tests/db-setup.js'
+
 describe('Data Module (Client) E2E', () => {
     let projectId: number
     const collectionName = 'articles'
@@ -14,37 +27,21 @@ describe('Data Module (Client) E2E', () => {
     beforeEach(async () => {
         await clearDb(db)
 
-        // Setup Project and Collection via Admin API
-        const adminCookie = await createAdminAndLogin(adminApp)
-
-        const dsRes = await request(adminApp, '/admin/v1/sources', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'ds1', connectionString: 'postgres://...', prefix: '1_' }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie || '' }
-        })
-        const ds = await dsRes.json()
-
-        const projRes = await request(adminApp, '/admin/v1/projects', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'Client App', dataSourceId: ds.id }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie || '' }
-        })
-        const project = await projRes.json()
+        const connectionString = getTestConnectionString()
+        const project = await projectService.create('Client App', connectionString, '1_')
         projectId = project.id
 
-        // Create Collection
-        await request(adminApp, `/admin/v1/projects/${projectId}/collections`, {
-            method: 'POST',
-            body: JSON.stringify({ name: collectionName, idType: 'serial' }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie || '' }
-        })
+        // Create Collection Table in Project DB
+        const projectDb = await connectionManager.getConnection(project.name)
+        if (!projectDb) throw new Error('No project db')
 
-        // Add Fields
-        await request(adminApp, `/admin/v1/projects/${projectId}/collections/${collectionName}/fields`, {
-            method: 'POST',
-            body: JSON.stringify({ name: 'title', type: 'text', isNullable: false }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie || '' }
-        })
+        // Simple table creation for 'articles' with 'title'
+        await projectDb.execute(sql.raw(`
+            CREATE TABLE IF NOT EXISTS "${project.prefix}${collectionName}" (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL
+            )
+        `))
     })
 
     describe('POST /v1/data/:projectId/:collectionName', () => {
@@ -53,16 +50,16 @@ describe('Data Module (Client) E2E', () => {
 
 
             // Register a client user and login
-            await request(clientApp, `/v1/auth/${projectId}/register`, {
+            await request(clientApp, `/v1/auth/register`, {
                 method: 'POST',
                 body: JSON.stringify({ email: 'writer@app.com', password: 'pw', name: 'Writer' }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
 
-            const loginRes = await request(clientApp, `/v1/auth/${projectId}/sign-in/email`, {
+            const loginRes = await request(clientApp, `/v1/auth/sign-in`, {
                 method: 'POST',
                 body: JSON.stringify({ email: 'writer@app.com', password: 'pw' }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
             const cookie = loginRes.headers.get('set-cookie')
 
@@ -86,15 +83,15 @@ describe('Data Module (Client) E2E', () => {
     describe('GET /v1/data/:projectId/:collectionName', () => {
         it('should list data', async () => {
             // Auth
-            await request(clientApp, `/v1/auth/${projectId}/register`, {
+            await request(clientApp, `/v1/auth/register`, {
                 method: 'POST',
                 body: JSON.stringify({ email: 'reader@app.com', password: 'pw', name: 'Reader' }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
-            const loginRes = await request(clientApp, `/v1/auth/${projectId}/sign-in/email`, {
+            const loginRes = await request(clientApp, `/v1/auth/sign-in`, {
                 method: 'POST',
                 body: JSON.stringify({ email: 'reader@app.com', password: 'pw' }),
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
             const cookie = loginRes.headers.get('set-cookie')
 

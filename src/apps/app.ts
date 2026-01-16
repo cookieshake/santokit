@@ -107,7 +107,7 @@ api.route('/projects', projectController)
 app.route('/v1', api)
 
 
-import { verify } from 'hono/jwt'
+import { V3 } from 'paseto'
 import { config } from '@/config/index.js'
 
 // ...
@@ -123,7 +123,8 @@ app.use('/ui/*', async (c, next) => {
     }
 
     try {
-        const payload = await verify(token, config.auth.jwtSecret)
+        const key = Buffer.from(config.auth.pasetoKey, 'hex')
+        const payload: any = await V3.decrypt(token, key)
 
         // Since UI is primarily for Admins in System context?
         // Check roles from payload or fetch fresh from DB if needed

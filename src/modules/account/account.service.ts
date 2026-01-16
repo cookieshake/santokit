@@ -1,5 +1,5 @@
 import { accountRepository } from './account.repository.js'
-import { sign } from 'hono/jwt'
+import { V3 } from 'paseto'
 import { config } from '@/config/index.js'
 import { hashPassword, verifyPassword } from '@/lib/password.js'
 
@@ -41,7 +41,8 @@ export const accountService = {
             exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24h
         }
 
-        const token = await sign(payload, config.auth.jwtSecret)
+        const key = Buffer.from(config.auth.pasetoKey, 'hex')
+        const token = await V3.encrypt(payload, key)
         return { user, token }
     }
 }

@@ -47,13 +47,13 @@ export async function createAdminAndLogin(app: Hono<any, any, any>) {
     const email = `admin-${Date.now()}@example.com`
     const password = 'password123'
 
-    await request(app, '/admin/v1/auth/register', {
+    await request(app, '/v1/auth/register', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
         headers: { 'Content-Type': 'application/json' }
     })
 
-    const res = await request(app, '/admin/v1/auth/sign-in/email', {
+    const res = await request(app, '/v1/auth/sign-in', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
         headers: { 'Content-Type': 'application/json' }

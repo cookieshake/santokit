@@ -7,28 +7,20 @@ import clientApp from '@/apps/app.js'
 import adminApp from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
+import { projectService } from '@/modules/project/project.service.js'
+import { getTestConnectionString } from '@/tests/db-setup.js'
+
 describe('User Auth (Client) E2E', () => {
     let projectId: number
 
     beforeEach(async () => {
         await clearDb(db)
 
-        // Setup Project via Admin API first
-        const adminCookie = await createAdminAndLogin(adminApp)
+        // Setup Project via Service directly (since Admin API is missing/refactored)
+        // const adminCookie = await createAdminAndLogin(adminApp) // Login not needed for service calls if we bypass API
 
-        const dsRes = await request(adminApp, '/admin/v1/sources', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'ds1', connectionString: 'postgres://...', prefix: '1_' }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie || '' }
-        })
-        const ds = await dsRes.json()
-
-        const projRes = await request(adminApp, '/v1/projects', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'Client App', dataSourceId: ds.id }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': adminCookie || '' }
-        })
-        const project = await projRes.json()
+        const connectionString = getTestConnectionString()
+        const project = await projectService.create('Client App', connectionString, '1_')
         projectId = project.id
     })
 
@@ -53,7 +45,7 @@ describe('User Auth (Client) E2E', () => {
         })
     })
 
-    describe('POST /v1/auth/sign-in/email', () => {
+    describe('POST /v1/auth/sign-in', () => {
         it('should login a user', async () => {
             // Register first
             await request(clientApp, '/v1/auth/register', {
@@ -70,7 +62,7 @@ describe('User Auth (Client) E2E', () => {
             })
 
             // Login
-            const res = await request(clientApp, '/v1/auth/sign-in/email', {
+            const res = await request(clientApp, '/v1/auth/sign-in', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: 'login@app.com',

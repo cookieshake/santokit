@@ -10,7 +10,7 @@ let testPool: Pool
 vi.mock('../../db/index.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  testPool = pool
+  // removed testPool assignment
   return { db, pool }
 })
 
@@ -46,8 +46,8 @@ describe('Project Service (Integration)', () => {
   })
 
   afterAll(async () => {
-    if (testPool) {
-      await testPool.end()
+    if (pool) {
+      await pool.end()
     }
   })
 
