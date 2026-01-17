@@ -40,11 +40,14 @@ app.get('/projects/:id', async (c) => {
     if (!project) return c.notFound()
 
     let collections: any[] = []
+    let currentDatabaseName = ''
+    let databases: any[] = []
     try {
-        const databases = await projectRepository.findDatabasesByProjectId(projectId)
+        databases = await projectRepository.findDatabasesByProjectId(projectId)
         if (databases.length > 0) {
             // For UI simplicity, just load from the first database for now
             // or we might need to update UI to support multiple DBs later
+            currentDatabaseName = databases[0].name
             collections = await collectionService.listByDatabase(databases[0].id)
         }
     } catch (e) {
@@ -54,7 +57,7 @@ app.get('/projects/:id', async (c) => {
     const projects = await projectService.list()
     const account = c.get('account')
 
-    return c.html(<ProjectDetail project={project} collections={collections} projects={projects} account={account} />)
+    return c.html(<ProjectDetail project={project} currentDatabaseName={currentDatabaseName} databases={databases} collections={collections} projects={projects} account={account} />)
 })
 
 app.get('/projects/:id/collections/:colName', async (c) => {
@@ -76,6 +79,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
         return c.html(
             <CollectionDetail
                 projectId={projectId}
+                currentDatabaseName={databases[0].name}
                 collectionName={collectionName}
                 detail={detail}
                 rows={rows}

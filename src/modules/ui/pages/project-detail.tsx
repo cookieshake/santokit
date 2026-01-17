@@ -1,8 +1,8 @@
 /** @jsxImportSource hono/jsx */
 import { Layout } from '../components/layout.js'
 
-export const ProjectDetail = (props: { project: any; collections: any[]; projects: any[]; account: any }) => (
-    <Layout title={`Project: ${props.project.name}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.project.id} collections={props.collections}>
+export const ProjectDetail = (props: { project: any; collections: any[]; projects: any[]; account: any; currentDatabaseName: string; databases: any[] }) => (
+    <Layout title={`Project: ${props.project.name}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.project.id} collections={props.collections} currentDatabaseName={props.currentDatabaseName}>
         <nav class="breadcrumb">
             <ul>
                 <li><a href="/ui/projects">Projects</a></li>
@@ -18,7 +18,10 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
             </div>
             <div class="level-right">
                 <div class="level-item">
-                    <button class="button is-link" onclick="showModal('new-collection-modal')">New Collection</button>
+                    <div class="buttons">
+                        <button class="button is-primary" onclick="showModal('new-database-modal')">New Database</button>
+                        <button class="button is-link" onclick="showModal('new-collection-modal')" disabled={!props.currentDatabaseName}>New Collection</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -57,11 +60,44 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                     <button class="button" onclick="hideModal('new-collection-modal')">Cancel</button>
                 </footer>
             </div>
+
+        </div>
+
+        <div id="new-database-modal" class="modal">
+            <div class="modal-background"></div>
+            <div class="modal-card">
+                <header class="modal-card-head">
+                    <p class="modal-card-title">Add Database</p>
+                    <button class="delete" onclick="hideModal('new-database-modal')"></button>
+                </header>
+                <section class="modal-card-body">
+                    <form id="new-database-form">
+                        <div class="field">
+                            <label class="label">Database Name</label>
+                            <div class="control">
+                                <input class="input" type="text" id="db-name" placeholder="default" required />
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label class="label">Connection String</label>
+                            <div class="control">
+                                <input class="input" type="text" id="db-conn" placeholder="postgres://..." required />
+                            </div>
+                        </div>
+                    </form>
+                    <div id="db-error" class="notification is-danger" style="display: none;"></div>
+                </section>
+                <footer class="modal-card-foot">
+                    <button class="button is-link" onclick="document.getElementById('new-database-form').requestSubmit()">Create</button>
+                    <button class="button" onclick="hideModal('new-database-modal')">Cancel</button>
+                </footer>
+            </div>
         </div>
 
         <script dangerouslySetInnerHTML={{
             __html: `
             const projectId = ${props.project.id};
+            const databaseName = "${props.currentDatabaseName}";
             document.getElementById('new-collection-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const name = document.getElementById('collection-name').value;
@@ -70,7 +106,7 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                 errorDiv.style.display = 'none';
 
                 try {
-                    const res = await window.executeWithSqlConfirmation('/v1/projects/collections', {
+                    const res = await window.executeWithSqlConfirmation(\`/v1/databases/\${databaseName}/collections\`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -90,10 +126,87 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                     errorDiv.style.display = 'block';
                 }
             });
+
+            document.getElementById('new-database-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('db-name').value;
+                const connectionString = document.getElementById('db-conn').value;
+                const errorDiv = document.getElementById('db-error');
+                errorDiv.style.display = 'none';
+
+                try {
+                    const res = await fetch(\`/v1/projects/\${projectId}/databases\`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ name, connectionString })
+                    });
+                    if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        const data = await res.json();
+                        errorDiv.textContent = data.error || data.details || 'Failed to create database';
+                        errorDiv.style.display = 'block';
+                    }
+                } catch (err) {
+                    errorDiv.textContent = 'An error occurred';
+                    errorDiv.style.display = 'block';
+                }
+            });
+
+            window.deleteDatabase = async (dbId) => {
+                if (!confirm('Are you sure you want to delete this database? This will delete all collections and data within it.')) return;
+                
+                try {
+                    const res = await fetch(\`/v1/projects/\${projectId}/databases/\${dbId}\`, {
+                        method: 'DELETE'
+                    });
+                     if (res.ok) {
+                        window.location.reload();
+                    } else {
+                        const data = await res.json();
+                        alert(data.error || 'Failed to delete database');
+                    }
+                } catch (e) {
+                    alert('Error deleting database');
+                }
+            };
         `}} />
 
         <div class="columns">
             <div class="column is-8">
+                <div class="box">
+                    <h2 class="title is-4">Databases</h2>
+                    <div class="table-container">
+                        <table class="table is-fullwidth is-striped is-hoverable">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Connection</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {props.databases.map(db => (
+                                    <tr>
+                                        <td>
+                                            {db.name}
+                                            {props.currentDatabaseName === db.name && <span class="tag is-info is-light ml-2">Current</span>}
+                                        </td>
+                                        <td title={db.connectionString}>
+                                            {db.connectionString.length > 50 ? db.connectionString.substring(0, 50) + '...' : db.connectionString}
+                                        </td>
+                                        <td>
+                                            <button class="button is-small is-danger" onclick={`deleteDatabase(${db.id})`}>Delete</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <div class="box">
                     <h2 class="title is-4">Collections</h2>
                     {props.collections.length === 0 ? (
@@ -150,5 +263,5 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                 </div>
             </div>
         </div>
-    </Layout>
+    </Layout >
 )

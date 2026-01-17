@@ -3,6 +3,7 @@ import { Layout } from '../components/layout.js'
 
 export const CollectionDetail = (props: {
     projectId: number;
+    currentDatabaseName: string;
     collectionName: string;
     detail: any;
     rows: any[];
@@ -11,7 +12,7 @@ export const CollectionDetail = (props: {
     collections: any[]
 }) => {
     return (
-        <Layout title={`Collection: ${props.collectionName}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.projectId} collections={props.collections}>
+        <Layout title={`Collection: ${props.collectionName}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.projectId} collections={props.collections} currentDatabaseName={props.currentDatabaseName}>
             <nav class="breadcrumb">
                 <ul>
                     <li><a href="/ui/projects">Projects</a></li>
@@ -120,6 +121,7 @@ export const CollectionDetail = (props: {
             <script dangerouslySetInnerHTML={{
                 __html: `
                 const projectId = ${props.projectId};
+                const databaseName = '${props.currentDatabaseName}';
                 const collectionName = '${props.collectionName}';
                 
                 document.getElementById('add-row-form').addEventListener('submit', async (e) => {
@@ -131,7 +133,7 @@ export const CollectionDetail = (props: {
                     errorDiv.style.display = 'none';
 
                     try {
-                        const res = await fetch('/v1/collections/' + collectionName + '/records', {
+                        const res = await fetch(\`/v1/databases/\${databaseName}/collections/\${collectionName}/records\`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -161,7 +163,7 @@ export const CollectionDetail = (props: {
                     errorDiv.style.display = 'none';
 
                     try {
-                        const res = await window.executeWithSqlConfirmation('/v1/projects/collections/' + collectionName + '/fields', {
+                        const res = await window.executeWithSqlConfirmation(\`/v1/databases/\${databaseName}/collections/\${collectionName}/fields\`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -184,7 +186,7 @@ export const CollectionDetail = (props: {
 
                 async function deleteField(fieldName) {
                     try {
-                        const res = await window.executeWithSqlConfirmation('/v1/projects/collections/' + collectionName + '/fields/' + fieldName, {
+                        const res = await window.executeWithSqlConfirmation(\`/v1/databases/\${databaseName}/collections/\${collectionName}/fields/\${fieldName}\`, {
                             method: 'DELETE',
                             headers: { 'x-project-id': String(projectId) }
                         });

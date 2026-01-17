@@ -42,5 +42,8 @@ export const projectRepository = {
         return await db.query.databases.findFirst({
             where: and(eq(databases.projectId, projectId), eq(databases.name, name))
         })
+    },
+    deleteDatabase: async (id: number) => {
+        await db.delete(databases).where(eq(databases.id, id))
     }
 }
