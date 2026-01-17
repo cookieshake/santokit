@@ -2,15 +2,22 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { db } from "@/db/index.js";
-import { eq } from "drizzle-orm";
 import { verifyPassword } from "@/lib/password.js";
 import { setCookie, deleteCookie, getCookie } from "hono/cookie";
 import { V3 } from "paseto";
 import { config } from "@/config/index.js";
-import { accountRepository } from "@/modules/account/account.repository.js";
 import { accountService } from "@/modules/account/account.service.js";
 import { CONSTANTS } from "@/constants.js";
+
+interface LoginResult {
+    user: {
+        id: string | number;
+        email: string;
+        name?: string | null;
+        roles: string[] | null;
+    };
+    token: string;
+}
 
 const app = new Hono();
 
@@ -25,11 +32,19 @@ app.post(
     ),
     async (c) => {
         const { email, password } = c.req.valid("json");
-        const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID) || CONSTANTS.PROJECTS.SYSTEM_ID;
-        const projectId = projectIdHeader === CONSTANTS.PROJECTS.SYSTEM_ID ? CONSTANTS.PROJECTS.SYSTEM_ID : parseInt(projectIdHeader);
+        const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID);
+
+        if (!projectIdHeader) {
+            return c.json({ message: "Missing project ID header" }, 400);
+        }
+
+        const projectId = parseInt(projectIdHeader);
+        if (isNaN(projectId)) {
+            return c.json({ message: "Invalid project ID" }, 400);
+        }
 
         try {
-            const result = await accountService.login(projectId, email, password);
+            const result = await accountService.login(projectId, email, password) as LoginResult;
             const { user, token } = result;
 
             setCookie(c, CONSTANTS.AUTH.COOKIE_NAME, token, {
@@ -69,8 +84,16 @@ app.post(
     ),
     async (c) => {
         const data = c.req.valid("json");
-        const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID) || CONSTANTS.PROJECTS.SYSTEM_ID;
-        const projectId = projectIdHeader === CONSTANTS.PROJECTS.SYSTEM_ID ? CONSTANTS.PROJECTS.SYSTEM_ID : parseInt(projectIdHeader);
+        const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID);
+
+        if (!projectIdHeader) {
+            return c.json({ message: "Missing project ID header" }, 400);
+        }
+
+        const projectId = parseInt(projectIdHeader);
+        if (isNaN(projectId)) {
+            return c.json({ message: "Invalid project ID" }, 400);
+        }
 
         try {
             const user = await accountService.createUser(projectId, data);

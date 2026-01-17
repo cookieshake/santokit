@@ -10,7 +10,7 @@ const app = new Hono()
 
 // Validations
 const CreatePolicySchema = z.object({
-    collectionName: z.string(),
+    collection_name: z.string(),
     role: z.string(),
     action: z.enum(['create', 'read', 'update', 'delete']),
     condition: z.string().default('{}'), // JSON string
@@ -56,8 +56,8 @@ app.post('/', zValidator('json', CreatePolicySchema), async (c) => {
 
         const policy = await policyService.create({
             ...body,
-            databaseId,
-            projectId
+            database_id: databaseId,
+            project_id: projectId
         })
         return c.json(policy)
     } catch (e) {

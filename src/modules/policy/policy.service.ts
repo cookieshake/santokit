@@ -1,10 +1,7 @@
+import { db } from "@/db/index.js"
+import { CONSTANTS } from "@/constants.js"
 
-import { db } from "@/db/index.js";
-import { policies } from "@/db/schema.js";
-import { eq, and, or } from "drizzle-orm";
-import { CONSTANTS } from "@/constants.js";
-
-type PolicyAction = 'create' | 'read' | 'update' | 'delete';
+type PolicyAction = 'create' | 'read' | 'update' | 'delete'
 
 export const policyService = {
     /**
@@ -15,26 +12,26 @@ export const policyService = {
     evaluate: async (projectId: number, databaseId: number, collectionName: string, action: PolicyAction, user: any) => {
         // 1. Admin Bypass
         if (user?.roles?.includes('admin')) {
-            return { allowed: true, filter: null };
+            return { allowed: true, filter: null }
         }
 
         // 2. Fetch Policies
         // Matches specific project/db/collection OR wildcard (TODO: wildcards if needed, for now specific)
-        const userRoles = user?.roles || ['guest'];
+        const userRoles = user?.roles || ['guest']
 
         // We find policies that match the action and one of the user's roles
-        const applicablePolicies = await db.select().from(policies).where(
-            and(
-                eq(policies.projectId, projectId),
-                eq(policies.databaseId, databaseId),
-                eq(policies.collectionName, collectionName),
-                eq(policies.action, action)
-            )
-        );
+        const applicablePolicies = await db
+            .selectFrom('policies')
+            .selectAll()
+            .where('project_id', '=', projectId)
+            .where('database_id', '=', databaseId)
+            .where('collection_name', '=', collectionName)
+            .where('action', '=', action)
+            .execute()
 
         // Filter by role manually since array overlap in SQL is tricky without specific operator support in this query context,
         // or just fetch all for collection/action and filter in memory (dataset is small per collection)
-        const relevantPolicies = applicablePolicies.filter(p => userRoles.includes(p.role));
+        const relevantPolicies = applicablePolicies.filter(p => userRoles.includes(p.role))
 
         if (relevantPolicies.length === 0) {
             // Default Deny if no policies exist? 
@@ -47,7 +44,7 @@ export const policyService = {
             // Strategy: ANY matching policy with effect='allow' grants access.
             // IF no policies match the user's role, but policies EXIST for the collection?
             // Let's implement: Explicit Allow required.
-            return { allowed: false, filter: null };
+            return { allowed: false, filter: null }
         }
 
         // 3. Evaluate Conditions
@@ -55,93 +52,109 @@ export const policyService = {
         // If any policy denies, it overrides (Deny-Overrides).
         // BUT usually ABAC is: (Allow1 OR Allow2) AND (!Deny1 AND !Deny2)
 
-        let allowConditions: string[] = [];
-        let denied = false;
+        let allowConditions: string[] = []
+        let denied = false
 
         for (const policy of relevantPolicies) {
             if (policy.effect === 'deny') {
                 // If condition is empty (always deny) or condition matches
                 if (!policy.condition || policy.condition === '{}') {
-                    denied = true;
-                    break;
+                    denied = true
+                    break
                 }
                 // TODO: Handle deny conditions (complex). For now, blanket deny if effect is deny.
-                denied = true;
+                denied = true
             } else {
                 // Effect: allow
-                const conditionSql = parseConditionToSql(policy.condition, user);
-                allowConditions.push(conditionSql);
+                const conditionSql = parseConditionToSql(policy.condition, user)
+                allowConditions.push(conditionSql)
             }
         }
 
-        if (denied) return { allowed: false, filter: null };
-        if (allowConditions.length === 0) return { allowed: false, filter: null };
+        if (denied) return { allowed: false, filter: null }
+        if (allowConditions.length === 0) return { allowed: false, filter: null }
 
         // If any condition is "TRUE" (e.g. empty condition {} means allow all), then filter is null (fetch all)
         if (allowConditions.includes('1=1')) {
-            return { allowed: true, filter: null };
+            return { allowed: true, filter: null }
         }
 
         // Combine with OR
-        const combinedFilter = `(${allowConditions.join(' OR ')})`;
-        return { allowed: true, filter: combinedFilter };
+        const combinedFilter = `(${allowConditions.join(' OR ')})`
+        return { allowed: true, filter: combinedFilter }
     },
 
-    create: async (data: typeof policies.$inferInsert) => {
-        const [policy] = await db.insert(policies).values(data).returning();
-        return policy;
+    create: async (data: { project_id: number | null; database_id: number | null; collection_name: string; role: string; action: string; condition: string; effect?: string }) => {
+        const policy = await db
+            .insertInto('policies')
+            .values({
+                project_id: data.project_id,
+                database_id: data.database_id,
+                collection_name: data.collection_name,
+                role: data.role,
+                action: data.action,
+                condition: data.condition,
+                effect: data.effect || 'allow'
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow()
+        return policy
     },
 
     list: async (projectId: number, databaseId: number) => {
-        return await db.select().from(policies).where(
-            and(
-                eq(policies.projectId, projectId),
-                eq(policies.databaseId, databaseId)
-            )
-        );
+        return await db
+            .selectFrom('policies')
+            .selectAll()
+            .where('project_id', '=', projectId)
+            .where('database_id', '=', databaseId)
+            .execute()
     },
 
     delete: async (id: number) => {
-        return await db.delete(policies).where(eq(policies.id, id)).returning();
+        return await db
+            .deleteFrom('policies')
+            .where('id', '=', id)
+            .returningAll()
+            .execute()
     }
-};
+}
 
 function parseConditionToSql(conditionJson: string, user: any): string {
     if (!conditionJson || conditionJson === '{}') {
-        return '1=1'; // Always true
+        return '1=1' // Always true
     }
 
     try {
-        const condition = JSON.parse(conditionJson);
-        const clauses: string[] = [];
+        const condition = JSON.parse(conditionJson)
+        const clauses: string[] = []
 
         for (const [key, value] of Object.entries(condition)) {
             // Value substitution
-            let targetValue = value as string;
+            let targetValue = value as string
 
             if (typeof targetValue === 'string' && targetValue.startsWith('$user.')) {
-                const path = targetValue.substring(6); // remove '$user.'
+                const path = targetValue.substring(6) // remove '$user.'
                 // resolve path from user object
-                const userVal = resolvePath(user, path);
+                const userVal = resolvePath(user, path)
                 // Quote string values
-                targetValue = `'${userVal}'`;
+                targetValue = `'${userVal}'`
             } else if (typeof targetValue === 'string') {
-                targetValue = `'${targetValue}'`;
+                targetValue = `'${targetValue}'`
             }
 
             // Construct clause: "key" = value
             // Security: key should be sanitized? We assume column names are safe-ish or wrapped in quotes.
             // value is already formatted.
-            clauses.push(`"${key}" = ${targetValue}`);
+            clauses.push(`"${key}" = ${targetValue}`)
         }
 
-        return clauses.join(' AND ');
+        return clauses.join(' AND ')
     } catch (e) {
-        console.error('Failed to parse policy condition:', e);
-        return '1=0'; // Fail safe
+        console.error('Failed to parse policy condition:', e)
+        return '1=0' // Fail safe
     }
 }
 
 function resolvePath(obj: any, path: string) {
-    return path.split('.').reduce((o, i) => o?.[i], obj);
+    return path.split('.').reduce((o, i) => o?.[i], obj)
 }

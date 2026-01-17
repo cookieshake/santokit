@@ -9,11 +9,6 @@ export const CONSTANTS = {
         PROJECT_ID: 'x-project-id',
     },
 
-    // Special Project Identifiers
-    PROJECTS: {
-        SYSTEM_ID: 'system' as const,
-    },
-
     // Authentication
     AUTH: {
         COOKIE_NAME: 'auth_token',
@@ -22,5 +17,4 @@ export const CONSTANTS = {
 } as const;
 
 // Type helpers
-export type SystemProjectId = typeof CONSTANTS.PROJECTS.SYSTEM_ID;
-export type ProjectId = number | SystemProjectId;
+export type ProjectId = number;

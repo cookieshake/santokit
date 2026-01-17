@@ -1,8 +1,16 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { accountService } from './account.service.js'
 import { projectService } from '../project/project.service.js'
-import { sql } from 'drizzle-orm'
+import { sql, Kysely, PostgresDialect } from 'kysely'
 import type { Pool } from 'pg'
+
+interface UserRecord {
+  id: string | number
+  email: string
+  password: string
+  roles: string[] | null
+  name?: string | null
+}
 
 // Mock everything first
 vi.mock('../../db/index.js', async () => {
@@ -14,17 +22,6 @@ vi.mock('../../db/index.js', async () => {
 vi.mock('../../db/connection-manager.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  // We need to return the SAME db instance as above?
-  // Ideally yes. But here we create NEW instance?
-  // `createTestDb` in `db-setup.ts` reuses global container, but creates NEW pool each time.
-  // This means `db` in `index.js` mock is DIFFERENT from `db` in `connection-manager.js` mock!!
-  // This causes split brain if used in same test.
-  // `account.spec.ts` logic relies on `db` and `projectDb` being potentially separate or same?
-  // The test logic: `await db.execute(...)` (setup) then `accountService` uses `connectionManager (projectDb)`.
-  // If they are different pools on same container: it works (shared DB state).
-  // But if we drop schema in one, it affects other.
-  // The previous implementation imported `createTestDb` and called it twice.
-  // So we stick to that pattern for now, assuming they share the container.
   return {
     connectionManager: {
       getConnection: vi.fn().mockResolvedValue(db)
@@ -47,13 +44,11 @@ describe('User Service (Project Level)', () => {
 
   beforeEach(async () => {
     // Robust Cleanup: Drop schema
-    await db.execute(sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`)
+    await sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`.execute(db)
 
     // Re-apply schema
-    const { pushSchema } = await import('drizzle-kit/api');
-    const schema = await import('@/db/schema.js');
-    const { apply } = await pushSchema(schema, db);
-    await apply();
+    const { applySchema } = await import('@/tests/db-setup.js')
+    await applySchema(db)
 
     // Create initial setup
     const p1 = await projectService.create('Project 1', 'memory')
@@ -76,12 +71,12 @@ describe('User Service (Project Level)', () => {
     const user = await accountService.createUser(projectId1, {
       email: 'test@example.com',
       password: 'password123'
-    })
+    }) as UserRecord
     expect(user.email).toBe('test@example.com')
 
-    // Verify it's in the DB (using Drizzle ORM)
+    // Verify it's in the DB (using Kysely)
     const tableName = `santoki_p${projectId1}_users`.toLowerCase()
-    const res = await projectDb.execute(sql.raw(`SELECT * FROM "${tableName}" WHERE email = 'test@example.com'`))
+    const res = await sql.raw(`SELECT * FROM "${tableName}" WHERE email = 'test@example.com'`).execute(projectDb)
     expect(res.rows.length).toBe(1)
   })
 
@@ -90,9 +85,9 @@ describe('User Service (Project Level)', () => {
       email: 'list@example.com',
       password: 'pw'
     })
-    const list = await accountService.listUsers(projectId1)
+    const list = await accountService.listUsers(projectId1) as UserRecord[]
     expect(list.length).toBe(1)
-    const found = list.find(u => u.email === 'list@example.com')
+    const found = list.find((u: UserRecord) => u.email === 'list@example.com')
     expect(found).toBeDefined()
     expect(found!.roles).toContain('user')
   })
@@ -101,7 +96,7 @@ describe('User Service (Project Level)', () => {
     const user = await accountService.createUser(projectId1, {
       email: 'del@example.com',
       password: 'pw'
-    })
+    }) as UserRecord
     await accountService.deleteUser(projectId1, user.id as number)
     const list = await accountService.listUsers(projectId1)
     expect(list.length).toBe(0)

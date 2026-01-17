@@ -1,12 +1,66 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { drizzle } from 'drizzle-orm/node-postgres'
+import { Kysely, PostgresDialect, sql } from 'kysely'
 import { Pool } from 'pg'
-import * as schema from '@/db/schema.js'
-import { pushSchema } from 'drizzle-kit/api'
-import { sql } from 'drizzle-orm'
+import type { Database } from '@/db/db-types.js'
 
 let globalContainer: StartedPostgreSqlContainer | null = null
-let globalPool: Pool | null = null
+
+// SQL to create the schema (matches the Drizzle schema)
+const SCHEMA_SQL = `
+-- Projects
+CREATE TABLE IF NOT EXISTS projects (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Databases
+CREATE TABLE IF NOT EXISTS databases (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    connection_string TEXT NOT NULL,
+    prefix TEXT NOT NULL DEFAULT 'santoki_',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Accounts
+CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL,
+    roles TEXT[],
+    project_id INTEGER,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Policies
+CREATE TABLE IF NOT EXISTS policies (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    database_id INTEGER REFERENCES databases(id) ON DELETE CASCADE,
+    collection_name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    action TEXT NOT NULL,
+    condition TEXT NOT NULL,
+    effect TEXT NOT NULL DEFAULT 'allow',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Collections
+CREATE TABLE IF NOT EXISTS collections (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    database_id INTEGER REFERENCES databases(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    physical_name TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL DEFAULT 'base',
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+`
 
 export async function createTestDb() {
     // Reuse the same container for all tests to improve performance
@@ -21,15 +75,12 @@ export async function createTestDb() {
         connectionString: globalContainer.getConnectionUri(),
     })
 
-    const db = drizzle(pool, { schema })
+    const db = new Kysely<Database>({
+        dialect: new PostgresDialect({ pool }),
+    })
 
-    // Initialize schema programmatically
-    const { apply } = await pushSchema(schema, db as any);
-    await apply();
-
-    // Create accounts table manually removed - schema handles it
-    // const { ACCOUNTS_TABLE_SQL } = await import('../modules/account/account-schema.js')
-    // await db.execute(sql.raw(ACCOUNTS_TABLE_SQL))
+    // Initialize schema
+    await sql.raw(SCHEMA_SQL).execute(db)
 
     return { db, pool }
 }
@@ -39,10 +90,6 @@ export async function closeTestDb(pool: Pool) {
 }
 
 export async function stopGlobalContainer() {
-    if (globalPool) {
-        await globalPool.end()
-        globalPool = null
-    }
     if (globalContainer) {
         await globalContainer.stop()
         globalContainer = null
@@ -52,4 +99,8 @@ export async function stopGlobalContainer() {
 export function getTestConnectionString() {
     if (!globalContainer) throw new Error('Global container not started')
     return globalContainer.getConnectionUri()
+}
+
+export async function applySchema(db: Kysely<any>) {
+    await sql.raw(SCHEMA_SQL).execute(db)
 }

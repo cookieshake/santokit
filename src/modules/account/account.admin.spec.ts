@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { accountService } from './account.service.js'
 import { projectService } from '../project/project.service.js'
-import { CONSTANTS } from '@/constants.js'
 import { clearDb } from '@/tests/test-utils.js'
-import { sql } from 'drizzle-orm'
+import { sql } from 'kysely'
 import type { Pool } from 'pg'
+
+interface UserRecord {
+    id: string | number
+    email: string
+    password: string
+    roles: string[] | null
+    name?: string | null
+}
 
 // Mock everything first
 vi.mock('@/db/index.js', async () => {
@@ -25,13 +32,16 @@ vi.mock('../../db/connection-manager.js', async () => {
 
 const { db: mockedDb, pool } = await import('@/db/index.js') as any
 
-describe('Account Module (System Admin)', () => {
+describe('Account Module', () => {
+    let testProjectId: number
+
     beforeEach(async () => {
         // Use robust cleanup
         await clearDb(mockedDb)
 
-        // Create System Project
-        await projectService.create(CONSTANTS.PROJECTS.SYSTEM_ID, 'postgres://system-db-connection')
+        // Create a test project with database
+        const project = await projectService.create('test-project', 'postgres://test-db-connection')
+        testProjectId = project.id
     })
 
     afterAll(async () => {
@@ -40,26 +50,26 @@ describe('Account Module (System Admin)', () => {
         }
     })
 
-    it('should register a new admin in system project', async () => {
-        const admin = await accountService.createUser(CONSTANTS.PROJECTS.SYSTEM_ID, {
-            email: 'admin@example.com',
+    it('should register a new user in project', async () => {
+        const user = await accountService.createUser(testProjectId, {
+            email: 'user@example.com',
             password: 'password123',
-            roles: ['admin']
-        })
-        expect(admin.email).toBe('admin@example.com')
-        expect(admin.roles).toContain('admin')
+            roles: ['user']
+        }) as UserRecord
+        expect(user.email).toBe('user@example.com')
+        expect(user.roles).toContain('user')
     })
 
     it('should NOT allow registering duplicate email', async () => {
-        await accountService.createUser(CONSTANTS.PROJECTS.SYSTEM_ID, {
-            email: 'admin@example.com',
+        await accountService.createUser(testProjectId, {
+            email: 'user@example.com',
             password: 'password123',
-            roles: ['admin']
+            roles: ['user']
         })
-        await expect(accountService.createUser(CONSTANTS.PROJECTS.SYSTEM_ID, {
-            email: 'admin@example.com',
+        await expect(accountService.createUser(testProjectId, {
+            email: 'user@example.com',
             password: 'passother',
-            roles: ['admin']
+            roles: ['user']
         })).rejects.toThrow()
     })
 })

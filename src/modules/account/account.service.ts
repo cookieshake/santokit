@@ -3,8 +3,16 @@ import { V3 } from 'paseto'
 import { config } from '@/config/index.js'
 import { hashPassword, verifyPassword } from '@/lib/password.js'
 
+interface UserRecord {
+    id: string | number
+    email: string
+    password: string
+    roles: string[] | null
+    name?: string | null
+}
+
 export const accountService = {
-    createUser: async (projectId: number | string, data: any) => {
+    createUser: async (projectId: number, data: any) => {
         const password = typeof data.password === 'string' ? data.password : String(data.password)
         const hashedPassword = await hashPassword(password)
         return await accountRepository.create(projectId, {
@@ -14,16 +22,16 @@ export const accountService = {
         })
     },
 
-    listUsers: async (projectId: number | string) => {
+    listUsers: async (projectId: number) => {
         return await accountRepository.findByProjectId(projectId)
     },
 
-    deleteUser: async (projectId: number | string, accountId: number | string) => {
+    deleteUser: async (projectId: number, accountId: number | string) => {
         return await accountRepository.delete(projectId, accountId)
     },
 
-    login: async (projectId: number | string, email: string, password: string) => {
-        const user = await accountRepository.findByEmail(projectId, email)
+    login: async (projectId: number, email: string, password: string) => {
+        const user = await accountRepository.findByEmail(projectId, email) as UserRecord | undefined
         if (!user) {
             throw new Error('Invalid credentials')
         }

@@ -2,9 +2,6 @@ import { createMiddleware } from "hono/factory";
 import { getCookie } from "hono/cookie";
 import { V3 } from "paseto";
 import { config } from "@/config/index.js";
-import { db } from "@/db/index.js";
-// accounts import removed
-import { eq } from "drizzle-orm";
 
 type AuthEnv = {
     Variables: {

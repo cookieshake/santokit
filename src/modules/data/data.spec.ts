@@ -8,15 +8,7 @@ import adminApp from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
 import { projectService } from '@/modules/project/project.service.js'
-// import collectionController ? We don't need controller, maybe service but data module handles it dynamically.
-// Actually data module creates collection implicitly?
-// No, data module needs collection to exist?
-// data.e2e-spec.ts used `/admin/v1/projects/${projectId}/collections`.
-// Does collection exist in schema? No. "Collections table removed - using dynamic introspection".
-// So data module might create tables on the fly?
-// Or we need to create table physically in project DB.
-// I'll assume we need to create it.
-import { sql } from 'drizzle-orm' // imported in test-utils? No.
+import { sql } from 'kysely'
 import { connectionManager } from '@/db/connection-manager.js'
 import { getTestConnectionString } from '@/tests/db-setup.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
@@ -40,12 +32,12 @@ describe('Data Module (Client) E2E', () => {
         if (!projectDb) throw new Error('No project db')
 
         // Simple table creation for 'articles' with 'title'
-        await projectDb.execute(sql.raw(`
+        await sql.raw(`
             CREATE TABLE IF NOT EXISTS "${database.prefix}p${projectId}_${collectionName}" (
                 id SERIAL PRIMARY KEY,
                 title TEXT NOT NULL
             )
-        `))
+        `).execute(projectDb)
     })
 
     describe('POST /v1/databases/default/collections/:collectionName/records', () => {

@@ -4,13 +4,13 @@ import { projectService } from '@/modules/project/project.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { dataService } from '@/modules/data/data.service.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
-import { db } from '@/db/index.js'
-import { sql } from 'drizzle-orm'
 import { Login } from './pages/login.js'
 
 import { Projects } from './pages/projects.js'
 import { ProjectDetail } from './pages/project-detail.js'
 import { CollectionDetail } from './pages/collection-detail.js'
+import { deleteCookie } from 'hono/cookie'
+import { CONSTANTS } from '@/constants.js'
 
 import { Layout } from './components/layout.js'
 
@@ -22,6 +22,11 @@ const app = new Hono<{
 
 app.get('/login', (c) => {
     return c.html(<Login />)
+})
+
+app.get('/logout', (c) => {
+    deleteCookie(c, CONSTANTS.AUTH.COOKIE_NAME)
+    return c.redirect('/ui/login')
 })
 
 app.get('/', (c) => {
@@ -79,7 +84,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
         // Fetch policies for this collection
         const { policyService } = await import('@/modules/policy/policy.service.js')
         const allPolicies = await policyService.list(projectId, dbId)
-        const policies = allPolicies.filter((p: any) => p.collectionName === collectionName)
+        const policies = allPolicies.filter((p: any) => p.collection_name === collectionName)
 
         return c.html(
             <CollectionDetail

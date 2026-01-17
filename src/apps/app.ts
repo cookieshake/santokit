@@ -2,8 +2,6 @@ import { Hono } from 'hono'
 import { authController } from '@/modules/auth/auth.controller.js'
 import { authMiddleware } from '@/modules/auth/auth.middleware.js'
 import { db } from '@/db/index.js'
-// accounts import removed
-import { eq } from 'drizzle-orm'
 import collectionController from '@/modules/collection/collection.controller.js'
 
 import { handleDbError, AppError } from '@/lib/errors.js'
@@ -61,9 +59,6 @@ const api = new Hono<{ Variables: Variables }>()
 // 1. Auth Routes
 api.route('/auth', authController)
 
-// 1. Auth Routes
-api.route('/auth', authController)
-
 // 2. Database Scoped Routes (Protected)
 // Mount at new path with database in URL, Project in Header
 api.use('/databases/:databaseName/*', authMiddleware)
@@ -76,16 +71,7 @@ api.use('/databases/:databaseName/*', async (c, next) => {
         return c.json({ error: `Missing Project ID Header (${CONSTANTS.HEADERS.PROJECT_ID})` }, 400);
     }
 
-    // System Project (Admin Access)
-    if (rawId === CONSTANTS.PROJECTS.SYSTEM_ID) {
-        if (!user || !user.roles.includes('admin')) {
-            return c.json({ error: "Unauthorized System Access" }, 401);
-        }
-        c.set('account', user);
-        return next()
-    }
-
-    // Standard Project
+    // Parse Project ID
     const projectId = parseInt(rawId)
     if (isNaN(projectId)) return c.json({ error: "Invalid Project ID" }, 400);
 
@@ -129,25 +115,20 @@ app.use('/ui/*', async (c, next) => {
         const key = Buffer.from(config.auth.pasetoKey, 'hex')
         const payload: any = await V3.decrypt(token, key)
 
-        // Since UI is primarily for Admins in System context?
-        // Check roles from payload or fetch fresh from DB if needed
-        // Payload has { id, email, roles, projectId }
-
+        // Check admin role
         if (!payload.roles || !(payload.roles as string[]).includes('admin')) {
             console.log('[UI Auth] User is not admin', payload.roles);
             return c.redirect('/ui/login')
         }
 
-        // Optional: Fetch full user if needed, or just use payload
-        // const [user] = await db.select().from(accounts).where(eq(accounts.id, payload.id as string));
-        // c.set('account', user);
-
-        c.set('user', {
+        const user = {
             id: payload.id,
             email: payload.email,
             roles: payload.roles,
             projectId: payload.projectId
-        });
+        };
+        c.set('user', user);
+        c.set('account', user);
 
         await next()
     } catch (e) {

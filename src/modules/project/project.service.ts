@@ -1,9 +1,6 @@
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
-import { connectionManager } from '@/db/connection-manager.js'
-import { CONSTANTS } from '@/constants.js'
-import { sql } from 'drizzle-orm'
 
 export const projectService = {
     create: async (name: string, connectionString?: string, prefix?: string, databaseName?: string) => {
@@ -19,11 +16,7 @@ export const projectService = {
                 prefix: prefix || 'santoki_'
             })
 
-            if (project.name === CONSTANTS.PROJECTS.SYSTEM_ID) {
-                await projectService.initializeDatabase(database.id, 'admins')
-            } else {
-                await projectService.initializeDatabase(database.id, 'users')
-            }
+            await projectService.initializeDatabase(database.id, 'users')
         }
         return project
     },
@@ -35,16 +28,8 @@ export const projectService = {
             prefix: prefix || 'santoki_'
         })
 
-        // Initialize default collections if needed, e.g. users table for auth
-        // Maybe we make this optional or default true? For now, let's always init users/admins
-        const project = await projectRepository.findById(projectId)
-        if (project) {
-            if (project.name === CONSTANTS.PROJECTS.SYSTEM_ID) {
-                await projectService.initializeDatabase(database.id, 'admins')
-            } else {
-                await projectService.initializeDatabase(database.id, 'users')
-            }
-        }
+        // Initialize default collections - always create users table for auth
+        await projectService.initializeDatabase(database.id, 'users')
         return database
     },
     list: async () => {
@@ -54,14 +39,13 @@ export const projectService = {
         return await projectRepository.findById(id)
     },
     initializeDatabase: async (databaseId: number, accountCollectionName: string = 'users') => {
-        // 2. Initialize physical accounts table in the database via Collection Service
+        // Initialize physical accounts table in the database via Collection Service
         // This ensures it is tracked as a proper collection with type 'auth'
         // We catch error in case it already exists (idempotency)
         try {
             await collectionService.create(databaseId, accountCollectionName, 'uuid', 'auth')
         } catch (e) {
             // If it already exists, that's fine.
-            // But we should verify it's a collection creation error and not DB connection error
             if ((e as Error).message !== 'Collection already exists' && !(e as Error).message.includes('already exists')) {
                 // Ideally collectionService should have better error typing or check existence first.
             }
@@ -70,11 +54,6 @@ export const projectService = {
     delete: async (id: number, deleteData: boolean) => {
         const project = await projectRepository.findById(id)
         if (!project) throw new Error('Project not found')
-
-        // Prevent system project deletion
-        if (project.name === CONSTANTS.PROJECTS.SYSTEM_ID) {
-            throw new Error('Cannot delete system project')
-        }
 
         if (deleteData) {
             const databases = await projectRepository.findDatabasesByProjectId(id)
@@ -85,7 +64,7 @@ export const projectService = {
 
                 // 2. Delete all physical tables
                 for (const collection of collections) {
-                    await collectionRepository.deletePhysicalTable(db.id, collection.physicalName as string)
+                    await collectionRepository.deletePhysicalTable(db.id, collection.physical_name as string)
                 }
 
                 // 3. Metadata in Main DB is handled by CASCADE delete on Project
@@ -97,14 +76,14 @@ export const projectService = {
     deleteDatabase: async (projectId: number, databaseId: number) => {
         const db = await projectRepository.findDatabaseById(databaseId)
         if (!db) throw new Error('Database not found')
-        if (db.projectId !== projectId) throw new Error('Database does not belong to project')
+        if (db.project_id !== projectId) throw new Error('Database does not belong to project')
 
         // 1. List all collections
         const collections = await collectionService.listByDatabase(db.id)
 
         // 2. Delete all physical tables
         for (const collection of collections) {
-            await collectionRepository.deletePhysicalTable(db.id, collection.physicalName as string)
+            await collectionRepository.deletePhysicalTable(db.id, collection.physical_name as string)
         }
 
         // 3. Metadata in Main DB is handled by CASCADE delete on Database

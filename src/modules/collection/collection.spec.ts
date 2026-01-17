@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
-import * as schema from '@/db/schema.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
-import { sql } from 'drizzle-orm'
+import { sql, Kysely, PostgresDialect } from 'kysely'
 import type { Pool } from 'pg'
 
 // testPool removed
@@ -28,12 +27,12 @@ vi.mock('@/db/connection-manager.js', () => ({
 describe('Collection Service (Integration)', () => {
   beforeEach(async () => {
     // Schema is already setup by createTestDb in the mock
-    await db.execute(sql`TRUNCATE TABLE projects, accounts RESTART IDENTITY CASCADE`)
+    await sql`TRUNCATE TABLE projects, accounts RESTART IDENTITY CASCADE`.execute(db)
 
 
     // Setup test data
-    await db.execute(sql`INSERT INTO projects (id, name) VALUES (1, 'test_project')`)
-    await db.execute(sql`INSERT INTO databases (id, project_id, name, connection_string, prefix) VALUES (1, 1, 'default', 'pg://test', 'test_')`)
+    await sql`INSERT INTO projects (id, name) VALUES (1, 'test_project')`.execute(db)
+    await sql`INSERT INTO databases (id, project_id, name, connection_string, prefix) VALUES (1, 1, 'default', 'pg://test', 'test_')`.execute(db)
 
     // Setup mock connection
     vi.mocked(connectionManager.getConnection).mockResolvedValue(db as any)
@@ -51,7 +50,7 @@ describe('Collection Service (Integration)', () => {
     expect(col.physicalName).toBe('test_p1_posts')
 
     // Verify physical table exists using information_schema
-    const tables = await db.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
+    const tables = await sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`.execute(db)
     const tableNames = tables.rows.map((r: any) => r.tablename)
     expect(tableNames).toContain('test_p1_posts')
   })
@@ -61,16 +60,16 @@ describe('Collection Service (Integration)', () => {
     expect(col.idType).toBe('uuid')
 
     // Verify physical table exists
-    const tables = await db.execute(sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`)
+    const tables = await sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`.execute(db)
     const tableNames = tables.rows.map((r: any) => r.tablename)
     expect(tableNames).toContain('test_p1_uuid_posts')
 
     // Verify 'id' column type is uuid
-    const columns = await db.execute(sql`
+    const columns = await sql`
       SELECT data_type FROM information_schema.columns 
       WHERE table_name = 'test_p1_uuid_posts' AND column_name = 'id'
-    `)
-    expect(columns.rows[0].data_type).toBe('uuid')
+    `.execute(db)
+    expect((columns.rows[0] as any).data_type).toBe('uuid')
   })
 
   it('should add a field to a collection', async () => {
@@ -78,10 +77,10 @@ describe('Collection Service (Integration)', () => {
     await collectionService.addField(1, 'users', 'age', 'integer', true)
 
     // Verify column exists
-    const columns = await db.execute(sql`
+    const columns = await sql`
             SELECT column_name FROM information_schema.columns 
             WHERE table_name = 'test_p1_users' AND column_name = 'age'
-        `)
+        `.execute(db)
     expect(columns.rows.length).toBe(1)
   })
 })

@@ -19,11 +19,6 @@ const resolveDatabaseId = async (c: any) => {
         throw new Error('Missing project context or database name in URL')
     }
 
-    // System Project Logic
-    if (rawProjectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
-        return 0; // Dummy or handle differently if needed
-    }
-
     const projectId = parseInt(rawProjectId)
     if (isNaN(projectId)) throw new Error('Invalid Project ID header')
 

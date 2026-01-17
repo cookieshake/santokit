@@ -1,49 +1,74 @@
 import { db } from '@/db/index.js'
-import { projects, databases } from '@/db/schema.js'
-import { eq, and } from 'drizzle-orm'
 
 export const projectRepository = {
-    create: async (data: typeof projects.$inferInsert) => {
-        const result = await db.insert(projects).values(data).returning()
-        return result[0]
+    create: async (data: { name: string }) => {
+        const result = await db
+            .insertInto('projects')
+            .values(data)
+            .returningAll()
+            .executeTakeFirstOrThrow()
+        return result
     },
     findAll: async () => {
-        return await db.select().from(projects)
+        return await db.selectFrom('projects').selectAll().execute()
     },
     findById: async (id: number) => {
-        return await db.query.projects.findFirst({
-            where: eq(projects.id, id)
-        })
+        return await db
+            .selectFrom('projects')
+            .selectAll()
+            .where('id', '=', id)
+            .executeTakeFirst()
     },
-    update: async (id: number, data: Partial<typeof projects.$inferInsert>) => {
-        const result = await db.update(projects).set(data).where(eq(projects.id, id)).returning()
-        return result[0]
+    update: async (id: number, data: { name?: string }) => {
+        const result = await db
+            .updateTable('projects')
+            .set(data)
+            .where('id', '=', id)
+            .returningAll()
+            .executeTakeFirst()
+        return result
     },
     delete: async (id: number) => {
-        await db.delete(projects).where(eq(projects.id, id))
+        await db.deleteFrom('projects').where('id', '=', id).execute()
     },
 
     // Database Methods
-    createDatabase: async (data: typeof databases.$inferInsert) => {
-        const result = await db.insert(databases).values(data).returning()
-        return result[0]
+    createDatabase: async (data: { projectId: number; name: string; connectionString: string; prefix?: string }) => {
+        const result = await db
+            .insertInto('databases')
+            .values({
+                project_id: data.projectId,
+                name: data.name,
+                connection_string: data.connectionString,
+                prefix: data.prefix || 'santoki_'
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow()
+        return result
     },
     findDatabasesByProjectId: async (projectId: number) => {
-        return await db.query.databases.findMany({
-            where: eq(databases.projectId, projectId)
-        })
+        return await db
+            .selectFrom('databases')
+            .selectAll()
+            .where('project_id', '=', projectId)
+            .execute()
     },
     findDatabaseById: async (id: number) => {
-        return await db.query.databases.findFirst({
-            where: eq(databases.id, id)
-        })
+        return await db
+            .selectFrom('databases')
+            .selectAll()
+            .where('id', '=', id)
+            .executeTakeFirst()
     },
     findDatabaseByName: async (projectId: number, name: string) => {
-        return await db.query.databases.findFirst({
-            where: and(eq(databases.projectId, projectId), eq(databases.name, name))
-        })
+        return await db
+            .selectFrom('databases')
+            .selectAll()
+            .where('project_id', '=', projectId)
+            .where('name', '=', name)
+            .executeTakeFirst()
     },
     deleteDatabase: async (id: number) => {
-        await db.delete(databases).where(eq(databases.id, id))
+        await db.deleteFrom('databases').where('id', '=', id).execute()
     }
 }

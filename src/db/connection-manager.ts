@@ -1,58 +1,65 @@
+import { Kysely, PostgresDialect, sql } from 'kysely'
+import pg from 'pg'
+import { db as adminDb } from '@/db/index.js'
+import type { Database } from '@/db/db-types.js'
 
-import { db as adminDb, type Database } from '@/db/index.js';
-import { projects, databases } from '@/db/schema.js';
-import { eq } from 'drizzle-orm';
+const { Pool } = pg
 
 // Singleton to hold active pools
 class ConnectionManager {
-    private instances: Map<string, Database> = new Map();
+    private instances: Map<string, Kysely<any>> = new Map()
+    private pools: Map<string, pg.Pool> = new Map()
 
-    async getConnection(databaseId: number): Promise<Database | null> {
+    async getConnection(databaseId: number): Promise<Kysely<any> | null> {
         // 1. Check if we already have an instance
-        const key = String(databaseId);
+        const key = String(databaseId)
         if (this.instances.has(key)) {
-            return this.instances.get(key)!;
+            return this.instances.get(key)!
         }
 
         // 2. Fetch config from Admin DB
-        const database = await adminDb.query.databases.findFirst({
-            where: eq(databases.id, databaseId)
-        });
+        const database = await adminDb
+            .selectFrom('databases')
+            .selectAll()
+            .where('id', '=', databaseId)
+            .executeTakeFirst()
 
-        if (!database) return null;
+        if (!database) return null
 
         // 3. Validate connection string
-        if (!database.connectionString.startsWith('postgres://') &&
-            !database.connectionString.startsWith('postgresql://')) {
-            throw new Error(`Invalid connection string for database "${database.name}". Only PostgreSQL connections are supported.`);
+        if (!database.connection_string.startsWith('postgres://') &&
+            !database.connection_string.startsWith('postgresql://')) {
+            throw new Error(`Invalid connection string for database "${database.name}". Only PostgreSQL connections are supported.`)
         }
 
         // 4. Create new pool
-        const { Pool } = await import('pg');
-        const { drizzle } = await import('drizzle-orm/node-postgres');
         const pool = new Pool({
-            connectionString: database.connectionString
-        });
-        const dbInstance = drizzle(pool) as unknown as Database;
-        // Store the raw pool on the instance for closing
-        (dbInstance as any)._raw = pool;
+            connectionString: database.connection_string
+        })
 
-        this.instances.set(key, dbInstance);
-        return dbInstance;
+        const dbInstance = new Kysely<any>({
+            dialect: new PostgresDialect({ pool }),
+        })
+
+        this.pools.set(key, pool)
+        this.instances.set(key, dbInstance)
+        return dbInstance
     }
 
     // Optional: method to close specific pool or all
     async close(databaseId: number) {
-        const key = String(databaseId);
-        const instance = this.instances.get(key);
+        const key = String(databaseId)
+        const instance = this.instances.get(key)
         if (instance) {
-            const raw = (instance as any)._raw;
-            if (raw && typeof raw.end === 'function') {
-                await raw.end();
-            }
-            this.instances.delete(key);
+            await instance.destroy()
+            this.instances.delete(key)
+        }
+        const pool = this.pools.get(key)
+        if (pool) {
+            await pool.end()
+            this.pools.delete(key)
         }
     }
 }
 
-export const connectionManager = new ConnectionManager();
+export const connectionManager = new ConnectionManager()

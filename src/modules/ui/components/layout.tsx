@@ -191,12 +191,42 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                             </span>
                         </button>
                     </div>
+                    {props.account && (
+                        <div class="navbar-item has-dropdown is-hoverable">
+                            <a class="navbar-link is-arrowless">
+                                <div class="media is-align-items-center">
+                                    <div class="media-left mr-2">
+                                        <figure class="image is-32x32">
+                                            <span class="tag is-link is-rounded has-text-weight-bold">
+                                                {props.account.email?.charAt(0).toUpperCase()}
+                                            </span>
+                                        </figure>
+                                    </div>
+                                    <div class="is-hidden-touch">
+                                        <span class="is-size-7 has-text-weight-semibold">{props.account.name || 'Admin'}</span>
+                                    </div>
+                                </div>
+                            </a>
+                            <div class="navbar-dropdown is-right">
+                                <div class="navbar-item">
+                                    <div class="is-size-7">
+                                        <p class="has-text-weight-bold">{props.account.name || 'Admin'}</p>
+                                        <p class="has-text-grey">{props.account.email}</p>
+                                    </div>
+                                </div>
+                                <hr class="navbar-divider" />
+                                <a href="/ui/logout" class="navbar-item has-text-danger">
+                                    Logout
+                                </a>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </nav>
 
-            <div class="columns is-gapless">
-                <div class="column is-2">
-                    <aside class="menu section pt-4">
+            <div class="columns is-gapless mb-0" style="min-height: calc(100vh - 3.25rem);">
+                <div class="column is-2 has-background-white-bis" style="border-right: 1px solid #dbdbdb;">
+                    <aside class="menu section py-5 px-4">
                         <ul class="menu-list">
                             {props.currentProjectId ? (
                                 <>
@@ -226,21 +256,6 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                                 </>
                             )}
                         </ul>
-                        {props.account && (
-                            <div class="mt-6 pt-5 has-border-top">
-                                <div class="media">
-                                    <div class="media-left">
-                                        <figure class="image is-48x48">
-                                            <span class="tag is-link is-large is-rounded">{props.account.email?.charAt(0).toUpperCase()}</span>
-                                        </figure>
-                                    </div>
-                                    <div class="media-content">
-                                        <p class="is-size-7 has-text-weight-semibold">{props.account.name || 'Admin'}</p>
-                                        <p class="is-size-7 has-text-grey">{props.account.email}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </aside>
                 </div>
                 <div class="column">

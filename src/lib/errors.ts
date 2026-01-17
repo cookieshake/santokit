@@ -41,7 +41,7 @@ export const handleDbError = (e: any): AppError => {
         return new AppError('One or more columns do not exist.', 400, 'UNDEFINED_COLUMN');
     }
 
-    // Handle generic Drizzle/Driver errors
+    // Handle generic driver errors
     const message = e.message || String(e);
 
     if (message.includes('unique constraint')) {

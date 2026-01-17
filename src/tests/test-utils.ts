@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { vi } from 'vitest'
-import { sql } from 'drizzle-orm'
+import { sql, Kysely } from 'kysely'
 
 // Re-export db setup for convenience
 export * from './db-setup.js'
@@ -38,45 +38,48 @@ export function setupDbMock() {
  * Cleans up the database tables (drops schema and re-applies).
  * Useful to run in beforeEach.
  */
-export async function clearDb(db: any) {
+export async function clearDb(db: Kysely<any>) {
     if (!db) return;
     // Drop logic to be clean and handle dynamic tables
-    await db.execute(sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`)
+    await sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`.execute(db)
 
     // Re-apply schema
-    const { pushSchema } = await import('drizzle-kit/api');
-    const schema = await import('@/db/schema.js'); // dynamic import
-    const { apply } = await pushSchema(schema, db);
-    await apply();
+    const { applySchema } = await import('./db-setup.js')
+    await applySchema(db)
 }
 
 /**
- * Creates an admin user and logs them in, returning the session cookie.
+ * Creates a project with a database, then creates an admin user and logs them in.
+ * Returns the session cookie and the project ID.
  */
 export async function createAdminAndLogin(app: Hono<any, any, any>) {
     const email = `admin-${Date.now()}@example.com`
     const password = 'password123'
 
-    // Ensure System project exists because we need it for admin login/register
     const { projectService } = await import('@/modules/project/project.service.js')
+
+    // Create a test project with default database
+    const project = await projectService.create('test-project', 'postgres://localhost:5432/test', 'test_')
+    const projectId = project.id
+
+    // Register user in the project
     const { CONSTANTS } = await import('@/constants.js')
-
-    try {
-        await projectService.create(CONSTANTS.PROJECTS.SYSTEM_ID, 'postgres://system')
-    } catch (e) {
-        // Ignore if exists
-    }
-
     await request(app, '/v1/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
-        headers: { 'Content-Type': 'application/json' }
+        body: JSON.stringify({ email, password, roles: ['admin'] }),
+        headers: {
+            'Content-Type': 'application/json',
+            [CONSTANTS.HEADERS.PROJECT_ID]: String(projectId)
+        }
     })
 
     const res = await request(app, '/v1/auth/sign-in', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+            'Content-Type': 'application/json',
+            [CONSTANTS.HEADERS.PROJECT_ID]: String(projectId)
+        }
     })
 
     return res.headers.get('set-cookie')

@@ -1,35 +1,18 @@
-import { sql } from 'drizzle-orm'
-import { db } from '@/db/index.js'
-import { CONSTANTS } from '@/constants.js'
+import { sql } from 'kysely'
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 
 export const accountRepository = {
     // Helper to get DB and Table Name
-    async getContext(projectId: number | string) {
-        let numericId = 0
-        let databaseId: number
-        let prefix = ''
-
-        if (projectId === CONSTANTS.PROJECTS.SYSTEM_ID) {
-            const projects = await projectRepository.findAll()
-            const sysProject = projects.find(p => p.name === CONSTANTS.PROJECTS.SYSTEM_ID)
-            if (!sysProject) throw new Error('System project not found')
-            numericId = sysProject.id
-        } else {
-            numericId = Number(projectId)
-        }
-
-        const databases = await projectRepository.findDatabasesByProjectId(numericId)
+    async getContext(projectId: number) {
+        const databases = await projectRepository.findDatabasesByProjectId(projectId)
         if (databases.length === 0) throw new Error(`No databases found for project ${projectId}`)
         const database = databases[0]
-        databaseId = database.id
-        prefix = database.prefix
+        const databaseId = database.id
 
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to database')
-
 
         const collectionsList = await collectionRepository.list(databaseId)
         const authTable = collectionsList.find(t => t.type === 'auth')
@@ -38,10 +21,10 @@ export const accountRepository = {
             throw new Error(`No account/auth collection found for project ${projectId}`)
         }
 
-        return { db: targetDb, tableName: `"${authTable.physicalName}"` }
+        return { db: targetDb, tableName: `"${authTable.physical_name}"` }
     },
 
-    create: async (projectId: number | string, data: any) => {
+    create: async (projectId: number, data: any) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
 
         const fullData = {
@@ -67,32 +50,32 @@ export const accountRepository = {
         }).join(', ')
 
         const query = `INSERT INTO ${tableName} (${cols}) VALUES (${vals}) RETURNING *`
-        const result = await db.execute(sql.raw(query))
+        const result = await sql.raw(query).execute(db)
         return result.rows[0]
     },
 
-    findByProjectId: async (projectId: number | string) => {
+    findByProjectId: async (projectId: number) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
-        const result = await db.execute(sql.raw(`SELECT * FROM ${tableName}`))
+        const result = await sql.raw(`SELECT * FROM ${tableName}`).execute(db)
         return result.rows
     },
 
-    findById: async (projectId: number | string, id: number | string) => {
+    findById: async (projectId: number, id: number | string) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
         const val = typeof id === 'string' ? `'${id.replace(/'/g, "''")}'` : id
-        const result = await db.execute(sql.raw(`SELECT * FROM ${tableName} WHERE id = ${val}`))
+        const result = await sql.raw(`SELECT * FROM ${tableName} WHERE id = ${val}`).execute(db)
         return result.rows[0]
     },
 
-    findByEmail: async (projectId: number | string, email: string) => {
+    findByEmail: async (projectId: number, email: string) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
-        const result = await db.execute(sql.raw(`SELECT * FROM ${tableName} WHERE email = '${email.replace(/'/g, "''")}'`))
+        const result = await sql.raw(`SELECT * FROM ${tableName} WHERE email = '${email.replace(/'/g, "''")}'`).execute(db)
         return result.rows[0]
     },
 
-    delete: async (projectId: number | string, id: number | string) => {
+    delete: async (projectId: number, id: number | string) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
         const val = typeof id === 'string' ? `'${id.replace(/'/g, "''")}'` : id
-        await db.execute(sql.raw(`DELETE FROM ${tableName} WHERE id = ${val}`))
+        await sql.raw(`DELETE FROM ${tableName} WHERE id = ${val}`).execute(db)
     }
 }

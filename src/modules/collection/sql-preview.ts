@@ -1,42 +1,43 @@
-import { SQL, isSQLWrapper } from 'drizzle-orm';
-import { format } from 'sql-formatter';
+import { CompiledQuery } from 'kysely'
+import { format } from 'sql-formatter'
 
-export function previewSql(query: SQL): string {
-    const chunks = query.getSQL().queryChunks;
-    const rawSql = processChunks(chunks);
+export function previewSql(query: CompiledQuery): string {
     try {
-        return format(rawSql, { language: 'postgresql' });
+        // Kysely already gives us the SQL string
+        let sqlStr = query.sql
+
+        // Replace parameter placeholders with actual values
+        const params = query.parameters as any[]
+        if (params && params.length > 0) {
+            params.forEach((param, index) => {
+                const placeholder = `$${index + 1}`
+                let value: string
+
+                if (typeof param === 'string') {
+                    value = `'${param.replace(/'/g, "''")}'`
+                } else if (param === null) {
+                    value = 'NULL'
+                } else if (typeof param === 'boolean') {
+                    value = param ? 'TRUE' : 'FALSE'
+                } else {
+                    value = String(param)
+                }
+
+                sqlStr = sqlStr.replace(placeholder, value)
+            })
+        }
+
+        return format(sqlStr, { language: 'postgresql' })
     } catch (e) {
-        return rawSql;
+        return query.sql
     }
 }
 
-function processChunks(chunks: any[]): string {
-    let sql = '';
-
-    for (const chunk of chunks) {
-        if (typeof chunk === 'string') {
-            sql += `'${chunk.replace(/'/g, "''")}'`;
-        } else if (typeof chunk === 'number') {
-            sql += String(chunk);
-        } else if (typeof chunk === 'boolean') {
-            sql += chunk ? 'TRUE' : 'FALSE';
-        } else if (chunk === null) {
-            sql += 'NULL';
-        } else if (typeof chunk === 'object') {
-            if (Array.isArray(chunk.value)) {
-                // Static string parts
-                sql += chunk.value.join('');
-            } else if (typeof chunk.value === 'string') {
-                // Identifier
-                sql += `"${chunk.value}"`;
-            } else if (chunk.queryChunks) {
-                // Nested SQL - Check this BEFORE isSQLWrapper
-                sql += processChunks(chunk.queryChunks);
-            } else if (isSQLWrapper(chunk)) {
-                sql += previewSql(chunk as SQL);
-            }
-        }
+// Helper to create a simple SQL preview from raw SQL string
+export function previewRawSql(sqlStr: string): string {
+    try {
+        return format(sqlStr, { language: 'postgresql' })
+    } catch (e) {
+        return sqlStr
     }
-    return sql;
 }
