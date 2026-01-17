@@ -12,6 +12,8 @@ import { sql } from 'kysely'
 import { connectionManager } from '@/db/connection-manager.js'
 import { getTestConnectionString } from '@/tests/db-setup.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
+import { policyService } from '@/modules/policy/policy.service.js'
+import { collectionService } from '@/modules/collection/collection.service.js'
 
 describe('Data Module (Client) E2E', () => {
     let projectId: number
@@ -21,23 +23,32 @@ describe('Data Module (Client) E2E', () => {
         await clearDb(db)
 
         const connectionString = getTestConnectionString()
-        const project = await projectService.create('Client App', connectionString, '1_')
+        const project = await projectService.create('Client App')
         projectId = project.id
 
-        const databases = await projectRepository.findDatabasesByProjectId(projectId)
-        const database = databases[0]
+        const database = await projectService.createDatabase(projectId, 'default', connectionString, '1_')
 
-        // Create Collection Table in Project DB
-        const projectDb = await connectionManager.getConnection(database.id)
-        if (!projectDb) throw new Error('No project db')
+        // Create Collection via Service (creates metadata + physical table)
+        await collectionService.create(database.id, collectionName)
+        await collectionService.addField(database.id, collectionName, 'title', 'text', false)
 
-        // Simple table creation for 'articles' with 'title'
-        await sql.raw(`
-            CREATE TABLE IF NOT EXISTS "${database.prefix}p${projectId}_${collectionName}" (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL
-            )
-        `).execute(projectDb)
+        // Add Policies
+        await policyService.create({
+            project_id: projectId,
+            database_id: database.id,
+            collection_name: collectionName,
+            role: 'user',
+            action: 'create',
+            condition: '{}'
+        })
+        await policyService.create({
+            project_id: projectId,
+            database_id: database.id,
+            collection_name: collectionName,
+            role: 'user',
+            action: 'read',
+            condition: '{}'
+        })
     })
 
     describe('POST /v1/databases/default/collections/:collectionName/records', () => {

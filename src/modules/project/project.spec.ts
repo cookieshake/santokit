@@ -53,36 +53,31 @@ describe('Project Service (Integration)', () => {
   })
 
   it('should create a new project', async () => {
-    const project = await projectService.create('New Project', 'postgresql://localhost/test')
+    const project = await projectService.create('New Project')
     expect(project).toBeDefined()
     expect(project.name).toBe('New Project')
 
-    // Check Database
+    // Check No Database initially
     const databases = await projectRepository.findDatabasesByProjectId(project.id)
-    expect(databases.length).toBe(1)
-    expect(databases[0].connection_string).toBe('postgresql://localhost/test')
+    expect(databases.length).toBe(0)
   })
 
   it('should list projects', async () => {
-    await projectService.create('Project 1', 'postgresql://localhost/test1')
-    await projectService.create('Project 2', 'postgresql://localhost/test2')
+    await projectService.create('Project 1')
+    await projectService.create('Project 2')
 
     const projects = await projectService.list()
     expect(projects.length).toBe(2)
     expect(projects[0].name).toBe('Project 1')
   })
 
-  it('should have a connection string upon creation', async () => {
-    const project = await projectService.create('To Check', 'postgresql://localhost/test')
+  it('should create a database for project', async () => {
+    const project = await projectService.create('To Check')
+    await projectService.createDatabase(project.id, 'default', 'postgresql://localhost/test', 'p_')
+
     const databases = await projectRepository.findDatabasesByProjectId(project.id)
+    expect(databases.length).toBe(1)
     expect(databases[0].connection_string).toBe('postgresql://localhost/test')
-  })
-
-  it('should create a project with correct prefix', async () => {
-    const project = await projectService.create('Project with Prefix', 'postgresql://localhost/test', 'p_')
-    expect(project).toBeDefined()
-
-    const databases = await projectRepository.findDatabasesByProjectId(project.id)
     expect(databases[0].prefix).toBe('p_')
   })
 })

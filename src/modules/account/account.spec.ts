@@ -51,8 +51,11 @@ describe('User Service (Project Level)', () => {
     await applySchema(db)
 
     // Create initial setup
-    const p1 = await projectService.create('Project 1', 'memory')
-    const p2 = await projectService.create('Project 2', 'memory')
+    const p1 = await projectService.create('Project 1')
+    await projectService.createDatabase(p1.id, 'default', 'memory', 'santoki_')
+
+    const p2 = await projectService.create('Project 2')
+    await projectService.createDatabase(p2.id, 'default', 'memory', 'santoki_')
 
     projectId1 = p1.id
     projectId2 = p2.id

@@ -3,21 +3,9 @@ import { collectionService } from '@/modules/collection/collection.service.js'
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
 
 export const projectService = {
-    create: async (name: string, connectionString?: string, prefix?: string, databaseName?: string) => {
+    create: async (name: string) => {
         // 1. Create Project
         const project = await projectRepository.create({ name })
-
-        if (connectionString) {
-            // 2. Create Default Database (formerly DataSource)
-            const database = await projectRepository.createDatabase({
-                projectId: project.id,
-                name: databaseName || 'default',
-                connectionString,
-                prefix: prefix || 'santoki_'
-            })
-
-            await projectService.initializeDatabase(database.id, 'users')
-        }
         return project
     },
     createDatabase: async (projectId: number, name: string, connectionString: string, prefix?: string) => {

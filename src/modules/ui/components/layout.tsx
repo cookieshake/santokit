@@ -231,23 +231,25 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                             {props.currentProjectId ? (
                                 <>
                                     <li><a href={`/ui/projects/${props.currentProjectId}`} class={props.active === 'projects' && !props.children?.props?.title?.startsWith('Collection') ? 'is-active' : ''}>Overview</a></li>
-                                    <li>
-                                        <p class="menu-label mt-4">Databases</p>
-                                        <ul>
-                                            <li>
-                                                <a class="is-active-parent">{props.currentDatabaseName || 'default'}</a>
-                                                <ul>
-                                                    {props.collections?.map((col: any) => (
-                                                        <li>
-                                                            <a href={`/ui/projects/${props.currentProjectId}/collections/${col.name}`} class={props.children?.props?.children?.[0]?.props?.children?.[2]?.props?.children === col.name ? 'is-active' : ''}>
-                                                                {col.name}
-                                                            </a>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </li>
-                                        </ul>
-                                    </li>
+                                    {props.currentDatabaseName && (
+                                        <li>
+                                            <p class="menu-label mt-4">Databases</p>
+                                            <ul>
+                                                <li>
+                                                    <a class="is-active-parent">{props.currentDatabaseName}</a>
+                                                    <ul>
+                                                        {props.collections?.map((col: any) => (
+                                                            <li>
+                                                                <a href={`/ui/projects/${props.currentProjectId}/collections/${col.name}`} class={props.children?.props?.children?.[0]?.props?.children?.[2]?.props?.children === col.name ? 'is-active' : ''}>
+                                                                    {col.name}
+                                                                </a>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </li>
+                                            </ul>
+                                        </li>
+                                    )}
                                 </>
                             ) : (
                                 <>

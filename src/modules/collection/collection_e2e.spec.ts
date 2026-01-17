@@ -17,13 +17,20 @@ describe('Collection Module E2E', () => {
         // Setup Project
         const projRes = await request(app, '/v1/projects', {
             method: 'POST',
-            body: JSON.stringify({ name: 'P1', connectionString: 'memory://p1', prefix: 'p1_' }),
+            body: JSON.stringify({ name: 'P1' }),
             headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
         })
         const text = await projRes.text()
         console.log('Project Create Response:', projRes.status, text)
         const project = JSON.parse(text)
         projectId = project.id
+
+        // Create Default Database
+        await request(app, `/v1/projects/${projectId}/databases`, {
+            method: 'POST',
+            body: JSON.stringify({ name: 'default', connectionString: 'memory://p1', prefix: 'p1_' }),
+            headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+        })
     })
 
     describe('POST /v1/databases/:databaseName/collections', () => {

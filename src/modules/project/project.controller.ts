@@ -8,8 +8,8 @@ import accountController from '@/modules/account/account.controller.js'
 const app = new Hono()
 
 app.post('/', zValidator('json', CreateProjectSchema), async (c) => {
-    const { name, connectionString, prefix, databaseName } = c.req.valid('json')
-    const result = await projectService.create(name, connectionString, prefix, databaseName)
+    const { name } = c.req.valid('json')
+    const result = await projectService.create(name)
     return c.json(result)
 })
 

@@ -33,20 +33,6 @@ export const Projects = (props: { projects: any[]; account: any }) => (
                                 <input class="input" type="text" id="project-name" placeholder="My Awesome Project" required />
                             </div>
                         </div>
-                        <div class="field">
-                            <label class="label">Database Connection (Optional)</label>
-                            <div class="control">
-                                <input class="input" type="text" id="project-connection" placeholder="postgres://..." />
-                            </div>
-                            <p class="help">If provided, an initial database will be created.</p>
-                        </div>
-                        <div class="field">
-                            <label class="label">Database Name (Optional)</label>
-                            <div class="control">
-                                <input class="input" type="text" id="project-db-name" placeholder="default" />
-                            </div>
-                            <p class="help">Defaults to 'default' if not specified.</p>
-                        </div>
                     </form>
                     <div id="project-error" class="notification is-danger" style="display: none;"></div>
                 </section>
@@ -62,8 +48,6 @@ export const Projects = (props: { projects: any[]; account: any }) => (
             document.getElementById('new-project-form').addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const name = document.getElementById('project-name').value;
-                const connectionString = document.getElementById('project-connection').value || undefined;
-                const databaseName = document.getElementById('project-db-name').value || undefined;
                 
                 const errorDiv = document.getElementById('project-error');
                 errorDiv.style.display = 'none';
@@ -71,7 +55,7 @@ export const Projects = (props: { projects: any[]; account: any }) => (
                     const res = await fetch('/v1/projects', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ name, connectionString, databaseName })
+                        body: JSON.stringify({ name })
                     });
                     if (res.ok) {
                         window.location.reload();

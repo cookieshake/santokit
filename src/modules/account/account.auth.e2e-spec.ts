@@ -20,8 +20,9 @@ describe('User Auth (Client) E2E', () => {
         // const adminCookie = await createAdminAndLogin(adminApp) // Login not needed for service calls if we bypass API
 
         const connectionString = getTestConnectionString()
-        const project = await projectService.create('Client App', connectionString, '1_')
+        const project = await projectService.create('Client App')
         projectId = project.id
+        await projectService.createDatabase(projectId, 'default', connectionString, '1_')
     })
 
     describe('POST /v1/auth/register', () => {

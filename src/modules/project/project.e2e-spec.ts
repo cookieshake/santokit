@@ -16,26 +16,10 @@ describe('Project Module E2E', () => {
 
     describe('POST /admin/v1/projects', () => {
         it('should create a new project', async () => {
-            // First create a datasource
-            const dsRes = await request(app, '/admin/v1/sources', {
-                method: 'POST',
-                body: JSON.stringify({
-                    name: 'default-ds',
-                    connectionString: 'postgres://...',
-                    prefix: 'ds1_'
-                }),
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Cookie': cookie || ''
-                }
-            })
-            const ds = await dsRes.json()
-
             const res = await request(app, '/admin/v1/projects', {
                 method: 'POST',
                 body: JSON.stringify({
-                    name: 'My Project',
-                    dataSourceId: ds.id
+                    name: 'My Project'
                 }),
                 headers: {
                     'Content-Type': 'application/json',
@@ -46,29 +30,15 @@ describe('Project Module E2E', () => {
             expect(res.status).toBe(200)
             const body = await res.json()
             expect(body.name).toBe('My Project')
-            expect(body.dataSourceId).toBe(ds.id)
         })
     })
 
     describe('GET /admin/v1/projects', () => {
         it('should list projects', async () => {
-            // Create DS and Project
-            const dsRes = await request(app, '/admin/v1/sources', {
-                method: 'POST',
-                body: JSON.stringify({
-                    name: 'default-ds',
-                    connectionString: 'postgres://...',
-                    prefix: 'ds1_'
-                }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
-            })
-            const ds = await dsRes.json()
-
             await request(app, '/admin/v1/projects', {
                 method: 'POST',
                 body: JSON.stringify({
-                    name: 'Project A',
-                    dataSourceId: ds.id
+                    name: 'Project A'
                 }),
                 headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
             })
@@ -81,46 +51,36 @@ describe('Project Module E2E', () => {
             const body = await res.json()
             expect(Array.isArray(body)).toBe(true)
             expect(body.length).toBeGreaterThanOrEqual(1)
-            expect(body[0].name).toBe('Project A')
+            const projectA = body.find((p: any) => p.name === 'Project A')
+            expect(projectA).toBeDefined()
         })
     })
 
-    describe('POST /admin/v1/projects/:id/associate-datasource', () => {
-        it('should associate a datasource', async () => {
-            // Create DS 1
-            const ds1Res = await request(app, '/admin/v1/sources', {
-                method: 'POST',
-                body: JSON.stringify({ name: 'ds1', connectionString: '...', prefix: '1_' }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
-            })
-            const ds1 = await ds1Res.json()
-
-            // Create DS 2
-            const ds2Res = await request(app, '/admin/v1/sources', {
-                method: 'POST',
-                body: JSON.stringify({ name: 'ds2', connectionString: '...', prefix: '2_' }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
-            })
-            const ds2 = await ds2Res.json()
-
-            // Create Project with DS 1
+    describe('POST /admin/v1/projects/:id/databases', () => {
+        it('should create a database for a project', async () => {
+            // Create Project
             const projRes = await request(app, '/admin/v1/projects', {
                 method: 'POST',
-                body: JSON.stringify({ name: 'Project Switch', dataSourceId: ds1.id }),
+                body: JSON.stringify({ name: 'DB Project' }),
                 headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
             })
             const project = await projRes.json()
 
-            // Switch to DS 2
-            const res = await request(app, `/admin/v1/projects/${project.id}/associate-datasource`, {
+            // Add Database
+            const res = await request(app, `/admin/v1/projects/${project.id}/databases`, {
                 method: 'POST',
-                body: JSON.stringify({ dataSourceId: ds2.id }),
+                body: JSON.stringify({
+                    name: 'default',
+                    connectionString: 'postgres://localhost:5432/db_proj',
+                    prefix: 'p_'
+                }),
                 headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
             })
 
             expect(res.status).toBe(200)
             const body = await res.json()
-            expect(body.dataSourceId).toBe(ds2.id)
+            expect(body.name).toBe('default')
+            expect(body.project_id).toBe(project.id)
         })
     })
 })

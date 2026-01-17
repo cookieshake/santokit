@@ -58,9 +58,12 @@ export async function createAdminAndLogin(app: Hono<any, any, any>) {
 
     const { projectService } = await import('@/modules/project/project.service.js')
 
-    // Create a test project with default database
-    const project = await projectService.create('test-project', 'postgres://localhost:5432/test', 'test_')
+    // Create a test project
+    const project = await projectService.create('test-project')
     const projectId = project.id
+
+    // Create a default database for the project
+    await projectService.createDatabase(projectId, 'default', 'postgres://localhost:5432/test', 'test_')
 
     // Register user in the project
     const { CONSTANTS } = await import('@/constants.js')

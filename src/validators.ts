@@ -23,9 +23,6 @@ export const CreateDatabaseSchema = z.object({
 
 export const CreateProjectSchema = z.object({
     name: z.string().min(1),
-    connectionString: z.string().url().optional(),
-    databaseName: z.string().min(1).regex(/^[a-zA-Z0-9_]+$/, "Alphanumeric and underscores only").optional(),
-    prefix: z.string().default('santoki_'),
 })
 
 export const CreateUserSchema = z.object({

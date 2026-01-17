@@ -194,8 +194,8 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                                             {db.name}
                                             {props.currentDatabaseName === db.name && <span class="tag is-info is-light ml-2">Current</span>}
                                         </td>
-                                        <td title={db.connectionString}>
-                                            {db.connectionString.length > 50 ? db.connectionString.substring(0, 50) + '...' : db.connectionString}
+                                        <td title={db.connection_string}>
+                                            {(db.connection_string || '').length > 50 ? (db.connection_string || '').substring(0, 50) + '...' : db.connection_string}
                                         </td>
                                         <td>
                                             <button class="button is-small is-danger" onclick={`deleteDatabase(${db.id})`}>Delete</button>
@@ -227,7 +227,7 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                                     {props.collections.map(col => (
                                         <tr>
                                             <td>{col.name}</td>
-                                            <td><code>{col.physicalName}</code></td>
+                                            <td><code>{col.physical_name}</code></td>
                                             <td>
                                                 <a href={`/ui/projects/${props.project.id}/collections/${col.name}`} class="button is-small is-primary">Design</a>
                                             </td>
@@ -248,16 +248,11 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                             <input class="input is-static" type="text" value={String(props.project.id)} readonly />
                         </div>
                     </div>
-                    <div class="field">
-                        <label class="label">Connection String</label>
-                        <div class="control">
-                            <input class="input is-static" type="text" value={props.project.connectionString} readonly />
-                        </div>
-                    </div>
+
                     <div class="field">
                         <label class="label">Created At</label>
                         <div class="control">
-                            <input class="input is-static" type="text" value={props.project.createdAt ? new Date(props.project.createdAt).toLocaleString() : '-'} readonly />
+                            <input class="input is-static" type="text" value={props.project.created_at ? new Date(props.project.created_at).toLocaleString() : '-'} readonly />
                         </div>
                     </div>
                 </div>

@@ -40,8 +40,9 @@ describe('Account Module', () => {
         await clearDb(mockedDb)
 
         // Create a test project with database
-        const project = await projectService.create('test-project', 'postgres://test-db-connection')
+        const project = await projectService.create('test-project')
         testProjectId = project.id
+        await projectService.createDatabase(testProjectId, 'default', 'postgres://test-db-connection', 'test_')
     })
 
     afterAll(async () => {
