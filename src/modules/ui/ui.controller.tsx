@@ -76,6 +76,11 @@ app.get('/projects/:id/collections/:colName', async (c) => {
 
         const collections = await collectionService.listByDatabase(dbId)
 
+        // Fetch policies for this collection
+        const { policyService } = await import('@/modules/policy/policy.service.js')
+        const allPolicies = await policyService.list(projectId, dbId)
+        const policies = allPolicies.filter((p: any) => p.collectionName === collectionName)
+
         return c.html(
             <CollectionDetail
                 projectId={projectId}
@@ -83,6 +88,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                 collectionName={collectionName}
                 detail={detail}
                 rows={rows}
+                policies={policies}
                 account={account}
                 projects={projects}
                 collections={collections}

@@ -16,6 +16,7 @@ import { CONSTANTS } from '@/constants.js'
 import dataController from '@/modules/data/data.controller.js'
 import projectController from '@/modules/project/project.controller.js'
 import uiController from '@/modules/ui/ui.controller.js'
+import policyController from '@/modules/policy/policy.controller.js'
 
 import { accountRepository } from '@/modules/account/account.repository.js'
 
@@ -63,10 +64,10 @@ api.route('/auth', authController)
 // 1. Auth Routes
 api.route('/auth', authController)
 
-// 2. Collection Routes (Protected)
+// 2. Database Scoped Routes (Protected)
 // Mount at new path with database in URL, Project in Header
-api.use('/databases/:databaseName/collections/*', authMiddleware)
-api.use('/databases/:databaseName/collections/*', async (c, next) => {
+api.use('/databases/:databaseName/*', authMiddleware)
+api.use('/databases/:databaseName/*', async (c, next) => {
     const user = c.get('user')
     // Project ID from Header
     const rawId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)
@@ -96,9 +97,9 @@ api.use('/databases/:databaseName/collections/*', async (c, next) => {
     await next()
 })
 
-// Mount Collection Controller
-// Matches /databases/:databaseName/collections
+// Mount Controllers
 api.route('/databases/:databaseName/collections', collectionController)
+api.route('/databases/:databaseName/policies', policyController)
 
 api.get('/', (c) => c.text('Santoki Unified API'))
 

@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { DynamicDataInsertSchema } from '@/validators.js'
 import { dataService } from '@/modules/data/data.service.js'
+import { policyService } from '@/modules/policy/policy.service.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { CONSTANTS } from '@/constants.js'
 
@@ -33,6 +34,11 @@ const resolveDatabaseId = async (c: any) => {
 // Actually path in app.ts is: /databases/:databaseName/collections/:collectionName/records
 // header x-project-id is used.
 
+// Helper to get user
+const getUser = (c: any) => {
+    return c.get('account') || { roles: ['guest'] }; // Default to guest if not found (public access?)
+}
+
 app.get('/', async (c) => {
     try {
         const rawProjectId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!
@@ -43,7 +49,13 @@ app.get('/', async (c) => {
             return c.json(data)
         } else {
             const databaseId = await resolveDatabaseId(c)
-            const data = await dataService.findAll(databaseId, collectionName)
+            const projectId = parseInt(rawProjectId)
+            const user = getUser(c)
+
+            const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'read', user)
+            if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
+
+            const data = await dataService.findAll(databaseId, collectionName, policy.filter)
             return c.json(data)
         }
     } catch (e) {
@@ -62,6 +74,15 @@ app.post('/', zValidator('json', DynamicDataInsertSchema), async (c) => {
             return c.json(result)
         } else {
             const databaseId = await resolveDatabaseId(c)
+            const projectId = parseInt(rawProjectId)
+            const user = getUser(c)
+
+            const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'create', user)
+            if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
+
+            // Note: We are not enforcing policy.filter on create payload for now, assuming "allowed" is enough.
+            // Advanced implementation would check if body matches the condition.
+
             const result = await dataService.create(databaseId, collectionName, body)
             return c.json(result)
         }
@@ -82,7 +103,14 @@ app.patch('/:id', zValidator('json', DynamicDataInsertSchema), async (c) => {
             return c.json(result)
         } else {
             const databaseId = await resolveDatabaseId(c)
-            const result = await dataService.update(databaseId, collectionName, id, body)
+            const projectId = parseInt(rawProjectId)
+            const user = getUser(c)
+
+            const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'update', user)
+            if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
+
+            const result = await dataService.update(databaseId, collectionName, id, body, policy.filter)
+            if (!result) return c.json({ error: 'Not found or permission denied' }, 404) // Or 403?
             return c.json(result)
         }
     } catch (e) {
@@ -101,7 +129,14 @@ app.delete('/:id', async (c) => {
             return c.json(result)
         } else {
             const databaseId = await resolveDatabaseId(c)
-            const result = await dataService.delete(databaseId, collectionName, id)
+            const projectId = parseInt(rawProjectId)
+            const user = getUser(c)
+
+            const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'delete', user)
+            if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
+
+            const result = await dataService.delete(databaseId, collectionName, id, policy.filter)
+            if (!result) return c.json({ error: 'Not found or permission denied' }, 404)
             return c.json(result)
         }
     } catch (e) {

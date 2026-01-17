@@ -1,53 +1,45 @@
-import { sql } from 'drizzle-orm'
+import { sql, eq, and } from 'drizzle-orm'
 import { previewSql } from './sql-preview.js'
 
 import { connectionManager } from '@/db/connection-manager.js'
+import { db } from '@/db/index.js'
+import { collections } from '@/db/schema.js'
 
 export const collectionRepository = {
-    // Introspection Operations
-    // Metadata Table Operations
-    ensureMetadataTable: async (databaseId: number, metadataTableName: string) => {
-        const targetDb = await connectionManager.getConnection(databaseId)
-        if (!targetDb) throw new Error('Could not connect to data source')
+    // Metadata Operations (Main DB)
+    list: async (databaseId: number) => {
+        return await db.select().from(collections).where(eq(collections.databaseId, databaseId))
+    },
 
-        // Check if table exists to avoid error logs or unnecessary calls
-        await targetDb.execute(sql`
-            CREATE TABLE IF NOT EXISTS ${sql.identifier(metadataTableName)} (
-                id SERIAL PRIMARY KEY,
-                name TEXT NOT NULL,
-                physical_name TEXT NOT NULL UNIQUE,
-                type TEXT NOT NULL DEFAULT 'base',
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
+    findByName: async (databaseId: number, name: string) => {
+        return await db.query.collections.findFirst({
+            where: and(
+                eq(collections.databaseId, databaseId),
+                eq(collections.name, name)
             )
-        `)
+        })
     },
 
-    // Introspection Operations
-    listPhysicalTables: async (databaseId: number, metadataTableName: string, prefix: string, projectId: number) => {
-        const targetDb = await connectionManager.getConnection(databaseId)
-        if (!targetDb) throw new Error('Could not connect to data source')
-
-        // Check if metadata table exists
-        const check = await targetDb.execute(sql`SELECT to_regclass(${metadataTableName})`)
-        if (!check.rows[0].to_regclass) {
-            return []
-        }
-
-        const rows = await targetDb.execute(sql`
-            SELECT name, physical_name as "physicalName", type
-            FROM ${sql.identifier(metadataTableName)}
-            WHERE physical_name LIKE ${`${prefix}p${projectId}_%`}
-        `)
-
-        return rows.rows.map(row => ({
-            projectId, // Note: This might need to be databaseId or we keep project context?
-            name: row.name,
-            physicalName: row.physicalName,
-            type: row.type
-        }))
+    createMetadata: async (projectId: number, databaseId: number, name: string, physicalName: string, type: 'base' | 'auth' = 'base') => {
+        return await db.insert(collections).values({
+            projectId,
+            databaseId,
+            name,
+            physicalName,
+            type
+        }).returning()
     },
 
+    deleteMetadata: async (databaseId: number, physicalName: string) => {
+        await db.delete(collections).where(
+            and(
+                eq(collections.databaseId, databaseId),
+                eq(collections.physicalName, physicalName)
+            )
+        )
+    },
+
+    // Physical Table Operations (Tenant DB)
     checkPhysicalTableExists: async (databaseId: number, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) return false
@@ -63,35 +55,9 @@ export const collectionRepository = {
         return result.rows[0].exists === true
     },
 
-    getCollectionType: async (databaseId: number, metadataTableName: string, physicalName: string) => {
-        const targetDb = await connectionManager.getConnection(databaseId)
-        if (!targetDb) return 'base'
-
-        try {
-            const result = await targetDb.execute(sql`
-                SELECT type FROM ${sql.identifier(metadataTableName)}
-                WHERE physical_name = ${physicalName}
-                LIMIT 1
-            `)
-
-            if (result.rows.length > 0) {
-                return result.rows[0].type
-            }
-            return 'base'
-        } catch (e) {
-            return 'base'
-        }
-    },
-
-    // Physical Table Operations
-    createPhysicalTable: async (databaseId: number, metadataTableName: string, name: string, physicalName: string, idType: 'serial' | 'uuid' = 'serial', type: 'base' | 'auth' = 'base', dryRun: boolean = false) => {
+    createPhysicalTable: async (databaseId: number, physicalName: string, idType: 'serial' | 'uuid' = 'serial', dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to data source')
-
-        // Ensure metadata table
-        if (!dryRun) {
-            await collectionRepository.ensureMetadataTable(databaseId, metadataTableName)
-        }
 
         const idCol = idType === 'uuid'
             ? 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
@@ -104,15 +70,9 @@ export const collectionRepository = {
         }
 
         await targetDb.execute(createTableSql)
-
-        // Insert metadata
-        await targetDb.execute(sql`
-            INSERT INTO ${sql.identifier(metadataTableName)} (name, physical_name, type)
-            VALUES (${name}, ${physicalName}, ${type})
-        `)
     },
 
-    deletePhysicalTable: async (databaseId: number, metadataTableName: string, physicalName: string, dryRun: boolean = false) => {
+    deletePhysicalTable: async (databaseId: number, physicalName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to data source')
 
@@ -122,18 +82,7 @@ export const collectionRepository = {
             return previewSql(dropTableSql)
         }
 
-        // Drop table
         await targetDb.execute(dropTableSql)
-
-        // Remove metadata if exists
-        try {
-            await targetDb.execute(sql`
-                DELETE FROM ${sql.identifier(metadataTableName)}
-                WHERE physical_name = ${physicalName}
-            `)
-        } catch (e) {
-            // ignore
-        }
     },
 
     // Field Operations

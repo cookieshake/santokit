@@ -15,12 +15,20 @@ export const collectionService = {
 
         // 2. Generate Physical Name
         const physicalName = `${database.prefix}p${projectId}_${name}`.toLowerCase()
-        const collectionTableName = `${database.prefix}p${projectId}__collections`.toLowerCase()
 
         // 3. Create Physical Table
         const sqls: string[] = []
-        const tableSql = await collectionRepository.createPhysicalTable(databaseId, collectionTableName, name, physicalName, idType, type, dryRun)
+        const tableSql = await collectionRepository.createPhysicalTable(databaseId, physicalName, idType, dryRun)
         if (dryRun && tableSql) sqls.push(tableSql as string)
+
+        if (!dryRun) {
+            // 3.0 Insert Metadata into Main DB
+            // We do this AFTER physical table creation to ensure it succeeded (or we could do before and rollback)
+            // But if physical creation fails, we shouldn't have metadata.
+            await collectionRepository.createMetadata(projectId, databaseId, name, physicalName, type)
+        } else {
+            sqls.push(`-- Metadata insertion into main DB skipped for dry-run`)
+        }
 
         // 3.1 If type is 'auth', add default fields
         if (type === 'auth') {
@@ -63,13 +71,8 @@ export const collectionService = {
     },
 
     listByDatabase: async (databaseId: number) => {
-        const database = await projectRepository.findDatabaseById(databaseId)
-        if (!database) throw new Error('Database not found')
-        const projectId = database.projectId
-        if (!projectId) throw new Error('Database not linked to project')
-
-        const collectionTableName = `${database.prefix}p${projectId}__collections`.toLowerCase()
-        return await collectionRepository.listPhysicalTables(databaseId, collectionTableName, database.prefix, projectId)
+        // Just list from Main DB
+        return await collectionRepository.list(databaseId)
     },
 
     getDetail: async (databaseId: number, collectionName: string) => {
@@ -78,18 +81,20 @@ export const collectionService = {
         const projectId = database.projectId
         if (!projectId) throw new Error('Database not linked to project')
 
-        const physicalName = `${database.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        // Find metadata first
+        const collection = await collectionRepository.findByName(databaseId, collectionName)
+        if (!collection) throw new Error('Collection not found')
+
+        const physicalName = collection.physicalName
         const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
 
-        if (!exists) throw new Error('Collection not found')
+        if (!exists) throw new Error('Physical table not found (integrity error)')
 
-        const collectionTableName = `${database.prefix}p${projectId}__collections`.toLowerCase()
         const fields = await collectionRepository.getFields(databaseId, physicalName)
         const indexes = await collectionRepository.getIndexes(databaseId, physicalName)
-        const type = await collectionRepository.getCollectionType(databaseId, collectionTableName, physicalName)
 
         return {
-            meta: { projectId, databaseId, name: collectionName, physicalName, type },
+            meta: collection,
             fields,
             indexes
         }
@@ -99,12 +104,14 @@ export const collectionService = {
     addField: async (databaseId: number, collectionName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
-        const projectId = database.projectId
-        if (!projectId) throw new Error('Database not linked to project')
 
-        const physicalName = `${database.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        // Find metadata first to get physical name
+        const collection = await collectionRepository.findByName(databaseId, collectionName)
+        if (!collection) throw new Error('Collection not found')
+
+        const physicalName = collection.physicalName
         const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Collection not found')
+        if (!exists) throw new Error('Physical table not found')
 
         const sql = await collectionRepository.addField(databaseId, physicalName, fieldName, type, isNullable, dryRun)
         if (dryRun) return { sql }
@@ -113,12 +120,13 @@ export const collectionService = {
     removeField: async (databaseId: number, collectionName: string, fieldName: string, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
-        const projectId = database.projectId
-        if (!projectId) throw new Error('Database not linked to project')
 
-        const physicalName = `${database.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const collection = await collectionRepository.findByName(databaseId, collectionName)
+        if (!collection) throw new Error('Collection not found')
+
+        const physicalName = collection.physicalName
         const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Collection not found')
+        if (!exists) throw new Error('Physical table not found')
 
         const sql = await collectionRepository.removeField(databaseId, physicalName, fieldName, dryRun)
         if (dryRun) return { sql }
@@ -127,12 +135,13 @@ export const collectionService = {
     renameField: async (databaseId: number, collectionName: string, oldName: string, newName: string, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
-        const projectId = database.projectId
-        if (!projectId) throw new Error('Database not linked to project')
 
-        const physicalName = `${database.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const collection = await collectionRepository.findByName(databaseId, collectionName)
+        if (!collection) throw new Error('Collection not found')
+
+        const physicalName = collection.physicalName
         const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Collection not found')
+        if (!exists) throw new Error('Physical table not found')
 
         const sql = await collectionRepository.renameField(databaseId, physicalName, oldName, newName, dryRun)
         if (dryRun) return { sql }
@@ -142,12 +151,13 @@ export const collectionService = {
     createIndex: async (databaseId: number, collectionName: string, indexName: string, fields: string[], unique: boolean, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
-        const projectId = database.projectId
-        if (!projectId) throw new Error('Database not linked to project')
 
-        const physicalName = `${database.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const collection = await collectionRepository.findByName(databaseId, collectionName)
+        if (!collection) throw new Error('Collection not found')
+
+        const physicalName = collection.physicalName
         const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Collection not found')
+        if (!exists) throw new Error('Physical table not found')
 
         const fullIndexName = `${database.prefix}idx_${physicalName}_${indexName}`
         const sql = await collectionRepository.createIndex(databaseId, physicalName, fullIndexName, fields, unique, dryRun)
@@ -158,12 +168,13 @@ export const collectionService = {
     removeIndex: async (databaseId: number, collectionName: string, indexName: string, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
-        const projectId = database.projectId
-        if (!projectId) throw new Error('Database not linked to project')
 
-        const physicalName = `${database.prefix}p${projectId}_${collectionName}`.toLowerCase()
+        const collection = await collectionRepository.findByName(databaseId, collectionName)
+        if (!collection) throw new Error('Collection not found')
+
+        const physicalName = collection.physicalName
         const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Collection not found')
+        if (!exists) throw new Error('Physical table not found')
 
         const fullIndexName = `${database.prefix}idx_${physicalName}_${indexName}`
         const sql = await collectionRepository.removeIndex(databaseId, fullIndexName, dryRun)

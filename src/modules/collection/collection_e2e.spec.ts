@@ -26,9 +26,9 @@ describe('Collection Module E2E', () => {
         projectId = project.id
     })
 
-    describe('POST /admin/v1/projects/:projectId/collections', () => {
+    describe('POST /v1/databases/:databaseName/collections', () => {
         it('should create a collection and return its type in detail', async () => {
-            const res = await request(app, '/v1/projects/collections', {
+            const res = await request(app, '/v1/databases/default/collections', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'items', idType: 'serial' }),
                 headers: {
@@ -43,7 +43,7 @@ describe('Collection Module E2E', () => {
             expect(body.name).toBe('items')
 
             // Verify detail
-            const detailRes = await request(app, '/v1/projects/collections/items', {
+            const detailRes = await request(app, '/v1/databases/default/collections/items', {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -60,7 +60,7 @@ describe('Collection Module E2E', () => {
     describe('Fields Management', () => {
         it('should add, rename and delete fields', async () => {
             // Create collection
-            await request(app, '/v1/projects/collections', {
+            await request(app, '/v1/databases/default/collections', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'articles', idType: 'uuid' }),
                 headers: {
@@ -71,7 +71,7 @@ describe('Collection Module E2E', () => {
             })
 
             // Add Field
-            const addRes = await request(app, '/v1/projects/collections/articles/fields', {
+            const addRes = await request(app, '/v1/databases/default/collections/articles/fields', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'title', type: 'text', isNullable: false }),
                 headers: {
@@ -83,7 +83,7 @@ describe('Collection Module E2E', () => {
             expect(addRes.status).toBe(200)
 
             // Rename Field
-            const renameRes = await request(app, '/v1/projects/collections/articles/fields/title', {
+            const renameRes = await request(app, '/v1/databases/default/collections/articles/fields/title', {
                 method: 'PUT', // Controller uses PUT
                 body: JSON.stringify({ newName: 'headline' }),
                 headers: {
@@ -95,7 +95,7 @@ describe('Collection Module E2E', () => {
             expect(renameRes.status).toBe(200)
 
             // Delete Field
-            const delRes = await request(app, '/v1/projects/collections/articles/fields/headline', {
+            const delRes = await request(app, '/v1/databases/default/collections/articles/fields/headline', {
                 method: 'DELETE',
                 headers: {
                     'Cookie': cookie || '',

@@ -41,25 +41,55 @@ export const dataService = {
         return result.rows[0]
     },
 
-    findAll: async (databaseId: number, collectionName: string) => {
+    findAll: async (databaseId: number, collectionName: string, whereClause?: string | null) => {
         const detail = await collectionService.getDetail(databaseId, collectionName)
         const physicalName = detail.meta.physicalName
 
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
-        const result = await targetDb.execute(sql.raw(`SELECT * FROM "${physicalName}"`))
+        const sqlQuery = `SELECT * FROM "${physicalName}"${whereClause ? ` WHERE ${whereClause}` : ''}`
+        const result = await targetDb.execute(sql.raw(sqlQuery))
         return result.rows
     },
 
-    update: async (databaseId: number, collectionName: string, id: string | number, data: Record<string, any>) => {
-        // TODO: Implement update for user data
-        throw new Error("Update not implemented for user data")
+    update: async (databaseId: number, collectionName: string, id: string | number, data: Record<string, any>, whereClause?: string | null) => {
+        const detail = await collectionService.getDetail(databaseId, collectionName)
+        const physicalName = detail.meta.physicalName
+
+        const targetDb = await connectionManager.getConnection(databaseId)
+        if (!targetDb) throw new Error('Could not connect')
+
+        const keys = Object.keys(data)
+        if (keys.length === 0) return null
+
+        const sets = keys.map(k => {
+            const val = data[k]
+            const valStr = (typeof val === 'string') ? `'${val.replace(/'/g, "''")}'` : (val === null ? 'NULL' : val)
+            return `"${k}" = ${valStr}`
+        }).join(', ')
+
+        const baseWhere = `id = ${typeof id === 'string' ? `'${id}'` : id}`
+        const finalWhere = whereClause ? `(${baseWhere}) AND (${whereClause})` : baseWhere
+
+        const query = `UPDATE "${physicalName}" SET ${sets} WHERE ${finalWhere} RETURNING *`
+        const result = await targetDb.execute(sql.raw(query))
+        return result.rows[0]
     },
 
-    delete: async (databaseId: number, collectionName: string, id: string | number) => {
-        // TODO: Implement delete for user data
-        throw new Error("Delete not implemented for user data")
+    delete: async (databaseId: number, collectionName: string, id: string | number, whereClause?: string | null) => {
+        const detail = await collectionService.getDetail(databaseId, collectionName)
+        const physicalName = detail.meta.physicalName
+
+        const targetDb = await connectionManager.getConnection(databaseId)
+        if (!targetDb) throw new Error('Could not connect')
+
+        const baseWhere = `id = ${typeof id === 'string' ? `'${id}'` : id}`
+        const finalWhere = whereClause ? `(${baseWhere}) AND (${whereClause})` : baseWhere
+
+        const query = `DELETE FROM "${physicalName}" WHERE ${finalWhere} RETURNING id`
+        const result = await targetDb.execute(sql.raw(query))
+        return result.rows[0]
     },
 
     // System Data Operations

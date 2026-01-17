@@ -30,8 +30,10 @@ describe('Collection Service (Integration)', () => {
     // Schema is already setup by createTestDb in the mock
     await db.execute(sql`TRUNCATE TABLE projects, accounts RESTART IDENTITY CASCADE`)
 
+
     // Setup test data
-    await db.execute(sql`INSERT INTO projects (name, connection_string, prefix) VALUES ('test_project', 'pg://test', 'test_')`)
+    await db.execute(sql`INSERT INTO projects (id, name) VALUES (1, 'test_project')`)
+    await db.execute(sql`INSERT INTO databases (id, project_id, name, connection_string, prefix) VALUES (1, 1, 'default', 'pg://test', 'test_')`)
 
     // Setup mock connection
     vi.mocked(connectionManager.getConnection).mockResolvedValue(db as any)

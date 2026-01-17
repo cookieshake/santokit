@@ -84,16 +84,11 @@ export const projectService = {
                 const collections = await collectionService.listByDatabase(db.id)
 
                 // 2. Delete all physical tables
-                const collectionTableName = `${db.prefix}p${id}__collections`.toLowerCase()
                 for (const collection of collections) {
-                    await collectionRepository.deletePhysicalTable(db.id, collectionTableName, collection.physicalName as string)
+                    await collectionRepository.deletePhysicalTable(db.id, collection.physicalName as string)
                 }
 
-                // 3. Delete the _collections table itself
-                const targetDb = await connectionManager.getConnection(db.id)
-                if (targetDb) {
-                    await targetDb.execute(sql.raw(`DROP TABLE IF EXISTS "${collectionTableName}"`))
-                }
+                // 3. Metadata in Main DB is handled by CASCADE delete on Project
             }
         }
 
@@ -108,16 +103,11 @@ export const projectService = {
         const collections = await collectionService.listByDatabase(db.id)
 
         // 2. Delete all physical tables
-        const collectionTableName = `${db.prefix}p${projectId}__collections`.toLowerCase()
         for (const collection of collections) {
-            await collectionRepository.deletePhysicalTable(db.id, collectionTableName, collection.physicalName as string)
+            await collectionRepository.deletePhysicalTable(db.id, collection.physicalName as string)
         }
 
-        // 3. Delete the _collections table itself
-        const targetDb = await connectionManager.getConnection(db.id)
-        if (targetDb) {
-            await targetDb.execute(sql.raw(`DROP TABLE IF EXISTS "${collectionTableName}"`))
-        }
+        // 3. Metadata in Main DB is handled by CASCADE delete on Database
 
         // 4. Delete the database record
         await projectRepository.deleteDatabase(db.id)

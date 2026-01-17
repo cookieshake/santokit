@@ -7,4 +7,5 @@ export default defineConfig({
     dbCredentials: {
         url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/postgres',
     },
+    tablesFilter: ["projects", "databases", "accounts", "policies"],
 });

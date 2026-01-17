@@ -30,9 +30,9 @@ export const accountRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to database')
 
-        const collectionTableName = `${prefix}p${numericId}__collections`.toLowerCase()
-        const tables = await collectionRepository.listPhysicalTables(databaseId, collectionTableName, prefix, numericId)
-        const authTable = tables.find(t => t.type === 'auth')
+
+        const collectionsList = await collectionRepository.list(databaseId)
+        const authTable = collectionsList.find(t => t.type === 'auth')
 
         if (!authTable) {
             throw new Error(`No account/auth collection found for project ${projectId}`)
