@@ -1,6 +1,6 @@
 /** @jsxImportSource hono/jsx */
 
-export const Layout = (props: { title: string; children: any; active: string; account?: any; projects?: any[]; currentProjectId?: number; collections?: any[]; currentDatabaseName?: string }) => (
+export const Layout = (props: { title: string; children: any; active: string; account?: any; projects?: any[]; currentProjectId?: number; collections?: any[]; currentDatabaseName?: string; databases?: any[] }) => (
     <html lang="en">
         <head>
             <meta charset="UTF-8" />
@@ -225,28 +225,66 @@ export const Layout = (props: { title: string; children: any; active: string; ac
             </nav>
 
             <div class="columns is-gapless mb-0" style="min-height: calc(100vh - 3.25rem);">
-                <div class="column is-2 has-background-white-bis" style="border-right: 1px solid #dbdbdb;">
+                {/* Level 1 Sidebar (Database Switcher) */}
+                {props.currentProjectId && props.databases && props.databases.length > 0 && (
+                    <div class="is-hidden-mobile" style="width: 70px; background-color: #1a1b1e; border-right: 1px solid #2c2d30; display: flex; flex-direction: column; align-items: center; padding-top: 20px; flex-shrink: 0;">
+                        {props.databases.map((db: any) => (
+                            <a
+                                href={`/ui/projects/${props.currentProjectId}?db=${db.name}`}
+                                title={db.name}
+                                style={`
+                                    width: 42px; height: 42px; 
+                                    border-radius: 12px; 
+                                    background-color: ${props.currentDatabaseName === db.name ? '#5865F2' : '#313338'}; 
+                                    display: flex; align-items: center; justify-content: center;
+                                    color: white; font-weight: bold; font-size: 16px;
+                                    transition: all 0.2s;
+                                    margin-bottom: 12px;
+                                    text-decoration: none;
+                                `}
+                                onmouseover="this.style.borderRadius='12px'; this.style.backgroundColor='#5865F2';"
+                                onmouseout={`this.style.borderRadius='12px'; this.style.backgroundColor='${props.currentDatabaseName === db.name ? '#5865F2' : '#313338'}';`}
+                            >
+                                {db.name.substring(0, 2).toUpperCase()}
+                            </a>
+                        ))}
+                    </div>
+                )}
+
+                {/* Level 2 Sidebar (Context Menu) */}
+                <div class="column is-2 has-background-white-bis" style="border-right: 1px solid #dbdbdb; min-width: 220px; max-width: 260px;">
                     <aside class="menu section py-5 px-4">
+                        <div class="mb-4 px-2">
+                            {props.currentDatabaseName && (
+                                <h3 class="title is-6 has-text-grey-dark is-uppercase" style="letter-spacing: 0.5px;">
+                                    {props.currentDatabaseName}
+                                </h3>
+                            )}
+                        </div>
                         <ul class="menu-list">
                             {props.currentProjectId ? (
                                 <>
-                                    <li><a href={`/ui/projects/${props.currentProjectId}`} class={props.active === 'projects' && !props.children?.props?.title?.startsWith('Collection') ? 'is-active' : ''}>Overview</a></li>
+                                    <li>
+                                        <a href={`/ui/projects/${props.currentProjectId}?db=${props.currentDatabaseName || ''}`} class={props.active === 'projects' && !props.children?.props?.title?.startsWith('Collection') ? 'is-active' : ''}>
+                                            <span class="icon-text">
+                                                <span>Dashboard</span>
+                                            </span>
+                                        </a>
+                                    </li>
                                     {props.currentDatabaseName && (
                                         <li>
-                                            <p class="menu-label mt-4">Databases</p>
+                                            <p class="menu-label mt-5 mb-2">Collections</p>
                                             <ul>
-                                                <li>
-                                                    <a class="is-active-parent">{props.currentDatabaseName}</a>
-                                                    <ul>
-                                                        {props.collections?.map((col: any) => (
-                                                            <li>
-                                                                <a href={`/ui/projects/${props.currentProjectId}/collections/${col.name}`} class={props.children?.props?.children?.[0]?.props?.children?.[2]?.props?.children === col.name ? 'is-active' : ''}>
-                                                                    {col.name}
-                                                                </a>
-                                                            </li>
-                                                        ))}
-                                                    </ul>
-                                                </li>
+                                                {props.collections?.map((col: any) => (
+                                                    <li>
+                                                        <a
+                                                            href={`/ui/projects/${props.currentProjectId}/collections/${col.name}?db=${props.currentDatabaseName}`}
+                                                            class={props.children?.props?.children?.[0]?.props?.children?.[2]?.props?.children === col.name ? 'is-active' : ''}
+                                                        >
+                                                            {col.name}
+                                                        </a>
+                                                    </li>
+                                                ))}
                                             </ul>
                                         </li>
                                     )}
@@ -254,12 +292,13 @@ export const Layout = (props: { title: string; children: any; active: string; ac
                             ) : (
                                 <>
                                     <li><a href="/ui/projects" class={props.active === 'projects' ? 'is-active' : ''}>Projects</a></li>
-
                                 </>
                             )}
                         </ul>
                     </aside>
                 </div>
+
+                {/* Main Content */}
                 <div class="column">
                     <section class="section">
                         {props.children}

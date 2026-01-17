@@ -50,10 +50,10 @@ app.get('/projects/:id', async (c) => {
     try {
         databases = await projectRepository.findDatabasesByProjectId(projectId)
         if (databases.length > 0) {
-            // For UI simplicity, just load from the first database for now
-            // or we might need to update UI to support multiple DBs later
-            currentDatabaseName = databases[0].name
-            collections = await collectionService.listByDatabase(databases[0].id)
+            const dbNameParam = c.req.query('db')
+            const selectedDb = dbNameParam ? databases.find(d => d.name === dbNameParam) || databases[0] : databases[0]
+            currentDatabaseName = selectedDb.name
+            collections = await collectionService.listByDatabase(selectedDb.id)
         }
     } catch (e) {
         console.error('Failed to load collections', e)
@@ -73,7 +73,10 @@ app.get('/projects/:id/collections/:colName', async (c) => {
     try {
         const databases = await projectRepository.findDatabasesByProjectId(projectId)
         if (databases.length === 0) throw new Error('No databases found')
-        const dbId = databases[0].id
+
+        const dbNameParam = c.req.query('db')
+        const selectedDb = dbNameParam ? databases.find(d => d.name === dbNameParam) || databases[0] : databases[0]
+        const dbId = selectedDb.id
 
         const detail = await collectionService.getDetail(dbId, collectionName)
         const rows = (await dataService.findAll(dbId, collectionName)) as any[]
@@ -97,6 +100,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
                 account={account}
                 projects={projects}
                 collections={collections}
+                databases={databases}
             />
         )
     } catch (e) {

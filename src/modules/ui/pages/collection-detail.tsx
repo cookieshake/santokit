@@ -11,13 +11,14 @@ export const CollectionDetail = (props: {
     projects: any[];
     policies?: any[];
     collections: any[];
+    databases: any[];
 }) => {
     // We can't use useState in server-side rendered Hono JSX components usually without client interaction island logic
     // But since this is likely SSR + simple vanilla JS, we can use URL query param for tabs or client-side JS for tab switching.
     // Let's use simple Client-side JS tab switching for better UX.
 
     return (
-        <Layout title={`Collection: ${props.collectionName}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.projectId} collections={props.collections} currentDatabaseName={props.currentDatabaseName}>
+        <Layout title={`Collection: ${props.collectionName}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.projectId} collections={props.collections} currentDatabaseName={props.currentDatabaseName} databases={props.databases}>
             <nav class="breadcrumb">
                 <ul>
                     <li><a href="/ui/projects">Projects</a></li>

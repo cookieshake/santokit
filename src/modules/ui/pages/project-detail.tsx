@@ -2,7 +2,7 @@
 import { Layout } from '../components/layout.js'
 
 export const ProjectDetail = (props: { project: any; collections: any[]; projects: any[]; account: any; currentDatabaseName: string; databases: any[] }) => (
-    <Layout title={`Project: ${props.project.name}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.project.id} collections={props.collections} currentDatabaseName={props.currentDatabaseName}>
+    <Layout title={`Project: ${props.project.name}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.project.id} collections={props.collections} currentDatabaseName={props.currentDatabaseName} databases={props.databases}>
         <nav class="breadcrumb">
             <ul>
                 <li><a href="/ui/projects">Projects</a></li>
