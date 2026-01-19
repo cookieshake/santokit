@@ -1,6 +1,6 @@
 /** @jsxImportSource hono/jsx */
 
-export const Login = ({ projectId = 1 }: { projectId?: number } = {}) => (
+export const Login = () => (
     <html lang="en">
         <head>
             <meta charset="UTF-8" />
@@ -47,7 +47,6 @@ export const Login = ({ projectId = 1 }: { projectId?: number } = {}) => (
             </div>
             <script dangerouslySetInnerHTML={{
                 __html: `
-                const projectId = ${projectId};
                 const form = document.getElementById('login-form');
                 const errorDiv = document.getElementById('error-message');
                 const errorText = document.getElementById('error-text');
@@ -63,10 +62,7 @@ export const Login = ({ projectId = 1 }: { projectId?: number } = {}) => (
                     console.log('Attempting login...');
                     const res = await fetch('/v1/auth/sign-in', {
                       method: 'POST',
-                      headers: { 
-                        'Content-Type': 'application/json',
-                        'x-project-id': String(projectId)
-                      },
+                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ email, password })
                     });
                     
