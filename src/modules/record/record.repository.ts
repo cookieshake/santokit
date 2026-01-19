@@ -1,6 +1,6 @@
 import type { Kysely } from 'kysely'
 
-export const dataRepository = {
+export const recordRepository = {
     create: async (db: Kysely<any>, tableName: string, data: Record<string, any>) => {
         const result = await db
             .insertInto(tableName as any)

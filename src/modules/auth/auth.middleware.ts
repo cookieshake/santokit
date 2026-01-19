@@ -37,7 +37,9 @@ export const authMiddleware = createMiddleware<AuthEnv>(async (c, next) => {
             id: payload.id,
             email: payload.email,
             roles: payload.roles,
-            projectId: payload.projectId
+            projectId: payload.projectId,
+            collectionName: payload.collectionName,
+            collectionId: payload.collectionId
         });
         c.set("jwtPayload", payload); // name kept as jwtPayload for compatibility or rename? renaming might break other things so keeping it as variable name is safer for now.
 
@@ -53,5 +55,19 @@ export const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
     if (!user) {
         return c.json({ message: "Unauthorized" }, 401);
     }
+    return next();
+});
+
+export const requireRoles = (allowedRoles: string[]) => createMiddleware<AuthEnv>(async (c, next) => {
+    const user = c.get("user");
+    if (!user) {
+        return c.json({ message: "Unauthorized" }, 401);
+    }
+
+    const hasRole = user.roles && user.roles.some((role: string) => allowedRoles.includes(role));
+    if (!hasRole) {
+        return c.json({ message: "Forbidden" }, 403);
+    }
+
     return next();
 });

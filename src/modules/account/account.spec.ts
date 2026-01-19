@@ -81,7 +81,7 @@ describe('User Service (Project Level)', () => {
     const user = await accountService.createUser(projectId1, {
       email: 'test@example.com',
       password: 'password123'
-    }) as UserRecord
+    }, 'users') as UserRecord
     expect(user.email).toBe('test@example.com')
 
     // Verify it's in the DB (using Kysely)
@@ -94,8 +94,8 @@ describe('User Service (Project Level)', () => {
     await accountService.createUser(projectId1, {
       email: 'list@example.com',
       password: 'pw'
-    })
-    const list = await accountService.listUsers(projectId1) as UserRecord[]
+    }, 'users')
+    const list = await accountService.listUsers(projectId1, 'users') as UserRecord[]
     expect(list.length).toBe(1)
     const found = list.find((u: UserRecord) => u.email === 'list@example.com')
     expect(found).toBeDefined()
@@ -106,9 +106,9 @@ describe('User Service (Project Level)', () => {
     const user = await accountService.createUser(projectId1, {
       email: 'del@example.com',
       password: 'pw'
-    }) as UserRecord
-    await accountService.deleteUser(projectId1, user.id)
-    const list = await accountService.listUsers(projectId1)
+    }, 'users') as UserRecord
+    await accountService.deleteUser(projectId1, user.id, 'users')
+    const list = await accountService.listUsers(projectId1, 'users')
     expect(list.length).toBe(0)
   })
 })

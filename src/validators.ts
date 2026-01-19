@@ -56,4 +56,4 @@ export const CreateIndexSchema = z.object({
 
 // For dynamic data insert, we can't fully strict type the body structure 
 // without knowing the table schema dynamically, but we can enforce it's an object.
-export const DynamicDataInsertSchema = z.record(z.string(), z.any())
+export const DynamicRecordInsertSchema = z.record(z.string(), z.any())

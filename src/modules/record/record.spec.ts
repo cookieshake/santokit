@@ -16,7 +16,7 @@ import { projectRepository } from '@/modules/project/project.repository.js'
 import { policyService } from '@/modules/policy/policy.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 
-describe('Data Module (Client) E2E', () => {
+describe('Record Module (Client) E2E', () => {
     let projectId: string
     const collectionName = 'articles'
 
@@ -57,13 +57,13 @@ describe('Data Module (Client) E2E', () => {
             // Register a client user and login
             await request(clientApp, `/v1/auth/register`, {
                 method: 'POST',
-                body: JSON.stringify({ email: 'writer@app.com', password: 'pw', name: 'Writer' }),
+                body: JSON.stringify({ email: 'writer@app.com', password: 'pw', name: 'Writer', collectionName: 'users' }),
                 headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
 
             const loginRes = await request(clientApp, `/v1/auth/sign-in`, {
                 method: 'POST',
-                body: JSON.stringify({ email: 'writer@app.com', password: 'pw' }),
+                body: JSON.stringify({ email: 'writer@app.com', password: 'pw', collectionName: 'users' }),
                 headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
             const cookie = loginRes.headers.get('set-cookie')
@@ -94,12 +94,12 @@ describe('Data Module (Client) E2E', () => {
             // Auth
             await request(clientApp, `/v1/auth/register`, {
                 method: 'POST',
-                body: JSON.stringify({ email: 'reader@app.com', password: 'pw', name: 'Reader' }),
+                body: JSON.stringify({ email: 'reader@app.com', password: 'pw', name: 'Reader', collectionName: 'users' }),
                 headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
             const loginRes = await request(clientApp, `/v1/auth/sign-in`, {
                 method: 'POST',
-                body: JSON.stringify({ email: 'reader@app.com', password: 'pw' }),
+                body: JSON.stringify({ email: 'reader@app.com', password: 'pw', collectionName: 'users' }),
                 headers: { 'Content-Type': 'application/json', 'x-project-id': String(projectId) }
             })
             const cookie = loginRes.headers.get('set-cookie')

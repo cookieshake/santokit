@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { CreateCollectionSchema, AddFieldSchema, RenameFieldSchema, CreateIndexSchema } from '@/validators.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { databaseRepository } from '@/modules/database/database.repository.js'
-import dataController from '@/modules/data/data.controller.js'
+import recordController from '@/modules/record/record.controller.js'
 import { CONSTANTS } from '@/constants.js'
 
 const app = new Hono()
@@ -143,6 +143,6 @@ app.delete('/:collectionName/indexes/:indexName', async (c) => {
     }
 })
 
-app.route('/:collectionName/records', dataController)
+app.route('/:collectionName/records', recordController)
 
 export default app

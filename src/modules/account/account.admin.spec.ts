@@ -60,7 +60,7 @@ describe('Account Module', () => {
             email: 'user@example.com',
             password: 'password123',
             roles: ['user']
-        }) as UserRecord
+        }, 'users') as UserRecord
         expect(user.email).toBe('user@example.com')
         expect(user.roles).toContain('user')
     })
@@ -70,11 +70,11 @@ describe('Account Module', () => {
             email: 'user@example.com',
             password: 'password123',
             roles: ['user']
-        })
+        }, 'users')
         await expect(accountService.createUser(testProjectId, {
             email: 'user@example.com',
             password: 'passother',
             roles: ['user']
-        })).rejects.toThrow()
+        }, 'users')).rejects.toThrow()
     })
 })

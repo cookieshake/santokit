@@ -78,7 +78,7 @@ export async function createAdminAndLogin(app: Hono<any, any, any>) {
     const { CONSTANTS } = await import('@/constants.js')
     await request(app, '/v1/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email, password, roles: ['admin'] }),
+        body: JSON.stringify({ email, password, role: 'admin', collectionName: 'users' }),
         headers: {
             'Content-Type': 'application/json',
             [CONSTANTS.HEADERS.PROJECT_ID]: String(projectId)
@@ -87,7 +87,48 @@ export async function createAdminAndLogin(app: Hono<any, any, any>) {
 
     const res = await request(app, '/v1/auth/sign-in', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, collectionName: 'users' }),
+        headers: {
+            'Content-Type': 'application/json',
+            [CONSTANTS.HEADERS.PROJECT_ID]: String(projectId)
+        }
+    })
+
+    return res.headers.get('set-cookie')
+}
+
+/**
+ * Creates a project with a database, then creates a regular user and logs them in.
+ * Returns the session cookie and the project ID.
+ */
+export async function createRegularUserAndLogin(app: Hono<any, any, any>) {
+    const email = `user-${Date.now()}@example.com`
+    const password = 'password123'
+
+    const { projectService } = await import('@/modules/project/project.service.js')
+    const { databaseService } = await import('@/modules/database/database.service.js')
+
+    // Create a test project
+    const project = await projectService.create('test-project-user')
+    const projectId = project.id
+
+    // Create a default database for the project
+    await databaseService.create(projectId, 'default', 'postgres://localhost:5432/test', 'test_user_')
+
+    // Register user in the project
+    const { CONSTANTS } = await import('@/constants.js')
+    await request(app, '/v1/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, role: 'user', collectionName: 'users' }),
+        headers: {
+            'Content-Type': 'application/json',
+            [CONSTANTS.HEADERS.PROJECT_ID]: String(projectId)
+        }
+    })
+
+    const res = await request(app, '/v1/auth/sign-in', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, collectionName: 'users' }),
         headers: {
             'Content-Type': 'application/json',
             [CONSTANTS.HEADERS.PROJECT_ID]: String(projectId)

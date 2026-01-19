@@ -1,10 +1,10 @@
 
 import { connectionManager } from '@/db/connection-manager.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
-import { dataRepository } from './data.repository.js'
+import { recordRepository } from './record.repository.js'
 import { Kysely } from 'kysely'
 
-export class DataClient {
+export class RecordClient {
     private constructor(
         private db: Kysely<any>,
         private physicalName: string
@@ -21,22 +21,22 @@ export class DataClient {
             throw new Error(`Could not connect to database ${databaseId}`)
         }
 
-        return new DataClient(db, physicalName)
+        return new RecordClient(db, physicalName)
     }
 
     async create(data: Record<string, any>) {
-        return dataRepository.create(this.db, this.physicalName, data)
+        return recordRepository.create(this.db, this.physicalName, data)
     }
 
     async findAll(whereClause?: string | null) {
-        return dataRepository.findAll(this.db, this.physicalName, whereClause)
+        return recordRepository.findAll(this.db, this.physicalName, whereClause)
     }
 
     async update(id: string, data: Record<string, any>, whereClause?: string | null) {
-        return dataRepository.update(this.db, this.physicalName, id, data, whereClause)
+        return recordRepository.update(this.db, this.physicalName, id, data, whereClause)
     }
 
     async delete(id: string, whereClause?: string | null) {
-        return dataRepository.delete(this.db, this.physicalName, id, whereClause)
+        return recordRepository.delete(this.db, this.physicalName, id, whereClause)
     }
 }

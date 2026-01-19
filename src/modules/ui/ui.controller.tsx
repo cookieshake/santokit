@@ -2,7 +2,7 @@
 import { Hono } from 'hono'
 import { projectService } from '@/modules/project/project.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
-import { dataService } from '@/modules/data/data.service.js'
+import { recordService } from '@/modules/record/record.service.js'
 import { databaseRepository } from '@/modules/database/database.repository.js'
 import { Login } from './pages/login.js'
 
@@ -82,7 +82,7 @@ app.get('/projects/:id/collections/:colName', async (c) => {
         const dbId = selectedDb.id
 
         const detail = await collectionService.getDetail(dbId, collectionName)
-        const rows = (await dataService.findAll(dbId, collectionName)) as any[]
+        const rows = (await recordService.findAll(dbId, collectionName)) as any[]
         const projects = await projectService.list()
 
         const collections = await collectionService.listByDatabase(dbId)

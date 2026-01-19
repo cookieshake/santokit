@@ -15,7 +15,7 @@ export const accountRepository = {
         return database.id
     },
 
-    getContext: async (projectId: string | null): Promise<{ db: Kysely<any>, tableName: string }> => {
+    getContext: async (projectId: string | null, collectionName: string): Promise<{ db: Kysely<any>, tableName: string }> => {
         if (!projectId) {
             // Global Account (System Admin)
             return { db: mainDb, tableName: 'accounts' }
@@ -27,17 +27,18 @@ export const accountRepository = {
         if (!targetDb) throw new Error('Could not connect to database')
 
         const collectionsList = await collectionRepository.list(databaseId)
-        const authTable = collectionsList.find(t => t.type === 'auth')
+        // Find specific auth collection by name
+        const authTable = collectionsList.find(t => t.type === 'auth' && t.name === collectionName)
 
         if (!authTable) {
-            throw new Error(`No account/auth collection found for project ${projectId}`)
+            throw new Error(`Auth collection '${collectionName}' not found for project ${projectId}`)
         }
 
         return { db: targetDb, tableName: authTable.physical_name }
     },
 
-    create: async (projectId: string | null, data: any) => {
-        const { db, tableName } = await accountRepository.getContext(projectId)
+    create: async (projectId: string | null, data: any, collectionName: string) => {
+        const { db, tableName } = await accountRepository.getContext(projectId, collectionName)
 
         // Ensure ID is generated if not provided
         const fullData = {
@@ -60,8 +61,8 @@ export const accountRepository = {
         return result
     },
 
-    findByProjectId: async (projectId: string | null) => {
-        const { db, tableName } = await accountRepository.getContext(projectId)
+    findByProjectId: async (projectId: string | null, collectionName: string) => {
+        const { db, tableName } = await accountRepository.getContext(projectId, collectionName)
         const result = await db
             .selectFrom(tableName as any)
             .selectAll()
@@ -69,8 +70,8 @@ export const accountRepository = {
         return result
     },
 
-    findById: async (projectId: string | null, id: string) => {
-        const { db, tableName } = await accountRepository.getContext(projectId)
+    findById: async (projectId: string | null, id: string, collectionName: string) => {
+        const { db, tableName } = await accountRepository.getContext(projectId, collectionName)
         const result = await db
             .selectFrom(tableName as any)
             .selectAll()
@@ -79,8 +80,8 @@ export const accountRepository = {
         return result
     },
 
-    findByEmail: async (projectId: string | null, email: string) => {
-        const { db, tableName } = await accountRepository.getContext(projectId)
+    findByEmail: async (projectId: string | null, email: string, collectionName: string) => {
+        const { db, tableName } = await accountRepository.getContext(projectId, collectionName)
         const result = await db
             .selectFrom(tableName as any)
             .selectAll()
@@ -89,8 +90,8 @@ export const accountRepository = {
         return result
     },
 
-    delete: async (projectId: string | null, id: string) => {
-        const { db, tableName } = await accountRepository.getContext(projectId)
+    delete: async (projectId: string | null, id: string, collectionName: string) => {
+        const { db, tableName } = await accountRepository.getContext(projectId, collectionName)
         await db
             .deleteFrom(tableName as any)
             .where('id' as any, '=', id)

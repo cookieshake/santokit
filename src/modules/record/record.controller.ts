@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
-import { DynamicDataInsertSchema } from '@/validators.js'
-import { dataService } from '@/modules/data/data.service.js'
+import { DynamicRecordInsertSchema } from '@/validators.js'
+import { recordService } from '@/modules/record/record.service.js'
 import { policyService } from '@/modules/policy/policy.service.js'
 import { databaseRepository } from '@/modules/database/database.repository.js'
 import { CONSTANTS } from '@/constants.js'
@@ -42,14 +42,14 @@ app.get('/', async (c) => {
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'read', user)
         if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
 
-        const data = await dataService.findAll(databaseId, collectionName, policy.filter)
+        const data = await recordService.findAll(databaseId, collectionName, policy.filter)
         return c.json(data)
     } catch (e) {
         return c.json({ error: (e as Error).message }, 400)
     }
 })
 
-app.post('/', zValidator('json', DynamicDataInsertSchema), async (c) => {
+app.post('/', zValidator('json', DynamicRecordInsertSchema), async (c) => {
     try {
         const rawProjectId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!
         const collectionName = c.req.param('collectionName')!
@@ -62,14 +62,14 @@ app.post('/', zValidator('json', DynamicDataInsertSchema), async (c) => {
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'create', user)
         if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
 
-        const result = await dataService.create(databaseId, collectionName, body)
+        const result = await recordService.create(databaseId, collectionName, body)
         return c.json(result)
     } catch (e) {
         return c.json({ error: (e as Error).message }, 400)
     }
 })
 
-app.patch('/:id', zValidator('json', DynamicDataInsertSchema), async (c) => {
+app.patch('/:id', zValidator('json', DynamicRecordInsertSchema), async (c) => {
     try {
         const rawProjectId = c.req.header(CONSTANTS.HEADERS.PROJECT_ID)!
         const collectionName = c.req.param('collectionName')!
@@ -83,7 +83,7 @@ app.patch('/:id', zValidator('json', DynamicDataInsertSchema), async (c) => {
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'update', user)
         if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
 
-        const result = await dataService.update(databaseId, collectionName, id, body, policy.filter)
+        const result = await recordService.update(databaseId, collectionName, id, body, policy.filter)
         if (!result) return c.json({ error: 'Not found or permission denied' }, 404)
         return c.json(result)
     } catch (e) {
@@ -104,7 +104,7 @@ app.delete('/:id', async (c) => {
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'delete', user)
         if (!policy.allowed) return c.json({ error: 'Access Denied' }, 403)
 
-        const result = await dataService.delete(databaseId, collectionName, id, policy.filter)
+        const result = await recordService.delete(databaseId, collectionName, id, policy.filter)
         if (!result) return c.json({ error: 'Not found or permission denied' }, 404)
         return c.json(result)
     } catch (e) {

@@ -28,17 +28,18 @@ app.post(
         z.object({
             email: z.string().email(),
             password: z.string().min(1),
+            collectionName: z.string(),
         })
     ),
     async (c) => {
-        const { email, password } = c.req.valid("json");
+        const { email, password, collectionName } = c.req.valid("json");
         const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID);
 
         // Treat 'null' string as null
         const projectId = (projectIdHeader && projectIdHeader !== 'null') ? projectIdHeader : null;
 
         try {
-            const result = await accountService.login(projectId, email, password) as LoginResult;
+            const result = await accountService.login(projectId, email, password, collectionName) as LoginResult;
             const { user, token } = result;
 
             setCookie(c, CONSTANTS.AUTH.COOKIE_NAME, token, {
@@ -74,6 +75,8 @@ app.post(
             email: z.string().email(),
             password: z.string().min(1),
             name: z.string().optional(),
+            role: z.string().optional(),
+            collectionName: z.string(),
         })
     ),
     async (c) => {
@@ -84,7 +87,7 @@ app.post(
         const projectId = (projectIdHeader && projectIdHeader !== 'null') ? projectIdHeader : null;
 
         try {
-            const user = await accountService.createUser(projectId, data);
+            const user = await accountService.createUser(projectId, data, data.collectionName);
             return c.json(user);
         } catch (error) {
             console.error(error);
@@ -117,7 +120,9 @@ app.get("/me", async (c) => {
                 id: payload.id,
                 email: payload.email,
                 roles: payload.roles,
-                projectId: payload.projectId
+                projectId: payload.projectId,
+                collectionName: payload.collectionName,
+                collectionId: payload.collectionId
             }
         });
     } catch (e) {

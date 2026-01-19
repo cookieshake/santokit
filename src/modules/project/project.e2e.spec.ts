@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { request, setupDbMock, clearDb, createAdminAndLogin } from '@/tests/test-utils.js'
+import { request, setupDbMock, clearDb, createAdminAndLogin, createRegularUserAndLogin } from '@/tests/test-utils.js'
 
 setupDbMock()
 
@@ -53,6 +53,35 @@ describe('Project Module E2E', () => {
             expect(body.length).toBeGreaterThanOrEqual(1)
             const projectA = body.find((p: any) => p.name === 'Project A')
             expect(projectA).toBeDefined()
+        })
+    })
+
+    describe('RBAC', () => {
+        let userCookie: string | null
+
+        beforeEach(async () => {
+            userCookie = await createRegularUserAndLogin(app)
+        })
+
+        it('should forbid non-admin users from creating projects', async () => {
+            const res = await request(app, '/v1/projects', {
+                method: 'POST',
+                body: JSON.stringify({ name: 'Hacked Project' }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': userCookie || ''
+                }
+            })
+
+            expect(res.status).toBe(403)
+        })
+
+        it('should forbid non-admin users from listing projects', async () => {
+            const res = await request(app, '/v1/projects', {
+                headers: { 'Cookie': userCookie || '' }
+            })
+
+            expect(res.status).toBe(403)
         })
     })
 })

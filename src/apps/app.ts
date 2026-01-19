@@ -11,7 +11,7 @@ import { CONSTANTS } from '@/constants.js'
 
 
 // Controllers
-import dataController from '@/modules/data/data.controller.js'
+import recordController from '@/modules/record/record.controller.js'
 import projectController from '@/modules/project/project.controller.js'
 import uiController from '@/modules/ui/ui.controller.js'
 import policyController from '@/modules/policy/policy.controller.js'
@@ -89,6 +89,7 @@ api.route('/databases/:databaseName/policies', policyController)
 api.get('/', (c) => c.text('Santoki Unified API'))
 
 // Project management routes
+api.use('/projects/*', authMiddleware)
 api.route('/projects', projectController)
 
 app.route('/v1', api)
