@@ -1,67 +1,66 @@
-
 import type { Generated, Insertable, Selectable, Updateable, ColumnType } from 'kysely'
 
 // Projects table
 export interface ProjectsTable {
-    id: string
-    name: string
-    created_at: ColumnType<Date | null, never, never>
+  id: string
+  name: string
+  created_at: ColumnType<Date | null, never, never>
 }
 
 // Databases table
 export interface DatabasesTable {
-    id: string
-    project_id: string | null
-    name: string
-    connection_string: string
-    prefix: ColumnType<string, string | undefined, string>
-    created_at: ColumnType<Date | null, never, never>
+  id: string
+  project_id: string | null
+  name: string
+  connection_string: string
+  prefix: ColumnType<string, string | undefined, string>
+  created_at: ColumnType<Date | null, never, never>
 }
 
 // Accounts table
 export interface AccountsTable {
-    id: string
-    name: string | null
-    email: string
-    password: string
-    roles: string[] | null
-    project_id: string | null
-    created_at: ColumnType<Date | null, never, never>
-    updated_at: ColumnType<Date | null, never, never>
+  id: string
+  name: string | null
+  email: string
+  password: string
+  roles: string[] | null
+  project_id: string | null
+  created_at: ColumnType<Date | null, never, never>
+  updated_at: ColumnType<Date | null, never, never>
 }
 
 // Policies table
 export interface PoliciesTable {
-    id: string
-    project_id: string | null
-    database_id: string | null
-    collection_name: string
-    role: string
-    action: string
-    condition: string
-    effect: ColumnType<string, string | undefined, string>
-    created_at: ColumnType<Date | null, never, never>
+  id: string
+  project_id: string | null
+  database_id: string | null
+  collection_name: string
+  role: string
+  action: string
+  condition: string
+  effect: ColumnType<string, string | undefined, string>
+  created_at: ColumnType<Date | null, never, never>
 }
 
 // Collections table
 export interface CollectionsTable {
-    id: string
-    project_id: string | null
-    database_id: string | null
-    name: string
-    physical_name: string
-    type: ColumnType<string, string | undefined, string>
-    created_at: ColumnType<Date | null, never, never>
-    updated_at: ColumnType<Date | null, never, never>
+  id: string
+  project_id: string | null
+  database_id: string | null
+  name: string
+  physical_name: string
+  type: ColumnType<string, string | undefined, string>
+  created_at: ColumnType<Date | null, never, never>
+  updated_at: ColumnType<Date | null, never, never>
 }
 
 // Main database interface
 export interface Database {
-    projects: ProjectsTable
-    databases: DatabasesTable
-    accounts: AccountsTable
-    policies: PoliciesTable
-    collections: CollectionsTable
+  projects: ProjectsTable
+  databases: DatabasesTable
+  accounts: AccountsTable
+  policies: PoliciesTable
+  collections: CollectionsTable
 }
 
 // Type helpers for inserts/selects

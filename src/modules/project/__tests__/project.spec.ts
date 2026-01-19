@@ -1,36 +1,36 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { projectService } from '@/modules/project/project.service.js'
 import { projectRepository } from '@/modules/project/project.repository.js'
+
 import { sql, Kysely, PostgresDialect } from 'kysely'
 import type { Pool } from 'pg'
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 
 let testPool: Pool
 
-vi.mock('../../db/index.js', async () => {
-  const { createTestDb } = await import('../../tests/db-setup.js')
+vi.mock('@/db/index.js', async () => {
+  const { createTestDb } = await import('@/tests/db-setup.js')
   const { db, pool } = await createTestDb()
   // removed testPool assignment
   return { db, pool }
 })
 
-vi.mock('../../db/connection-manager.js', async () => {
+vi.mock('@/db/connection-manager.js', async () => {
   const { Kysely, PostgresDialect } = await import('kysely')
-  const { pool } = await import('../../db/index.js') as any
+  const { pool } = (await import('@/db/index.js')) as any
   const db = new Kysely({
     dialect: new PostgresDialect({ pool }),
   })
   return {
     connectionManager: {
-      getConnection: vi.fn().mockResolvedValue(db)
-    }
+      getConnection: vi.fn().mockResolvedValue(db),
+    },
   }
 })
 
 // Correctly import the mocked modules
-import * as dbModule from '@/db/index.js'
 import { connectionManager } from '@/db/connection-manager.js'
+import * as dbModule from '@/db/index.js'
 const { db, pool } = dbModule as any
-
 
 describe('Project Service (Integration)', () => {
   beforeEach(async () => {

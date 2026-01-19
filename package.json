@@ -10,7 +10,10 @@
     "typegen:cf": "wrangler types --env-interface CloudflareBindings",
     "test": "vitest run",
     "test:pg": "TEST_DB_TYPE=postgres vitest run",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint 'src/**/*.{ts,tsx}'",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint 'src/**/*.{ts,tsx}' --fix",
+    "format": "prettier --write 'src/**/*.{ts,tsx}'"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.8",
@@ -27,6 +30,14 @@
     "@testcontainers/postgresql": "^10.18.0",
     "@types/node": "^20.11.17",
     "@types/pg": "^8.16.0",
+    "@typescript-eslint/eslint-plugin": "^8.53.0",
+    "@typescript-eslint/parser": "^8.53.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.0",
     "testcontainers": "^10.18.0",
     "tsc-alias": "^1.8.16",
     "tsx": "^4.7.1",

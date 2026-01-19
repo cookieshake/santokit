@@ -1,9 +1,12 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
-import { accountService } from './account.service.js'
-import { projectService } from '../project/project.service.js'
-import { databaseService } from '../database/database.service.js'
 import { sql, Kysely, PostgresDialect } from 'kysely'
 import type { Pool } from 'pg'
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
+
+import * as cmModule from '@/db/connection-manager.js'
+import * as dbModule from '@/db/index.js'
+import { accountService } from '@/modules/account/account.service.js'
+import { databaseService } from '@/modules/database/database.service.js'
+import { projectService } from '@/modules/project/project.service.js'
 
 interface UserRecord {
   id: string
@@ -14,30 +17,27 @@ interface UserRecord {
 }
 
 // Mock everything first
-vi.mock('../../db/index.js', async () => {
-  const { createTestDb } = await import('../../tests/db-setup.js')
+vi.mock('@/db/index.js', async () => {
+  const { createTestDb } = await import('@/tests/db-setup.js')
   const { db, pool } = await createTestDb()
   return { db, pool }
 })
 
-vi.mock('../../db/connection-manager.js', async () => {
-  const { createTestDb } = await import('../../tests/db-setup.js')
+vi.mock('@/db/connection-manager.js', async () => {
+  const { createTestDb } = await import('@/tests/db-setup.js')
   const { db, pool } = await createTestDb()
-  const { PostgresAdapter } = await import('../../db/adapters/postgres-adapter.js')
+  const { PostgresAdapter } = await import('@/db/adapters/postgres-adapter.js')
 
   return {
     connectionManager: {
       getConnection: vi.fn().mockResolvedValue(db),
-      getAdapter: vi.fn().mockReturnValue(new PostgresAdapter())
+      getAdapter: vi.fn().mockReturnValue(new PostgresAdapter()),
     },
     // We export these for the test file to use if needed
     projectPool: pool,
-    projectDb: db
+    projectDb: db,
   }
 })
-
-import * as dbModule from '@/db/index.js'
-import * as cmModule from '@/db/connection-manager.js'
 
 const { db, pool: systemPool } = dbModule as any
 const { projectPool, projectDb } = cmModule as any
@@ -78,24 +78,34 @@ describe('User Service (Project Level)', () => {
   })
 
   it('should create a user for a project (in physical DB)', async () => {
-    const user = await accountService.createUser(projectId1, {
-      email: 'test@example.com',
-      password: 'password123'
-    }, 'users') as UserRecord
+    const user = (await accountService.createUser(
+      projectId1,
+      {
+        email: 'test@example.com',
+        password: 'password123',
+      },
+      'users',
+    )) as UserRecord
     expect(user.email).toBe('test@example.com')
 
     // Verify it's in the DB (using Kysely)
     const tableName = `santoki_p${projectId1}_users`.toLowerCase()
-    const res = await sql.raw(`SELECT * FROM "${tableName}" WHERE email = 'test@example.com'`).execute(projectDb)
+    const res = await sql
+      .raw(`SELECT * FROM "${tableName}" WHERE email = 'test@example.com'`)
+      .execute(projectDb)
     expect(res.rows.length).toBe(1)
   })
 
   it('should list users for a project', async () => {
-    await accountService.createUser(projectId1, {
-      email: 'list@example.com',
-      password: 'pw'
-    }, 'users')
-    const list = await accountService.listUsers(projectId1, 'users') as UserRecord[]
+    await accountService.createUser(
+      projectId1,
+      {
+        email: 'list@example.com',
+        password: 'pw',
+      },
+      'users',
+    )
+    const list = (await accountService.listUsers(projectId1, 'users')) as UserRecord[]
     expect(list.length).toBe(1)
     const found = list.find((u: UserRecord) => u.email === 'list@example.com')
     expect(found).toBeDefined()
@@ -103,10 +113,14 @@ describe('User Service (Project Level)', () => {
   })
 
   it('should delete a user', async () => {
-    const user = await accountService.createUser(projectId1, {
-      email: 'del@example.com',
-      password: 'pw'
-    }, 'users') as UserRecord
+    const user = (await accountService.createUser(
+      projectId1,
+      {
+        email: 'del@example.com',
+        password: 'pw',
+      },
+      'users',
+    )) as UserRecord
     await accountService.deleteUser(projectId1, user.id, 'users')
     const list = await accountService.listUsers(projectId1, 'users')
     expect(list.length).toBe(0)

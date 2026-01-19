@@ -4,17 +4,17 @@
  */
 
 export const CONSTANTS = {
-    // HTTP Headers
-    HEADERS: {
-        PROJECT_ID: 'x-project-id',
-    },
+  // HTTP Headers
+  HEADERS: {
+    PROJECT_ID: 'x-project-id',
+  },
 
-    // Authentication
-    AUTH: {
-        COOKIE_NAME: 'auth_token',
-        TOKEN_EXPIRY_SECONDS: 60 * 60 * 24, // 24 hours
-    },
-} as const;
+  // Authentication
+  AUTH: {
+    COOKIE_NAME: 'auth_token',
+    TOKEN_EXPIRY_SECONDS: 60 * 60 * 24, // 24 hours
+  },
+} as const
 
 // Type helpers
-export type ProjectId = number;
+export type ProjectId = number
