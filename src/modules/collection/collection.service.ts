@@ -1,6 +1,6 @@
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
 import { databaseRepository } from '@/modules/database/database.repository.js'
-import { previewRawSql } from './sql-preview.js'
+import { physicalSchemaService } from './physical-schema.service.js'
 import { typeid } from 'typeid-js'
 
 export const collectionService = {
@@ -17,7 +17,8 @@ export const collectionService = {
 
         // 3. Create Physical Table
         const sqls: string[] = []
-        const tableSql = await collectionRepository.createPhysicalTable(databaseId, physicalName, idType, dryRun)
+        const tableSql = await physicalSchemaService.createTable(databaseId, physicalName, idType, dryRun)
+
         if (dryRun && tableSql) sqls.push(tableSql as string)
 
         if (!dryRun) {
@@ -30,24 +31,8 @@ export const collectionService = {
 
         // 3.1 If type is 'auth', add default fields
         if (type === 'auth') {
-            if (dryRun) {
-                // For auth type, we need to gather all additional SQLs
-                sqls.push(previewRawSql(`ALTER TABLE "${physicalName}" ADD COLUMN "email" TEXT NOT NULL`))
-                sqls.push(previewRawSql(`ALTER TABLE "${physicalName}" ADD COLUMN "password" TEXT NOT NULL`))
-                sqls.push(previewRawSql(`ALTER TABLE "${physicalName}" ADD COLUMN "name" TEXT NOT NULL`))
-                sqls.push(`ALTER TABLE "${physicalName}" ADD COLUMN "roles" TEXT[] DEFAULT '{"user"}'`)
-                sqls.push(previewRawSql(`CREATE UNIQUE INDEX "${physicalName}_email_idx" ON "${physicalName}" ("email")`))
-            } else {
-                await collectionRepository.addField(databaseId, physicalName, 'email', 'text', false)
-                await collectionRepository.addField(databaseId, physicalName, 'password', 'text', false)
-                await collectionRepository.addField(databaseId, physicalName, 'name', 'text', false)
-
-                // Add roles column using repository's addArrayField method
-                await collectionRepository.addArrayField(databaseId, physicalName, 'roles', 'TEXT', '{"user"}')
-
-                // Email should be unique
-                await collectionRepository.createIndex(databaseId, physicalName, `${physicalName}_email_idx`, ['email'], true)
-            }
+            const authSqls = await physicalSchemaService.addAuthFields(databaseId, physicalName, dryRun)
+            if (dryRun) sqls.push(...authSqls)
         }
 
         if (dryRun) {
@@ -66,15 +51,12 @@ export const collectionService = {
     },
 
     listByDatabase: async (databaseId: string) => {
-        // Just list from Main DB
         return await collectionRepository.list(databaseId)
     },
 
     getDetail: async (databaseId: string, collectionName: string) => {
         const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
-        const projectId = database.project_id
-        if (!projectId) throw new Error('Database not linked to project')
 
         // Find metadata first
         const collection = await collectionRepository.findByName(databaseId, collectionName)
@@ -97,48 +79,20 @@ export const collectionService = {
 
     // Field Management
     addField: async (databaseId: string, collectionName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
-        const database = await databaseRepository.findById(databaseId)
-        if (!database) throw new Error('Database not found')
-
-        // Find metadata first to get physical name
-        const collection = await collectionRepository.findByName(databaseId, collectionName)
-        if (!collection) throw new Error('Collection not found')
-
-        const physicalName = collection.physical_name
-        const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Physical table not found')
-
-        const sqlResult = await collectionRepository.addField(databaseId, physicalName, fieldName, type, isNullable, dryRun)
+        const detail = await collectionService.getDetail(databaseId, collectionName)
+        const sqlResult = await physicalSchemaService.addField(databaseId, detail.meta.physical_name, fieldName, type, isNullable, dryRun)
         if (dryRun) return { sql: sqlResult }
     },
 
     removeField: async (databaseId: string, collectionName: string, fieldName: string, dryRun: boolean = false) => {
-        const database = await databaseRepository.findById(databaseId)
-        if (!database) throw new Error('Database not found')
-
-        const collection = await collectionRepository.findByName(databaseId, collectionName)
-        if (!collection) throw new Error('Collection not found')
-
-        const physicalName = collection.physical_name
-        const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Physical table not found')
-
-        const sqlResult = await collectionRepository.removeField(databaseId, physicalName, fieldName, dryRun)
+        const detail = await collectionService.getDetail(databaseId, collectionName)
+        const sqlResult = await physicalSchemaService.removeField(databaseId, detail.meta.physical_name, fieldName, dryRun)
         if (dryRun) return { sql: sqlResult }
     },
 
     renameField: async (databaseId: string, collectionName: string, oldName: string, newName: string, dryRun: boolean = false) => {
-        const database = await databaseRepository.findById(databaseId)
-        if (!database) throw new Error('Database not found')
-
-        const collection = await collectionRepository.findByName(databaseId, collectionName)
-        if (!collection) throw new Error('Collection not found')
-
-        const physicalName = collection.physical_name
-        const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Physical table not found')
-
-        const sqlResult = await collectionRepository.renameField(databaseId, physicalName, oldName, newName, dryRun)
+        const detail = await collectionService.getDetail(databaseId, collectionName)
+        const sqlResult = await physicalSchemaService.renameField(databaseId, detail.meta.physical_name, oldName, newName, dryRun)
         if (dryRun) return { sql: sqlResult }
     },
 
@@ -147,15 +101,12 @@ export const collectionService = {
         const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
-        const collection = await collectionRepository.findByName(databaseId, collectionName)
-        if (!collection) throw new Error('Collection not found')
-
-        const physicalName = collection.physical_name
-        const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Physical table not found')
-
+        const detail = await collectionService.getDetail(databaseId, collectionName)
+        const physicalName = detail.meta.physical_name
         const fullIndexName = `${database.prefix}idx_${physicalName}_${indexName}`
-        const sqlResult = await collectionRepository.createIndex(databaseId, physicalName, fullIndexName, fields, unique, dryRun)
+
+        const sqlResult = await physicalSchemaService.createIndex(databaseId, physicalName, fullIndexName, fields, unique, dryRun)
+
         if (dryRun) return { sql: sqlResult }
         return fullIndexName
     },
@@ -164,15 +115,12 @@ export const collectionService = {
         const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
-        const collection = await collectionRepository.findByName(databaseId, collectionName)
-        if (!collection) throw new Error('Collection not found')
-
-        const physicalName = collection.physical_name
-        const exists = await collectionRepository.checkPhysicalTableExists(databaseId, physicalName)
-        if (!exists) throw new Error('Physical table not found')
-
+        const detail = await collectionService.getDetail(databaseId, collectionName)
+        const physicalName = detail.meta.physical_name
         const fullIndexName = `${database.prefix}idx_${physicalName}_${indexName}`
-        const sqlResult = await collectionRepository.removeIndex(databaseId, fullIndexName, dryRun)
+
+        const sqlResult = await physicalSchemaService.removeIndex(databaseId, physicalName, fullIndexName, dryRun)
+
         if (dryRun) return { sql: sqlResult }
         return fullIndexName
     }
