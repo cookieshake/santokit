@@ -64,7 +64,7 @@ describe('Collection Service (Integration)', () => {
 
     // Verify physical table exists using Kysely introspection
     const tables = await db.introspection.getTables()
-    const tableNames = tables.map(t => t.name)
+    const tableNames = tables.map((t: any) => t.name)
     expect(tableNames).toContain('test_pproj_01h2xcejqtf2nbrexx3vf36v5a_posts')
   })
 
@@ -75,15 +75,15 @@ describe('Collection Service (Integration)', () => {
 
     // Verify physical table exists
     const tables = await db.introspection.getTables()
-    const tableNames = tables.map(t => t.name)
+    const tableNames = tables.map((t: any) => t.name)
     expect(tableNames).toContain('test_pproj_01h2xcejqtf2nbrexx3vf36v5a_uuid_posts')
 
     // Verify 'id' column type
     // SQLite stores types bit differently, but Kysely normalizes some. 
     // However, exact type string might differ ('uuid' vs 'text' or 'blob' in sqlite depending on dialect implementation).
     // For now we check if column exists.
-    const table = tables.find(t => t.name === 'test_pproj_01h2xcejqtf2nbrexx3vf36v5a_uuid_posts')
-    const idColumn = table?.columns.find(c => c.name === 'id')
+    const table = tables.find((t: any) => t.name === 'test_pproj_01h2xcejqtf2nbrexx3vf36v5a_uuid_posts')
+    const idColumn = table?.columns.find((c: any) => c.name === 'id')
     expect(idColumn).toBeDefined()
     // expect(idColumn?.dataType).toBe('uuid') // Skipping strict type check for cross-db compat for now
   })
@@ -96,8 +96,8 @@ describe('Collection Service (Integration)', () => {
     // Verify column exists
     // Verify column exists
     const tables = await db.introspection.getTables()
-    const table = tables.find(t => t.name === 'test_pproj_01h2xcejqtf2nbrexx3vf36v5a_users')
-    const startColumn = table?.columns.find(c => c.name === 'age')
+    const table = tables.find((t: any) => t.name === 'test_pproj_01h2xcejqtf2nbrexx3vf36v5a_users')
+    const startColumn = table?.columns.find((c: any) => c.name === 'age')
     expect(startColumn).toBeDefined()
   })
 })

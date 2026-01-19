@@ -6,7 +6,7 @@ export async function up(db: Kysely<any>): Promise<void> {
         .createTable('projects')
         .addColumn('id', 'text', (col) => col.primaryKey()) // TypeID
         .addColumn('name', 'text', (col) => col.notNull())
-        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
         .execute()
 
     // Databases table
@@ -19,21 +19,34 @@ export async function up(db: Kysely<any>): Promise<void> {
         .addColumn('name', 'text', (col) => col.notNull())
         .addColumn('connection_string', 'text', (col) => col.notNull())
         .addColumn('prefix', 'text', (col) => col.notNull().defaultTo('santoki_'))
-        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
         .addUniqueConstraint('databases_project_id_name_unique', ['project_id', 'name'])
         .execute()
 
     // Accounts table
-    await db.schema
+    let accountsTable = db.schema
         .createTable('accounts')
         .addColumn('id', 'text', (col) => col.primaryKey())
         .addColumn('name', 'text')
         .addColumn('email', 'text', (col) => col.notNull().unique())
         .addColumn('password', 'text', (col) => col.notNull())
-        .addColumn('roles', sql`text[]`)
+
+    // Check for SQLite dialect via environment variable or DATABASE_URL
+    // We infer sqlite if DATABASE_URL is provided and does NOT start with postgres
+    const dbUrl = process.env.DATABASE_URL || ''
+    const isPostgres = dbUrl.startsWith('postgres')
+    const isSqlite = !isPostgres || process.env.TEST_DB_TYPE === 'sqlite'
+
+    if (isSqlite) {
+        accountsTable = accountsTable.addColumn('roles', 'text')
+    } else {
+        accountsTable = accountsTable.addColumn('roles', sql`text[]`)
+    }
+
+    await accountsTable
         .addColumn('project_id', 'text') // TypeID, technically FK but no constraint here?
-        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
-        .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
         .execute()
 
     // Policies table
@@ -51,7 +64,7 @@ export async function up(db: Kysely<any>): Promise<void> {
         .addColumn('action', 'text', (col) => col.notNull())
         .addColumn('condition', 'text', (col) => col.notNull())
         .addColumn('effect', 'text', (col) => col.notNull().defaultTo('allow'))
-        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
         .execute()
 
     // Collections table
@@ -67,8 +80,8 @@ export async function up(db: Kysely<any>): Promise<void> {
         .addColumn('name', 'text', (col) => col.notNull())
         .addColumn('physical_name', 'text', (col) => col.notNull().unique())
         .addColumn('type', 'text', (col) => col.notNull().defaultTo('base'))
-        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
-        .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
         .execute()
 }
 
