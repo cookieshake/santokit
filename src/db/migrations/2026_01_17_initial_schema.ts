@@ -33,9 +33,8 @@ export async function up(db: Kysely<any>): Promise<void> {
 
     // Check for SQLite dialect via environment variable or DATABASE_URL
     // We infer sqlite if DATABASE_URL is provided and does NOT start with postgres
-    const dbUrl = process.env.DATABASE_URL || ''
-    const isPostgres = dbUrl.startsWith('postgres')
-    const isSqlite = !isPostgres || process.env.TEST_DB_TYPE === 'sqlite'
+    const isPostgres = true
+    const isSqlite = false
 
     if (isSqlite) {
         accountsTable = accountsTable.addColumn('roles', 'text')

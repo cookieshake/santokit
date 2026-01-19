@@ -20,13 +20,11 @@ import { PostgresAdapter } from '@/db/adapters/postgres-adapter.js'
 // Mock connectionManager to return the SAME in-memory DB for all "physical" connections
 vi.mock('@/db/connection-manager.js', async () => {
   const { PostgresAdapter } = await import('../../db/adapters/postgres-adapter.js')
-  const { SqliteAdapter } = await import('../../db/adapters/sqlite-adapter.js')
-  const isSqlite = process.env.TEST_DB_TYPE === 'sqlite'
 
   return {
     connectionManager: {
       getConnection: vi.fn(),
-      getAdapter: vi.fn().mockReturnValue(isSqlite ? new SqliteAdapter() : new PostgresAdapter()),
+      getAdapter: vi.fn().mockReturnValue(new PostgresAdapter()),
       close: vi.fn()
     }
   }

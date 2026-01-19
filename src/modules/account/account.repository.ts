@@ -48,24 +48,9 @@ export const accountRepository = {
             ...data
         }
 
-        // SQLite array compatibility
-        if (data.roles && Array.isArray(data.roles)) {
-            let isSqlite = false
-            if (projectId) {
-                const adapter = connectionManager.getAdapter(await accountRepository.getDatabaseId(projectId))
-                if (adapter?.dialect === 'sqlite') {
-                    isSqlite = true
-                }
-            } else {
-                if (process.env.TEST_DB_TYPE === 'sqlite') {
-                    isSqlite = true
-                }
-            }
+        // SQLite array compatibility removed
+        // Postgres handles arrays natively
 
-            if (isSqlite) {
-                fullData.roles = JSON.stringify(data.roles)
-            }
-        }
 
         const result = await db
             .insertInto(tableName as any)

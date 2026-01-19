@@ -55,13 +55,6 @@ export const collectionRepository = {
         if (!targetDb) return false
 
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
-        const query = adapter.tableExistsQuery(physicalName)
-
-        // For parameterized queries, we need to use sql template tag
-        if (adapter.dialect === 'sqlite') {
-            const result = await sql.raw(`SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='${physicalName}'`).execute(targetDb)
-            return ((result.rows[0] as any)?.count || 0) > 0
-        }
 
         const result = await sql`
             SELECT EXISTS (
@@ -108,17 +101,6 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
         const query = adapter.getColumnsQuery(physicalName)
-
-        if (adapter.dialect === 'sqlite') {
-            // PRAGMA doesn't support parameterized queries
-            const result = await sql.raw(query.sql).execute(targetDb)
-            // Map SQLite PRAGMA output to standard format
-            return (result.rows as any[]).map(row => ({
-                column_name: row.name,
-                data_type: row.type,
-                is_nullable: row.notnull === 0 ? 'YES' : 'NO'
-            }))
-        }
 
         const result = await sql`
             SELECT column_name, data_type, is_nullable
@@ -181,11 +163,6 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(dataSourceId) || defaultAdapter
         const query = adapter.getIndexesQuery(physicalName)
-
-        if (adapter.dialect === 'sqlite') {
-            const result = await sql.raw(`SELECT name as indexname, sql as indexdef FROM sqlite_master WHERE type='index' AND tbl_name='${physicalName}'`).execute(targetDb)
-            return result.rows
-        }
 
         const result = await sql`
             SELECT indexname, indexdef 

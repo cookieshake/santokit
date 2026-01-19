@@ -3,7 +3,7 @@ import type { Kysely } from 'kysely'
 export type IdType = 'serial' | 'uuid' | 'text' | 'typeid'
 
 export interface DbAdapter {
-    readonly dialect: 'postgres' | 'sqlite'
+    readonly dialect: 'postgres'
 
     // DDL Operations
     tableExistsQuery(tableName: string): { sql: string; params: any[] }

@@ -27,13 +27,11 @@ export function setupDbMock() {
         const { createTestDb } = await import('./db-setup.js')
         const { db } = await createTestDb()
         const { PostgresAdapter } = await import('../db/adapters/postgres-adapter.js')
-        const { SqliteAdapter } = await import('../db/adapters/sqlite-adapter.js')
-        const isSqlite = process.env.TEST_DB_TYPE === 'sqlite'
 
         return {
             connectionManager: {
                 getConnection: vi.fn().mockResolvedValue(db),
-                getAdapter: vi.fn().mockReturnValue(isSqlite ? new SqliteAdapter() : new PostgresAdapter())
+                getAdapter: vi.fn().mockReturnValue(new PostgresAdapter())
             }
         }
     })

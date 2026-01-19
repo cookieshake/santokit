@@ -1,6 +1,5 @@
-import { Kysely, PostgresDialect, SqliteDialect } from 'kysely'
+import { Kysely, PostgresDialect } from 'kysely'
 import pg from 'pg'
-import Database from 'better-sqlite3'
 import { db as adminDb } from '@/db/index.js'
 import { createAdapter, type DbAdapter } from '@/db/adapters/index.js'
 
@@ -45,12 +44,6 @@ class ConnectionManager {
             this.pools.set(key, pool)
             dbInstance = new Kysely<any>({
                 dialect: new PostgresDialect({ pool }),
-            })
-        } else if (adapter.dialect === 'sqlite') {
-            const dbPath = connectionString.replace(/^(sqlite:\/\/|file:)/, '')
-            const sqliteDb = new Database(dbPath)
-            dbInstance = new Kysely<any>({
-                dialect: new SqliteDialect({ database: sqliteDb }),
             })
         } else {
             throw new Error(`Unsupported database dialect: ${adapter.dialect}`)

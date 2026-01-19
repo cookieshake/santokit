@@ -2,8 +2,7 @@ import * as path from 'path'
 import { fileURLToPath } from 'url'
 import { Pool } from 'pg'
 import { promises as fs } from 'fs'
-import Database from 'better-sqlite3'
-import { Kysely, Migrator, PostgresDialect, SqliteDialect, FileMigrationProvider } from 'kysely'
+import { Kysely, Migrator, PostgresDialect, FileMigrationProvider } from 'kysely'
 import { config } from '../config/index.js'
 import type { Database as DatabaseType } from './db-types.js'
 
@@ -19,29 +18,23 @@ async function migrateToLatest() {
 
     // Determine dialect based on URL protocol
     // If it starts with 'postgres' (postgres:// or postgresql://), use Postgres.
-    // Otherwise treat as SQLite file path.
     const isPostgres = config.db.url.startsWith('postgres')
-    const isSqlite = !isPostgres
+
+    if (!isPostgres) {
+        console.error(`Invalid connection string for database. Expected PostgreSQL connection.`)
+        process.exit(1)
+    }
 
     let db: Kysely<DatabaseType>
 
-    if (isSqlite) {
-        console.log(`Using SQLite dialect (URL: ${config.db.url})`)
-        db = new Kysely<DatabaseType>({
-            dialect: new SqliteDialect({
-                database: new Database(config.db.url),
+    console.log(`Using PostgreSQL dialect (URL: ${config.db.url})`)
+    db = new Kysely<DatabaseType>({
+        dialect: new PostgresDialect({
+            pool: new Pool({
+                connectionString: config.db.url,
             }),
-        })
-    } else {
-        console.log(`Using PostgreSQL dialect (URL: ${config.db.url})`)
-        db = new Kysely<DatabaseType>({
-            dialect: new PostgresDialect({
-                pool: new Pool({
-                    connectionString: config.db.url,
-                }),
-            }),
-        })
-    }
+        }),
+    })
 
     const migrator = new Migrator({
         db,

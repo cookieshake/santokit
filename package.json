@@ -10,13 +10,11 @@
     "typegen:cf": "wrangler types --env-interface CloudflareBindings",
     "test": "vitest run",
     "test:pg": "TEST_DB_TYPE=postgres vitest run",
-    "test:sqlite": "TEST_DB_TYPE=sqlite vitest run",
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.8",
     "@hono/zod-validator": "^0.7.6",
-    "better-sqlite3": "^12.6.2",
     "hono": "^4.11.3",
     "kysely": "^0.27.5",
     "paseto": "^3.1.4",
@@ -27,7 +25,6 @@
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.18.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.11.17",
     "@types/pg": "^8.16.0",
     "testcontainers": "^10.18.0",
