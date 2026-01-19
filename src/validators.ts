@@ -34,7 +34,7 @@ export const CreateUserSchema = z.object({
 
 export const CreateCollectionSchema = z.object({
     name: z.string().min(1).regex(/^[a-zA-Z0-9_]+$/, "Alphanumeric and underscores only"),
-    idType: z.enum(['serial', 'uuid']).default('serial'),
+    idType: z.enum(['serial', 'uuid', 'typeid']).default('serial'),
     type: z.enum(['base', 'auth']).default('base'),
 })
 

@@ -47,7 +47,7 @@ app.post('/', zValidator('json', CreateCollectionSchema), async (c) => {
         const databaseId = await resolveDatabaseId(c)
         const { name, idType, type } = c.req.valid('json')
         const dryRun = c.req.query('preview') === 'true'
-        const result = await collectionService.create(databaseId, name, idType as 'serial' | 'uuid', type as 'base' | 'auth', dryRun)
+        const result = await collectionService.create(databaseId, name, idType as 'serial' | 'uuid' | 'typeid', type as 'base' | 'auth', dryRun)
         return c.json(result)
     } catch (e) {
         return c.json({ error: (e as Error).message }, 400)

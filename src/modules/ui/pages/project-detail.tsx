@@ -1,8 +1,8 @@
 /** @jsxImportSource hono/jsx */
 import { Layout } from '../components/layout.js'
 
-export const ProjectDetail = (props: { project: any; collections: any[]; projects: any[]; account: any; currentDatabaseName: string; databases: any[] }) => (
-    <Layout title={`Project: ${props.project.name}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.project.id} collections={props.collections} currentDatabaseName={props.currentDatabaseName} databases={props.databases}>
+export const ProjectDetail = (props: { project: any; collections: any[]; projects: any[]; account: any; currentDatabaseName: string; databases: any[]; activeTab?: string }) => (
+    <Layout title={`Project: ${props.project.name}`} active="projects" account={props.account} projects={props.projects} currentProjectId={props.project.id} collections={props.collections} currentDatabaseName={props.currentDatabaseName} databases={props.databases} activeTab={props.activeTab}>
         <nav class="breadcrumb">
             <ul>
                 <li><a href="/ui/projects">Projects</a></li>
@@ -19,8 +19,12 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
             <div class="level-right">
                 <div class="level-item">
                     <div class="buttons">
-                        <button class="button is-primary" onclick="showModal('new-database-modal')">New Database</button>
-                        <button class="button is-link" onclick="showModal('new-collection-modal')" disabled={!props.currentDatabaseName}>New Collection</button>
+                        {(!props.activeTab || props.activeTab === 'overview') && (
+                            <button class="button is-primary" onclick="showModal('new-database-modal')">New Database</button>
+                        )}
+                        {props.activeTab === 'database' && (
+                            <button class="button is-link" onclick="showModal('new-collection-modal')" disabled={!props.currentDatabaseName}>New Collection</button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -177,68 +181,71 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
 
         <div class="columns">
             <div class="column is-8">
-                <div class="box">
-                    <h2 class="title is-4">Databases</h2>
-                    <div class="table-container">
-                        <table class="table is-fullwidth is-striped is-hoverable">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Connection</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {props.databases.map(db => (
-                                    <tr>
-                                        <td>
-                                            {db.name}
-                                            {props.currentDatabaseName === db.name && <span class="tag is-info is-light ml-2">Current</span>}
-                                        </td>
-                                        <td title={db.connection_string}>
-                                            {(db.connection_string || '').length > 50 ? (db.connection_string || '').substring(0, 50) + '...' : db.connection_string}
-                                        </td>
-                                        <td>
-                                            <button class="button is-small is-danger" onclick={`deleteDatabase(${db.id})`}>Delete</button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <div class="box">
-                    <h2 class="title is-4">Collections</h2>
-                    {props.collections.length === 0 ? (
-                        <div class="notification">
-                            No collections yet. Create your first one!
-                        </div>
-                    ) : (
+                {(!props.activeTab || props.activeTab === 'overview') && (
+                    <div class="box">
+                        <h2 class="title is-4">Databases</h2>
                         <div class="table-container">
                             <table class="table is-fullwidth is-striped is-hoverable">
                                 <thead>
                                     <tr>
                                         <th>Name</th>
-                                        <th>Physical Name</th>
+                                        <th>Connection</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {props.collections.map(col => (
+                                    {props.databases.map(db => (
                                         <tr>
-                                            <td>{col.name}</td>
-                                            <td><code>{col.physical_name}</code></td>
                                             <td>
-                                                <a href={`/ui/projects/${props.project.id}/collections/${col.name}`} class="button is-small is-primary">Design</a>
+                                                {db.name}
+                                            </td>
+                                            <td title={db.connection_string}>
+                                                {(db.connection_string || '').length > 50 ? (db.connection_string || '').substring(0, 50) + '...' : db.connection_string}
+                                            </td>
+                                            <td>
+                                                <button class="button is-small is-danger" onclick={`deleteDatabase(${db.id})`}>Delete</button>
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
+
+                {props.activeTab === 'database' && (
+                    <div class="box">
+                        <h2 class="title is-4">Collections</h2>
+                        {props.collections.length === 0 ? (
+                            <div class="notification">
+                                No collections yet. Create your first one!
+                            </div>
+                        ) : (
+                            <div class="table-container">
+                                <table class="table is-fullwidth is-striped is-hoverable">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Physical Name</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {props.collections.map(col => (
+                                            <tr>
+                                                <td>{col.name}</td>
+                                                <td><code>{col.physical_name}</code></td>
+                                                <td>
+                                                    <a href={`/ui/projects/${props.project.id}/collections/${col.name}`} class="button is-small is-primary">Design</a>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
             <div class="column">
                 <div class="box">

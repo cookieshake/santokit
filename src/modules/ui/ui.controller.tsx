@@ -62,7 +62,9 @@ app.get('/projects/:id', async (c) => {
     const projects = await projectService.list()
     const account = c.get('account')
 
-    return c.html(<ProjectDetail project={project} currentDatabaseName={currentDatabaseName} databases={databases || []} collections={collections || []} projects={projects || []} account={account} />)
+    const tab = c.req.query('tab') || 'overview'
+
+    return c.html(<ProjectDetail project={project} currentDatabaseName={currentDatabaseName} databases={databases || []} collections={collections || []} projects={projects || []} account={account} activeTab={tab} />)
 })
 
 app.get('/projects/:id/collections/:colName', async (c) => {
