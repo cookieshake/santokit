@@ -8,10 +8,16 @@ trigger: always_on
 
 코드 작성 및 수정 시 다음 문서를 반드시 참고하세요:
 
-- **API 스펙**: `.context/API-SPEC.md` - 모든 API 엔드포인트의 입력/출력/동작/제약사항
+- **API 스펙**: `.context/SPEC-API.md` - 모든 API 엔드포인트의 입력/출력/동작/제약사항
 - **UI 스펙**: `.context/SPEC-UI.md` - UI 페이지 구조, 컴포넌트, 동작 방식
+- **DB 스펙**: `.context/SPEC-DB.md` - 데이터베이스 스키마, 테이블 구조, 인덱스, 관계
 
 ## 개발 규칙
+
+### 문서화
+- API, UI, DB 등 주요 변경사항이 있을 때는 `.context/` 디렉토리의 해당 스펙 문서를 함께 업데이트한다.
+- 새로운 테이블, 컬럼, 인덱스 추가 시 `.context/SPEC-DB.md`를 업데이트한다.
+- 스펙 문서는 항상 최신 상태를 유지해야 하며, 코드와 문서가 불일치하지 않도록 주의한다.
 
 ### 빌드 및 테스트
 - 코드 변경 후에는 `npm run build`를 통해 프로젝트가 잘 빌드되는지 확인한다.
@@ -26,6 +32,7 @@ trigger: always_on
 - PostgreSQL을 포함한 다양한 DB에 연결될 가능성을 고려하여 코드를 작성한다.
 - DB 접근은 반드시 repository 레이어를 통해서만 한다.
 - 직접 SQL을 작성하지 않고 Kysely query builder를 사용한다.
+- 스키마 변경(테이블, 컬럼, 인덱스 등) 시 `.context/SPEC-DB.md`를 함께 업데이트한다.
 
 ### UI 개발
 - UI 변경 시 `.context/SPEC-UI.md`를 함께 업데이트한다.
