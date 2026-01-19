@@ -1,52 +1,57 @@
-import { sql } from 'kysely'
 import type { Kysely } from 'kysely'
 
 export const dataRepository = {
     create: async (db: Kysely<any>, tableName: string, data: Record<string, any>) => {
-        const keys = Object.keys(data)
-        const values = Object.values(data)
-        const cols = keys.map(k => `"${k}"`).join(', ')
-        const valueString = values.map(v => {
-            if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`
-            if (v === null || v === undefined) return 'NULL'
-            return v
-        }).join(', ')
-
-        const query = `INSERT INTO "${tableName}" (${cols}) VALUES (${valueString}) RETURNING id`
-        const result = await sql.raw(query).execute(db)
-        return result.rows[0]
+        const result = await db
+            .insertInto(tableName as any)
+            .values(data)
+            .returning('id' as any)
+            .executeTakeFirst()
+        return result
     },
 
     findAll: async (db: Kysely<any>, tableName: string, whereClause?: string | null) => {
-        const sqlQuery = `SELECT * FROM "${tableName}"${whereClause ? ` WHERE ${whereClause}` : ''}`
-        const result = await sql.raw(sqlQuery).execute(db)
-        return result.rows
+        let query = db.selectFrom(tableName as any).selectAll()
+
+        // Note: whereClause is raw SQL for backward compatibility
+        // TODO: Consider refactoring callers to use structured where conditions
+        if (whereClause) {
+            const { sql } = await import('kysely')
+            query = query.where(sql.raw(whereClause) as any)
+        }
+
+        return await query.execute()
     },
 
     update: async (db: Kysely<any>, tableName: string, id: string, data: Record<string, any>, whereClause?: string | null) => {
-        const keys = Object.keys(data)
-        if (keys.length === 0) return null
+        if (Object.keys(data).length === 0) return null
 
-        const sets = keys.map(k => {
-            const val = data[k]
-            const valStr = (typeof val === 'string') ? `'${val.replace(/'/g, "''")}'` : (val === null ? 'NULL' : val)
-            return `"${k}" = ${valStr}`
-        }).join(', ')
+        let query = db
+            .updateTable(tableName as any)
+            .set(data)
+            .where('id' as any, '=', id)
 
-        const baseWhere = `id = '${id}'`
-        const finalWhere = whereClause ? `(${baseWhere}) AND (${whereClause})` : baseWhere
+        if (whereClause) {
+            const { sql } = await import('kysely')
+            query = query.where(sql.raw(whereClause) as any)
+        }
 
-        const query = `UPDATE "${tableName}" SET ${sets} WHERE ${finalWhere} RETURNING *`
-        const result = await sql.raw(query).execute(db)
-        return result.rows[0]
+        const result = await query.returningAll().executeTakeFirst()
+        return result
     },
 
     delete: async (db: Kysely<any>, tableName: string, id: string, whereClause?: string | null) => {
-        const baseWhere = `id = ${typeof id === 'string' ? `'${id}'` : id}`
-        const finalWhere = whereClause ? `(${baseWhere}) AND (${whereClause})` : baseWhere
+        let query = db
+            .deleteFrom(tableName as any)
+            .where('id' as any, '=', id)
 
-        const query = `DELETE FROM "${tableName}" WHERE ${finalWhere} RETURNING id`
-        const result = await sql.raw(query).execute(db)
-        return result.rows[0]
+        if (whereClause) {
+            const { sql } = await import('kysely')
+            query = query.where(sql.raw(whereClause) as any)
+        }
+
+        const result = await query.returning('id' as any).executeTakeFirst()
+        return result
     }
 }
+

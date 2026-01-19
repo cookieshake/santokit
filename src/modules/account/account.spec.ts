@@ -23,9 +23,14 @@ vi.mock('../../db/index.js', async () => {
 vi.mock('../../db/connection-manager.js', async () => {
   const { createTestDb } = await import('../../tests/db-setup.js')
   const { db, pool } = await createTestDb()
+  const { PostgresAdapter } = await import('../../db/adapters/postgres-adapter.js')
+  const { SqliteAdapter } = await import('../../db/adapters/sqlite-adapter.js')
+  const isSqlite = process.env.TEST_DB_TYPE === 'sqlite'
+
   return {
     connectionManager: {
-      getConnection: vi.fn().mockResolvedValue(db)
+      getConnection: vi.fn().mockResolvedValue(db),
+      getAdapter: vi.fn().mockReturnValue(isSqlite ? new SqliteAdapter() : new PostgresAdapter())
     },
     // We export these for the test file to use if needed
     projectPool: pool,
@@ -44,12 +49,15 @@ describe('User Service (Project Level)', () => {
   let projectId2: string
 
   beforeEach(async () => {
-    // Robust Cleanup: Drop schema
-    await sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`.execute(db)
+    // Robust Cleanup
+    const { clearDb } = await import('@/tests/test-utils.js')
+    await clearDb(db)
 
-    // Re-apply schema
-    const { applySchema } = await import('@/tests/db-setup.js')
-    await applySchema(db)
+    // Re-apply schema - clearDb deletes rows, so no need to re-apply schema if we don't drop it.
+    // But original code dropped schema. Now we just delete rows.
+    // So we don't need applySchema.
+
+    // However, if tests assume clean slate including schema, clearDb does that.
 
     // Create initial setup
     const p1 = await projectService.create('Project 1')

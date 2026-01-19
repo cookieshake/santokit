@@ -1,22 +1,27 @@
-import { sql } from 'kysely'
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
 import { databaseRepository } from '@/modules/database/database.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { db as mainDb } from '@/db/index.js'
 import { typeid } from 'typeid-js'
+import type { Kysely } from 'kysely'
 
 export const accountRepository = {
     // Helper to get DB and Table Name
-    async getContext(projectId: string | null) {
-        if (!projectId) {
-            // Global Account (System Admin)
-            return { db: mainDb, tableName: '"accounts"' }
-        }
+    getDatabaseId: async (projectId: string): Promise<string> => {
 
         const databases = await databaseRepository.findByProjectId(projectId)
         if (databases.length === 0) throw new Error(`No databases found for project ${projectId}`)
         const database = databases[0]
-        const databaseId = database.id
+        return database.id
+    },
+
+    getContext: async (projectId: string | null): Promise<{ db: Kysely<any>, tableName: string }> => {
+        if (!projectId) {
+            // Global Account (System Admin)
+            return { db: mainDb, tableName: 'accounts' }
+        }
+
+        const databaseId = await accountRepository.getDatabaseId(projectId)
 
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to database')
@@ -28,7 +33,7 @@ export const accountRepository = {
             throw new Error(`No account/auth collection found for project ${projectId}`)
         }
 
-        return { db: targetDb, tableName: `"${authTable.physical_name}"` }
+        return { db: targetDb, tableName: authTable.physical_name }
     },
 
     create: async (projectId: string | null, data: any) => {
@@ -43,51 +48,68 @@ export const accountRepository = {
             ...data
         }
 
-        // Remove projectId from data if it's there, we might handle it differently?
-        // Actually for global accounts, project_id column might exist (if null).
-        // For project accounts (auth collection), project_id might not exist in that table schema?
-        // Assuming dynamic schema for collections doesn't enforce project_id column unless added.
-
-        const keys = Object.keys(fullData)
-        const cols = keys.map(k => `"${k}"`).join(', ')
-        const vals = keys.map(k => {
-            const v = (fullData as any)[k]
-            if (typeof v === 'string') return `'${v.replace(/'/g, "''")}'`
-            if (Array.isArray(v)) {
-                const arrVals = v.map(item => typeof item === 'string' ? `"${item.replace(/"/g, '\\"')}"` : item).join(',')
-                return `'${"{" + arrVals + "}"}'`
+        // SQLite array compatibility
+        if (data.roles && Array.isArray(data.roles)) {
+            let isSqlite = false
+            if (projectId) {
+                const adapter = connectionManager.getAdapter(await accountRepository.getDatabaseId(projectId))
+                if (adapter?.dialect === 'sqlite') {
+                    isSqlite = true
+                }
+            } else {
+                if (process.env.TEST_DB_TYPE === 'sqlite') {
+                    isSqlite = true
+                }
             }
-            if (v === null || v === undefined) return 'NULL'
-            return v
-        }).join(', ')
 
-        const query = `INSERT INTO ${tableName} (${cols}) VALUES (${vals}) RETURNING *`
-        const result = await sql.raw(query).execute(db)
-        return result.rows[0]
+            if (isSqlite) {
+                fullData.roles = JSON.stringify(data.roles)
+            }
+        }
+
+        const result = await db
+            .insertInto(tableName as any)
+            .values(fullData)
+            .returningAll()
+            .executeTakeFirst()
+        return result
     },
 
     findByProjectId: async (projectId: string | null) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
-        const result = await sql.raw(`SELECT * FROM ${tableName}`).execute(db)
-        return result.rows
+        const result = await db
+            .selectFrom(tableName as any)
+            .selectAll()
+            .execute()
+        return result
     },
 
     findById: async (projectId: string | null, id: string) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
-        const val = typeof id === 'string' ? `'${id.replace(/'/g, "''")}'` : id
-        const result = await sql.raw(`SELECT * FROM ${tableName} WHERE id = ${val}`).execute(db)
-        return result.rows[0]
+        const result = await db
+            .selectFrom(tableName as any)
+            .selectAll()
+            .where('id' as any, '=', id)
+            .executeTakeFirst()
+        return result
     },
 
     findByEmail: async (projectId: string | null, email: string) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
-        const result = await sql.raw(`SELECT * FROM ${tableName} WHERE email = '${email.replace(/'/g, "''")}'`).execute(db)
-        return result.rows[0]
+        const result = await db
+            .selectFrom(tableName as any)
+            .selectAll()
+            .where('email' as any, '=', email)
+            .executeTakeFirst()
+        return result
     },
 
     delete: async (projectId: string | null, id: string) => {
         const { db, tableName } = await accountRepository.getContext(projectId)
-        const val = typeof id === 'string' ? `'${id.replace(/'/g, "''")}'` : id
-        await sql.raw(`DELETE FROM ${tableName} WHERE id = ${val}`).execute(db)
+        await db
+            .deleteFrom(tableName as any)
+            .where('id' as any, '=', id)
+            .execute()
     }
 }
+

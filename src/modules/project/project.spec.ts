@@ -36,13 +36,14 @@ describe('Project Service (Integration)', () => {
   beforeEach(async () => {
     // Schema is already setup by createTestDb in the mock
     // Clear tables
-    await sql`TRUNCATE TABLE projects, accounts RESTART IDENTITY CASCADE`.execute(db)
+    await sql`DELETE FROM projects`.execute(db)
+    await sql`DELETE FROM accounts`.execute(db)
 
     // Create a dummy user
     const dummyId = 'user-1'
     await sql`
-      INSERT INTO accounts (id, name, email, password, created_at, updated_at) 
-      VALUES (${dummyId}, 'Test User', 'test@example.com', 'pass123', NOW(), NOW())
+      INSERT INTO accounts (id, name, email, password, created_at, updated_at)
+      VALUES (${dummyId}, 'Test User', 'test@example.com', 'pass123', ${new Date().toISOString()}, ${new Date().toISOString()})
     `.execute(db)
   })
 

@@ -1,93 +1,50 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql'
-import { Kysely, PostgresDialect, sql } from 'kysely'
+import { Kysely, PostgresDialect, SqliteDialect, sql } from 'kysely'
 import { Pool } from 'pg'
-import type { Database } from '@/db/db-types.js'
+import Database from 'better-sqlite3'
+import type { Database as DatabaseType } from '@/db/db-types.js'
 
 let globalContainer: StartedPostgreSqlContainer | null = null
 
-// SQL to create the schema (matches the Drizzle schema)
-const SCHEMA_SQL = `
--- Projects
-CREATE TABLE IF NOT EXISTS projects(
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Databases
-CREATE TABLE IF NOT EXISTS databases(
-    id TEXT PRIMARY KEY,
-    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    connection_string TEXT NOT NULL,
-    prefix TEXT NOT NULL DEFAULT 'santoki_',
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(project_id, name)
-);
-
--- Accounts
-CREATE TABLE IF NOT EXISTS accounts(
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    email TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    roles TEXT[],
-    project_id TEXT,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Policies
-CREATE TABLE IF NOT EXISTS policies(
-    id TEXT PRIMARY KEY,
-    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-    database_id TEXT REFERENCES databases(id) ON DELETE CASCADE,
-    collection_name TEXT NOT NULL,
-    role TEXT NOT NULL,
-    action TEXT NOT NULL,
-    condition TEXT NOT NULL,
-    effect TEXT NOT NULL DEFAULT 'allow',
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
--- Collections
-CREATE TABLE IF NOT EXISTS collections(
-    id TEXT PRIMARY KEY,
-    project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-    database_id TEXT REFERENCES databases(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    physical_name TEXT NOT NULL UNIQUE,
-    type TEXT NOT NULL DEFAULT 'base',
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
-);
-`
+const DB_TYPE = process.env.TEST_DB_TYPE || 'postgres'
 
 export async function createTestDb() {
-    // Reuse the same container for all tests to improve performance
-    if (!globalContainer) {
-        globalContainer = await new PostgreSqlContainer('postgres:16-alpine')
-            //.withReuse() // Disable reuse to avoid schema conflict with existing data
-            .start()
+    let db: Kysely<DatabaseType>
+    let pool: Pool | undefined
+    let sqliteDb: Database.Database | undefined
+
+    if (DB_TYPE === 'postgres') {
+        // reuse container
+        if (!globalContainer) {
+            globalContainer = await new PostgreSqlContainer('postgres:16-alpine')
+                .start()
+        }
+        pool = new Pool({
+            connectionString: globalContainer.getConnectionUri(),
+        })
+        db = new Kysely<DatabaseType>({
+            dialect: new PostgresDialect({ pool }),
+        })
+    } else {
+        // sqlite in-memory
+        sqliteDb = new Database(':memory:')
+        db = new Kysely<DatabaseType>({
+            dialect: new SqliteDialect({ database: sqliteDb }),
+        })
     }
 
-    // Create a new pool for this test
-    const pool = new Pool({
-        connectionString: globalContainer.getConnectionUri(),
-    })
+    await createSchema(db)
 
-    const db = new Kysely<Database>({
-        dialect: new PostgresDialect({ pool }),
-    })
-
-    // Initialize schema
-    await sql.raw(SCHEMA_SQL).execute(db)
-
-    return { db, pool }
+    return { db, pool, sqliteDb }
 }
 
-export async function closeTestDb(pool: Pool) {
-    await pool.end()
+export async function closeTestDb(pool?: Pool, sqliteDb?: Database.Database) {
+    if (pool) {
+        await pool.end()
+    }
+    if (sqliteDb) {
+        sqliteDb.close()
+    }
 }
 
 export async function stopGlobalContainer() {
@@ -98,10 +55,86 @@ export async function stopGlobalContainer() {
 }
 
 export function getTestConnectionString() {
-    if (!globalContainer) throw new Error('Global container not started')
-    return globalContainer.getConnectionUri()
+    if (DB_TYPE === 'postgres') {
+        if (!globalContainer) throw new Error('Global container not started')
+        return globalContainer.getConnectionUri()
+    }
+    return 'sqlite://:memory:'
+}
+
+// Helper to create schema using Kysely's schema builder for dialect compatibility
+export async function createSchema(db: Kysely<any>) {
+    // Projects
+    await db.schema.createTable('projects')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('name', 'text', (col) => col.notNull())
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .execute()
+
+    // Databases
+    await db.schema.createTable('databases')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('project_id', 'text', (col) => col.references('projects.id').onDelete('cascade'))
+        .addColumn('name', 'text', (col) => col.notNull())
+        .addColumn('connection_string', 'text', (col) => col.notNull())
+        .addColumn('prefix', 'text', (col) => col.defaultTo('santoki_').notNull())
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .addUniqueConstraint('unique_project_db_name', ['project_id', 'name'])
+        .execute()
+
+    // Accounts
+    let accountsTable = db.schema.createTable('accounts')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('name', 'text')
+        .addColumn('email', 'text', (col) => col.notNull().unique())
+        .addColumn('password', 'text', (col) => col.notNull())
+        .addColumn('project_id', 'text')
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+
+    if (DB_TYPE === 'postgres') {
+        accountsTable = accountsTable.addColumn('roles', sql`text[]`)
+    } else {
+        // SQLite doesn't strictly support arrays, store as text (or json if we had plugin)
+        // For simple tests, 'text' is often enough, but let's stick to what Kysely generates for 'text'
+        // If the app expects arrays, we might need value transformation middleware or JSON wrapper.
+        // For now, assuming simply creating column is strict enough for schema existence.
+        accountsTable = accountsTable.addColumn('roles', 'text')
+    }
+    await accountsTable.execute()
+
+
+    // Policies
+    await db.schema.createTable('policies')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('project_id', 'text', (col) => col.references('projects.id').onDelete('cascade'))
+        .addColumn('database_id', 'text', (col) => col.references('databases.id').onDelete('cascade'))
+        .addColumn('collection_name', 'text', (col) => col.notNull())
+        .addColumn('role', 'text', (col) => col.notNull())
+        .addColumn('action', 'text', (col) => col.notNull())
+        .addColumn('condition', 'text', (col) => col.notNull())
+        .addColumn('effect', 'text', (col) => col.defaultTo('allow').notNull())
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .execute()
+
+    // Collections
+    await db.schema.createTable('collections')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('project_id', 'text', (col) => col.references('projects.id').onDelete('cascade'))
+        .addColumn('database_id', 'text', (col) => col.references('databases.id').onDelete('cascade'))
+        .addColumn('name', 'text', (col) => col.notNull())
+        .addColumn('physical_name', 'text', (col) => col.notNull().unique())
+        .addColumn('type', 'text', (col) => col.defaultTo('base').notNull())
+        .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`CURRENT_TIMESTAMP`))
+        .execute()
 }
 
 export async function applySchema(db: Kysely<any>) {
-    await sql.raw(SCHEMA_SQL).execute(db)
+    await createSchema(db)
 }

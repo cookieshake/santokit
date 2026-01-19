@@ -1,7 +1,8 @@
-import { Kysely, PostgresDialect, sql } from 'kysely'
+import { Kysely, PostgresDialect, SqliteDialect } from 'kysely'
 import pg from 'pg'
+import Database from 'better-sqlite3'
 import { db as adminDb } from '@/db/index.js'
-import type { Database } from '@/db/db-types.js'
+import { createAdapter, type DbAdapter } from '@/db/adapters/index.js'
 
 const { Pool } = pg
 
@@ -9,6 +10,7 @@ const { Pool } = pg
 class ConnectionManager {
     private instances: Map<string, Kysely<any>> = new Map()
     private pools: Map<string, pg.Pool> = new Map()
+    private adapters: Map<string, DbAdapter> = new Map()
 
     async getConnection(databaseId: string): Promise<Kysely<any> | null> {
         // 1. Check if we already have an instance
@@ -26,24 +28,40 @@ class ConnectionManager {
 
         if (!database) return null
 
-        // 3. Validate connection string
-        if (!database.connection_string.startsWith('postgres://') &&
-            !database.connection_string.startsWith('postgresql://')) {
-            throw new Error(`Invalid connection string for database "${database.name}". Only PostgreSQL connections are supported.`)
+        const connectionString = database.connection_string
+
+        // 3. Create adapter based on connection string
+        const adapter = createAdapter(connectionString)
+        this.adapters.set(key, adapter)
+
+        // 4. Create appropriate dialect
+        let dbInstance: Kysely<any>
+
+        if (adapter.dialect === 'postgres') {
+            if (!connectionString.startsWith('postgres://') && !connectionString.startsWith('postgresql://')) {
+                throw new Error(`Invalid connection string for database "${database.name}". Expected PostgreSQL connection.`)
+            }
+            const pool = new Pool({ connectionString })
+            this.pools.set(key, pool)
+            dbInstance = new Kysely<any>({
+                dialect: new PostgresDialect({ pool }),
+            })
+        } else if (adapter.dialect === 'sqlite') {
+            const dbPath = connectionString.replace(/^(sqlite:\/\/|file:)/, '')
+            const sqliteDb = new Database(dbPath)
+            dbInstance = new Kysely<any>({
+                dialect: new SqliteDialect({ database: sqliteDb }),
+            })
+        } else {
+            throw new Error(`Unsupported database dialect: ${adapter.dialect}`)
         }
 
-        // 4. Create new pool
-        const pool = new Pool({
-            connectionString: database.connection_string
-        })
-
-        const dbInstance = new Kysely<any>({
-            dialect: new PostgresDialect({ pool }),
-        })
-
-        this.pools.set(key, pool)
         this.instances.set(key, dbInstance)
         return dbInstance
+    }
+
+    getAdapter(databaseId: string): DbAdapter | null {
+        return this.adapters.get(databaseId) || null
     }
 
     // Optional: method to close specific pool or all
@@ -59,7 +77,9 @@ class ConnectionManager {
             await pool.end()
             this.pools.delete(key)
         }
+        this.adapters.delete(key)
     }
 }
 
 export const connectionManager = new ConnectionManager()
+

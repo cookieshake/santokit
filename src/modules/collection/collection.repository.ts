@@ -1,7 +1,11 @@
-import { sql, Kysely } from 'kysely'
-import { previewSql, previewRawSql } from './sql-preview.js'
+import { sql } from 'kysely'
+import { previewRawSql } from './sql-preview.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { db } from '@/db/index.js'
+import { PostgresAdapter } from '@/db/adapters/postgres-adapter.js'
+
+// Default adapter for cases where we can't get adapter from connection manager
+const defaultAdapter = new PostgresAdapter()
 
 export const collectionRepository = {
     // Metadata Operations (Main DB)
@@ -50,6 +54,15 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) return false
 
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const query = adapter.tableExistsQuery(physicalName)
+
+        // For parameterized queries, we need to use sql template tag
+        if (adapter.dialect === 'sqlite') {
+            const result = await sql.raw(`SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='${physicalName}'`).execute(targetDb)
+            return ((result.rows[0] as any)?.count || 0) > 0
+        }
+
         const result = await sql`
             SELECT EXISTS (
                 SELECT FROM information_schema.tables 
@@ -57,7 +70,6 @@ export const collectionRepository = {
                 AND table_name = ${physicalName}
             )
         `.execute(targetDb)
-
         return (result.rows[0] as any).exists === true
     },
 
@@ -65,14 +77,8 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to data source')
 
-        let idCol = 'id SERIAL PRIMARY KEY'
-        if (idType === 'uuid') {
-            idCol = 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
-        } else if (idType === 'text' || idType === 'typeid') {
-            idCol = 'id TEXT PRIMARY KEY'
-        }
-
-        const rawSql = `CREATE TABLE "${physicalName}" (${idCol}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const rawSql = adapter.createTableSql(physicalName, idType)
 
         if (dryRun) {
             return previewRawSql(rawSql)
@@ -85,7 +91,8 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to data source')
 
-        const rawSql = `DROP TABLE IF EXISTS "${physicalName}"`
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const rawSql = adapter.dropTableSql(physicalName)
 
         if (dryRun) {
             return previewRawSql(rawSql)
@@ -99,12 +106,25 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const query = adapter.getColumnsQuery(physicalName)
+
+        if (adapter.dialect === 'sqlite') {
+            // PRAGMA doesn't support parameterized queries
+            const result = await sql.raw(query.sql).execute(targetDb)
+            // Map SQLite PRAGMA output to standard format
+            return (result.rows as any[]).map(row => ({
+                column_name: row.name,
+                data_type: row.type,
+                is_nullable: row.notnull === 0 ? 'YES' : 'NO'
+            }))
+        }
+
         const result = await sql`
             SELECT column_name, data_type, is_nullable
             FROM information_schema.columns 
             WHERE table_name = ${physicalName}
         `.execute(targetDb)
-
         return result.rows
     },
 
@@ -112,12 +132,8 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
-        let sqlType = 'TEXT'
-        if (type === 'integer') sqlType = 'INTEGER'
-        if (type === 'boolean') sqlType = 'BOOLEAN'
-        const sqlNullable = isNullable ? 'NULL' : 'NOT NULL'
-
-        const rawSql = `ALTER TABLE "${physicalName}" ADD COLUMN "${fieldName}" ${sqlType} ${sqlNullable}`
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const rawSql = adapter.addColumnSql(physicalName, fieldName, type, isNullable)
 
         if (dryRun) return previewRawSql(rawSql)
 
@@ -128,9 +144,8 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
-        const sqlType = `${elementType.toUpperCase()}[]`
-        const defaultClause = defaultValue ? ` DEFAULT '${defaultValue}'` : ''
-        const rawSql = `ALTER TABLE "${physicalName}" ADD COLUMN "${fieldName}" ${sqlType}${defaultClause}`
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const rawSql = adapter.addArrayColumnSql(physicalName, fieldName, elementType, defaultValue)
 
         if (dryRun) return previewRawSql(rawSql)
 
@@ -141,7 +156,8 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
-        const rawSql = `ALTER TABLE "${physicalName}" DROP COLUMN "${fieldName}"`
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const rawSql = adapter.dropColumnSql(physicalName, fieldName)
         if (dryRun) return previewRawSql(rawSql)
 
         await sql.raw(rawSql).execute(targetDb)
@@ -151,7 +167,8 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
-        const rawSql = `ALTER TABLE "${physicalName}" RENAME COLUMN "${oldName}" TO "${newName}"`
+        const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
+        const rawSql = adapter.renameColumnSql(physicalName, oldName, newName)
         if (dryRun) return previewRawSql(rawSql)
 
         await sql.raw(rawSql).execute(targetDb)
@@ -162,12 +179,19 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(dataSourceId)
         if (!targetDb) throw new Error('Could not connect')
 
+        const adapter = connectionManager.getAdapter(dataSourceId) || defaultAdapter
+        const query = adapter.getIndexesQuery(physicalName)
+
+        if (adapter.dialect === 'sqlite') {
+            const result = await sql.raw(`SELECT name as indexname, sql as indexdef FROM sqlite_master WHERE type='index' AND tbl_name='${physicalName}'`).execute(targetDb)
+            return result.rows
+        }
+
         const result = await sql`
             SELECT indexname, indexdef 
             FROM pg_indexes 
             WHERE tablename = ${physicalName}
         `.execute(targetDb)
-
         return result.rows
     },
 
@@ -175,10 +199,8 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(dataSourceId)
         if (!targetDb) throw new Error('Could not connect')
 
-        const uniqueStr = unique ? 'UNIQUE ' : ''
-        const colsStr = columns.map(c => `"${c}"`).join(', ')
-
-        const rawSql = `CREATE ${uniqueStr}INDEX "${indexName}" ON "${physicalName}" (${colsStr})`
+        const adapter = connectionManager.getAdapter(dataSourceId) || defaultAdapter
+        const rawSql = adapter.createIndexSql(physicalName, indexName, columns, unique)
 
         if (dryRun) return previewRawSql(rawSql)
 
@@ -189,9 +211,11 @@ export const collectionRepository = {
         const targetDb = await connectionManager.getConnection(dataSourceId)
         if (!targetDb) throw new Error('Could not connect')
 
-        const rawSql = `DROP INDEX "${indexName}"`
+        const adapter = connectionManager.getAdapter(dataSourceId) || defaultAdapter
+        const rawSql = adapter.dropIndexSql(indexName)
         if (dryRun) return previewRawSql(rawSql)
 
         await sql.raw(rawSql).execute(targetDb)
     }
 }
+

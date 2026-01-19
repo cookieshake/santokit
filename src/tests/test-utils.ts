@@ -26,9 +26,14 @@ export function setupDbMock() {
     vi.mock('@/db/connection-manager.js', async () => {
         const { createTestDb } = await import('./db-setup.js')
         const { db } = await createTestDb()
+        const { PostgresAdapter } = await import('../db/adapters/postgres-adapter.js')
+        const { SqliteAdapter } = await import('../db/adapters/sqlite-adapter.js')
+        const isSqlite = process.env.TEST_DB_TYPE === 'sqlite'
+
         return {
             connectionManager: {
-                getConnection: vi.fn().mockResolvedValue(db)
+                getConnection: vi.fn().mockResolvedValue(db),
+                getAdapter: vi.fn().mockReturnValue(isSqlite ? new SqliteAdapter() : new PostgresAdapter())
             }
         }
     })
@@ -38,14 +43,19 @@ export function setupDbMock() {
  * Cleans up the database tables (drops schema and re-applies).
  * Useful to run in beforeEach.
  */
+/**
+ * Cleans up the database tables (deletes all rows).
+ * Useful to run in beforeEach.
+ */
 export async function clearDb(db: Kysely<any>) {
     if (!db) return;
-    // Drop logic to be clean and handle dynamic tables
-    await sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;`.execute(db)
 
-    // Re-apply schema
-    const { applySchema } = await import('./db-setup.js')
-    await applySchema(db)
+    // Delete from all tables in correct order (child tables first)
+    await sql`DELETE FROM policies`.execute(db)
+    await sql`DELETE FROM collections`.execute(db)
+    await sql`DELETE FROM databases`.execute(db)
+    await sql`DELETE FROM accounts`.execute(db)
+    await sql`DELETE FROM projects`.execute(db)
 }
 
 /**
