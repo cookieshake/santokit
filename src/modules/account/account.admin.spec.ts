@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { accountService } from './account.service.js'
 import { projectService } from '../project/project.service.js'
+import { databaseService } from '../database/database.service.js'
 import { clearDb } from '@/tests/test-utils.js'
 import { sql } from 'kysely'
 import type { Pool } from 'pg'
@@ -42,7 +43,7 @@ describe('Account Module', () => {
         // Create a test project with database
         const project = await projectService.create('test-project')
         testProjectId = project.id
-        await projectService.createDatabase(testProjectId, 'default', 'postgres://test-db-connection', 'test_')
+        await databaseService.create(testProjectId, 'default', 'postgres://test-db-connection', 'test_')
     })
 
     afterAll(async () => {

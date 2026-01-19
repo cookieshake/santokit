@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { zValidator } from '@hono/zod-validator'
 import { CreateCollectionSchema, AddFieldSchema, RenameFieldSchema, CreateIndexSchema } from '@/validators.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
-import { projectRepository } from '@/modules/project/project.repository.js'
+import { databaseRepository } from '@/modules/database/database.repository.js'
 import dataController from '@/modules/data/data.controller.js'
 import { CONSTANTS } from '@/constants.js'
 
@@ -22,7 +22,7 @@ const resolveDatabaseId = async (c: any) => {
     const projectId = rawProjectId;
 
 
-    const database = await projectRepository.findDatabaseByName(projectId, databaseName)
+    const database = await databaseRepository.findByName(projectId, databaseName)
     if (!database) throw new Error(`Database '${databaseName}' not found in project '${rawProjectId}'`)
 
     return database.id

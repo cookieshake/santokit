@@ -3,7 +3,7 @@ import { Hono } from 'hono'
 import { projectService } from '@/modules/project/project.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { dataService } from '@/modules/data/data.service.js'
-import { projectRepository } from '@/modules/project/project.repository.js'
+import { databaseRepository } from '@/modules/database/database.repository.js'
 import { Login } from './pages/login.js'
 
 import { Projects } from './pages/projects.js'
@@ -48,7 +48,7 @@ app.get('/projects/:id', async (c) => {
     let currentDatabaseName = ''
     let databases: any[] = []
     try {
-        databases = await projectRepository.findDatabasesByProjectId(projectId)
+        databases = await databaseRepository.findByProjectId(projectId)
         if (databases.length > 0) {
             const dbNameParam = c.req.query('db')
             const selectedDb = dbNameParam ? databases.find(d => d.name === dbNameParam) || databases[0] : databases[0]
@@ -73,11 +73,12 @@ app.get('/projects/:id/collections/:colName', async (c) => {
     const account = c.get('account')
 
     try {
-        const databases = await projectRepository.findDatabasesByProjectId(projectId)
+        const databases = await databaseRepository.findByProjectId(projectId)
         if (databases.length === 0) throw new Error('No databases found')
 
         const dbNameParam = c.req.query('db')
-        const selectedDb = dbNameParam ? databases.find(d => d.name === dbNameParam) || databases[0] : databases[0]
+        // Find the selected database by name or use first
+        const selectedDb = dbNameParam ? databases.find((d: any) => d.name === dbNameParam) || databases[0] : databases[0]
         const dbId = selectedDb.id
 
         const detail = await collectionService.getDetail(dbId, collectionName)

@@ -1,6 +1,6 @@
 import { sql } from 'kysely'
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
-import { projectRepository } from '@/modules/project/project.repository.js'
+import { databaseRepository } from '@/modules/database/database.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { db as mainDb } from '@/db/index.js'
 import { typeid } from 'typeid-js'
@@ -13,7 +13,7 @@ export const accountRepository = {
             return { db: mainDb, tableName: '"accounts"' }
         }
 
-        const databases = await projectRepository.findDatabasesByProjectId(projectId)
+        const databases = await databaseRepository.findByProjectId(projectId)
         if (databases.length === 0) throw new Error(`No databases found for project ${projectId}`)
         const database = databases[0]
         const databaseId = database.id

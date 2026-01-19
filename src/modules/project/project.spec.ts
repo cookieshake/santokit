@@ -56,10 +56,6 @@ describe('Project Service (Integration)', () => {
     const project = await projectService.create('New Project')
     expect(project).toBeDefined()
     expect(project.name).toBe('New Project')
-
-    // Check No Database initially
-    const databases = await projectRepository.findDatabasesByProjectId(project.id)
-    expect(databases.length).toBe(0)
   })
 
   it('should list projects', async () => {
@@ -69,15 +65,5 @@ describe('Project Service (Integration)', () => {
     const projects = await projectService.list()
     expect(projects.length).toBe(2)
     expect(projects[0].name).toBe('Project 1')
-  })
-
-  it('should create a database for project', async () => {
-    const project = await projectService.create('To Check')
-    await projectService.createDatabase(project.id, 'default', 'postgresql://localhost/test', 'p_')
-
-    const databases = await projectRepository.findDatabasesByProjectId(project.id)
-    expect(databases.length).toBe(1)
-    expect(databases[0].connection_string).toBe('postgresql://localhost/test')
-    expect(databases[0].prefix).toBe('p_')
   })
 })

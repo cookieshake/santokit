@@ -55,32 +55,4 @@ describe('Project Module E2E', () => {
             expect(projectA).toBeDefined()
         })
     })
-
-    describe('POST /admin/v1/projects/:id/databases', () => {
-        it('should create a database for a project', async () => {
-            // Create Project
-            const projRes = await request(app, '/admin/v1/projects', {
-                method: 'POST',
-                body: JSON.stringify({ name: 'DB Project' }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
-            })
-            const project = await projRes.json()
-
-            // Add Database
-            const res = await request(app, `/admin/v1/projects/${project.id}/databases`, {
-                method: 'POST',
-                body: JSON.stringify({
-                    name: 'default',
-                    connectionString: 'postgres://localhost:5432/db_proj',
-                    prefix: 'p_'
-                }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
-            })
-
-            expect(res.status).toBe(200)
-            const body = await res.json()
-            expect(body.name).toBe('default')
-            expect(body.project_id).toBe(project.id)
-        })
-    })
 })

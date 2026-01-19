@@ -1,5 +1,5 @@
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
-import { projectRepository } from '@/modules/project/project.repository.js'
+import { databaseRepository } from '@/modules/database/database.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { sql } from 'kysely'
 import { previewRawSql } from './sql-preview.js'
@@ -8,7 +8,7 @@ import { typeid } from 'typeid-js'
 export const collectionService = {
     create: async (databaseId: string, name: string, idType: 'serial' | 'uuid' | 'text' | 'typeid' = 'serial', type: 'base' | 'auth' = 'base', dryRun: boolean = false) => {
         // 1. Get Database
-        const database = await projectRepository.findDatabaseById(databaseId)
+        const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
         const projectId = database.project_id
@@ -76,7 +76,7 @@ export const collectionService = {
     },
 
     getDetail: async (databaseId: string, collectionName: string) => {
-        const database = await projectRepository.findDatabaseById(databaseId)
+        const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
         const projectId = database.project_id
         if (!projectId) throw new Error('Database not linked to project')
@@ -102,7 +102,7 @@ export const collectionService = {
 
     // Field Management
     addField: async (databaseId: string, collectionName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
-        const database = await projectRepository.findDatabaseById(databaseId)
+        const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
         // Find metadata first to get physical name
@@ -118,7 +118,7 @@ export const collectionService = {
     },
 
     removeField: async (databaseId: string, collectionName: string, fieldName: string, dryRun: boolean = false) => {
-        const database = await projectRepository.findDatabaseById(databaseId)
+        const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
         const collection = await collectionRepository.findByName(databaseId, collectionName)
@@ -133,7 +133,7 @@ export const collectionService = {
     },
 
     renameField: async (databaseId: string, collectionName: string, oldName: string, newName: string, dryRun: boolean = false) => {
-        const database = await projectRepository.findDatabaseById(databaseId)
+        const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
         const collection = await collectionRepository.findByName(databaseId, collectionName)
@@ -149,7 +149,7 @@ export const collectionService = {
 
     // Index Management
     createIndex: async (databaseId: string, collectionName: string, indexName: string, fields: string[], unique: boolean, dryRun: boolean = false) => {
-        const database = await projectRepository.findDatabaseById(databaseId)
+        const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
         const collection = await collectionRepository.findByName(databaseId, collectionName)
@@ -166,7 +166,7 @@ export const collectionService = {
     },
 
     removeIndex: async (databaseId: string, collectionName: string, indexName: string, dryRun: boolean = false) => {
-        const database = await projectRepository.findDatabaseById(databaseId)
+        const database = await databaseRepository.findById(databaseId)
         if (!database) throw new Error('Database not found')
 
         const collection = await collectionRepository.findByName(databaseId, collectionName)

@@ -8,6 +8,7 @@ import adminApp from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
 import { projectService } from '@/modules/project/project.service.js'
+import { databaseService } from '@/modules/database/database.service.js'
 import { sql } from 'kysely'
 import { connectionManager } from '@/db/connection-manager.js'
 import { getTestConnectionString } from '@/tests/db-setup.js'
@@ -26,7 +27,7 @@ describe('Data Module (Client) E2E', () => {
         const project = await projectService.create('Client App')
         projectId = project.id
 
-        const database = await projectService.createDatabase(projectId, 'default', connectionString, '1_')
+        const database = await databaseService.create(projectId, 'default', connectionString, '1_')
 
         // Create Collection via Service (creates metadata + physical table)
         await collectionService.create(database.id, collectionName)

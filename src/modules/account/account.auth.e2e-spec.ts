@@ -8,6 +8,7 @@ import adminApp from '@/apps/app.js'
 import { db } from '@/db/index.js'
 
 import { projectService } from '@/modules/project/project.service.js'
+import { databaseService } from '@/modules/database/database.service.js'
 import { getTestConnectionString } from '@/tests/db-setup.js'
 
 describe('User Auth (Client) E2E', () => {
@@ -22,7 +23,7 @@ describe('User Auth (Client) E2E', () => {
         const connectionString = getTestConnectionString()
         const project = await projectService.create('Client App')
         projectId = project.id
-        await projectService.createDatabase(projectId, 'default', connectionString, '1_')
+        await databaseService.create(projectId, 'default', connectionString, '1_')
     })
 
     describe('POST /v1/auth/register', () => {

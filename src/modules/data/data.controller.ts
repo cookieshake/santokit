@@ -3,7 +3,7 @@ import { zValidator } from '@hono/zod-validator'
 import { DynamicDataInsertSchema } from '@/validators.js'
 import { dataService } from '@/modules/data/data.service.js'
 import { policyService } from '@/modules/policy/policy.service.js'
-import { projectRepository } from '@/modules/project/project.repository.js'
+import { databaseRepository } from '@/modules/database/database.repository.js'
 import { CONSTANTS } from '@/constants.js'
 
 const app = new Hono()
@@ -20,7 +20,7 @@ const resolveDatabaseId = async (c: any) => {
     }
 
     const projectId = rawProjectId;
-    const database = await projectRepository.findDatabaseByName(projectId, databaseName)
+    const database = await databaseRepository.findByName(projectId, databaseName)
     if (!database) throw new Error(`Database '${databaseName}' not found`)
     return database.id
 }

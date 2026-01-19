@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { accountService } from './account.service.js'
 import { projectService } from '../project/project.service.js'
+import { databaseService } from '../database/database.service.js'
 import { sql, Kysely, PostgresDialect } from 'kysely'
 import type { Pool } from 'pg'
 
@@ -52,10 +53,10 @@ describe('User Service (Project Level)', () => {
 
     // Create initial setup
     const p1 = await projectService.create('Project 1')
-    await projectService.createDatabase(p1.id, 'default', 'memory', 'santoki_')
+    await databaseService.create(p1.id, 'default', 'memory', 'santoki_')
 
     const p2 = await projectService.create('Project 2')
-    await projectService.createDatabase(p2.id, 'default', 'memory', 'santoki_')
+    await databaseService.create(p2.id, 'default', 'memory', 'santoki_')
 
     projectId1 = p1.id
     projectId2 = p2.id
