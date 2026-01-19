@@ -8,7 +8,7 @@ import { db } from '@/db/index.js'
 
 describe('Collection Module E2E', () => {
     let cookie: string | null
-    let projectId: number
+    let projectId: string
 
     beforeEach(async () => {
         await clearDb(db)

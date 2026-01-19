@@ -3,9 +3,10 @@ import { projectRepository } from '@/modules/project/project.repository.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { sql } from 'kysely'
 import { previewRawSql } from './sql-preview.js'
+import { typeid } from 'typeid-js'
 
 export const collectionService = {
-    create: async (databaseId: number, name: string, idType: 'serial' | 'uuid' = 'serial', type: 'base' | 'auth' = 'base', dryRun: boolean = false) => {
+    create: async (databaseId: string, name: string, idType: 'serial' | 'uuid' | 'text' | 'typeid' = 'serial', type: 'base' | 'auth' = 'base', dryRun: boolean = false) => {
         // 1. Get Database
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
@@ -23,9 +24,8 @@ export const collectionService = {
 
         if (!dryRun) {
             // 3.0 Insert Metadata into Main DB
-            // We do this AFTER physical table creation to ensure it succeeded (or we could do before and rollback)
-            // But if physical creation fails, we shouldn't have metadata.
-            await collectionRepository.createMetadata(projectId, databaseId, name, physicalName, type)
+            const id = typeid('col').toString()
+            await collectionRepository.createMetadata(id, projectId, databaseId, name, physicalName, type)
         } else {
             sqls.push(`-- Metadata insertion into main DB skipped for dry-run`)
         }
@@ -70,12 +70,12 @@ export const collectionService = {
         }
     },
 
-    listByDatabase: async (databaseId: number) => {
+    listByDatabase: async (databaseId: string) => {
         // Just list from Main DB
         return await collectionRepository.list(databaseId)
     },
 
-    getDetail: async (databaseId: number, collectionName: string) => {
+    getDetail: async (databaseId: string, collectionName: string) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
         const projectId = database.project_id
@@ -101,7 +101,7 @@ export const collectionService = {
     },
 
     // Field Management
-    addField: async (databaseId: number, collectionName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
+    addField: async (databaseId: string, collectionName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
 
@@ -117,7 +117,7 @@ export const collectionService = {
         if (dryRun) return { sql: sqlResult }
     },
 
-    removeField: async (databaseId: number, collectionName: string, fieldName: string, dryRun: boolean = false) => {
+    removeField: async (databaseId: string, collectionName: string, fieldName: string, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
 
@@ -132,7 +132,7 @@ export const collectionService = {
         if (dryRun) return { sql: sqlResult }
     },
 
-    renameField: async (databaseId: number, collectionName: string, oldName: string, newName: string, dryRun: boolean = false) => {
+    renameField: async (databaseId: string, collectionName: string, oldName: string, newName: string, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
 
@@ -148,7 +148,7 @@ export const collectionService = {
     },
 
     // Index Management
-    createIndex: async (databaseId: number, collectionName: string, indexName: string, fields: string[], unique: boolean, dryRun: boolean = false) => {
+    createIndex: async (databaseId: string, collectionName: string, indexName: string, fields: string[], unique: boolean, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
 
@@ -165,7 +165,7 @@ export const collectionService = {
         return fullIndexName
     },
 
-    removeIndex: async (databaseId: number, collectionName: string, indexName: string, dryRun: boolean = false) => {
+    removeIndex: async (databaseId: string, collectionName: string, indexName: string, dryRun: boolean = false) => {
         const database = await projectRepository.findDatabaseById(databaseId)
         if (!database) throw new Error('Database not found')
 

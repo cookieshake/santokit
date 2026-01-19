@@ -4,7 +4,7 @@ import { sql } from 'kysely'
 
 export const dataService = {
     // User Data Operations
-    create: async (databaseId: number, collectionName: string, data: Record<string, any>) => {
+    create: async (databaseId: string, collectionName: string, data: Record<string, any>) => {
         // 1. Resolve Meta
         const detail = await collectionService.getDetail(databaseId, collectionName)
         const physicalName = detail.meta.physical_name
@@ -27,7 +27,7 @@ export const dataService = {
         return result.rows[0]
     },
 
-    findAll: async (databaseId: number, collectionName: string, whereClause?: string | null) => {
+    findAll: async (databaseId: string, collectionName: string, whereClause?: string | null) => {
         const detail = await collectionService.getDetail(databaseId, collectionName)
         const physicalName = detail.meta.physical_name
 
@@ -39,7 +39,7 @@ export const dataService = {
         return result.rows
     },
 
-    update: async (databaseId: number, collectionName: string, id: string | number, data: Record<string, any>, whereClause?: string | null) => {
+    update: async (databaseId: string, collectionName: string, id: string, data: Record<string, any>, whereClause?: string | null) => {
         const detail = await collectionService.getDetail(databaseId, collectionName)
         const physicalName = detail.meta.physical_name
 
@@ -55,7 +55,7 @@ export const dataService = {
             return `"${k}" = ${valStr}`
         }).join(', ')
 
-        const baseWhere = `id = ${typeof id === 'string' ? `'${id}'` : id}`
+        const baseWhere = `id = '${id}'` // Always string now? Or TypeID/UUID string.
         const finalWhere = whereClause ? `(${baseWhere}) AND (${whereClause})` : baseWhere
 
         const query = `UPDATE "${physicalName}" SET ${sets} WHERE ${finalWhere} RETURNING *`
@@ -63,7 +63,7 @@ export const dataService = {
         return result.rows[0]
     },
 
-    delete: async (databaseId: number, collectionName: string, id: string | number, whereClause?: string | null) => {
+    delete: async (databaseId: string, collectionName: string, id: string, whereClause?: string | null) => {
         const detail = await collectionService.getDetail(databaseId, collectionName)
         const physicalName = detail.meta.physical_name
 

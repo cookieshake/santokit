@@ -16,7 +16,7 @@ import { policyService } from '@/modules/policy/policy.service.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 
 describe('Data Module (Client) E2E', () => {
-    let projectId: number
+    let projectId: string
     const collectionName = 'articles'
 
     beforeEach(async () => {

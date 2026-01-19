@@ -5,7 +5,7 @@ import { db } from '@/db/index.js'
 
 export const collectionRepository = {
     // Metadata Operations (Main DB)
-    list: async (databaseId: number) => {
+    list: async (databaseId: string) => {
         return await db
             .selectFrom('collections')
             .selectAll()
@@ -13,7 +13,7 @@ export const collectionRepository = {
             .execute()
     },
 
-    findByName: async (databaseId: number, name: string) => {
+    findByName: async (databaseId: string, name: string) => {
         return await db
             .selectFrom('collections')
             .selectAll()
@@ -22,10 +22,11 @@ export const collectionRepository = {
             .executeTakeFirst()
     },
 
-    createMetadata: async (projectId: number, databaseId: number, name: string, physicalName: string, type: 'base' | 'auth' = 'base') => {
+    createMetadata: async (id: string, projectId: string, databaseId: string, name: string, physicalName: string, type: 'base' | 'auth' = 'base') => {
         return await db
             .insertInto('collections')
             .values({
+                id,
                 project_id: projectId,
                 database_id: databaseId,
                 name,
@@ -36,7 +37,7 @@ export const collectionRepository = {
             .execute()
     },
 
-    deleteMetadata: async (databaseId: number, physicalName: string) => {
+    deleteMetadata: async (databaseId: string, physicalName: string) => {
         await db
             .deleteFrom('collections')
             .where('database_id', '=', databaseId)
@@ -45,7 +46,7 @@ export const collectionRepository = {
     },
 
     // Physical Table Operations (Tenant DB)
-    checkPhysicalTableExists: async (databaseId: number, physicalName: string) => {
+    checkPhysicalTableExists: async (databaseId: string, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) return false
 
@@ -60,13 +61,16 @@ export const collectionRepository = {
         return (result.rows[0] as any).exists === true
     },
 
-    createPhysicalTable: async (databaseId: number, physicalName: string, idType: 'serial' | 'uuid' = 'serial', dryRun: boolean = false) => {
+    createPhysicalTable: async (databaseId: string, physicalName: string, idType: 'serial' | 'uuid' | 'text' | 'typeid' = 'serial', dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to data source')
 
-        const idCol = idType === 'uuid'
-            ? 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
-            : 'id SERIAL PRIMARY KEY'
+        let idCol = 'id SERIAL PRIMARY KEY'
+        if (idType === 'uuid') {
+            idCol = 'id UUID PRIMARY KEY DEFAULT gen_random_uuid()'
+        } else if (idType === 'text' || idType === 'typeid') {
+            idCol = 'id TEXT PRIMARY KEY'
+        }
 
         const rawSql = `CREATE TABLE "${physicalName}" (${idCol}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
 
@@ -77,7 +81,7 @@ export const collectionRepository = {
         await sql.raw(rawSql).execute(targetDb)
     },
 
-    deletePhysicalTable: async (databaseId: number, physicalName: string, dryRun: boolean = false) => {
+    deletePhysicalTable: async (databaseId: string, physicalName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect to data source')
 
@@ -91,7 +95,7 @@ export const collectionRepository = {
     },
 
     // Field Operations
-    getFields: async (databaseId: number, physicalName: string) => {
+    getFields: async (databaseId: string, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -104,7 +108,7 @@ export const collectionRepository = {
         return result.rows
     },
 
-    addField: async (databaseId: number, physicalName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
+    addField: async (databaseId: string, physicalName: string, fieldName: string, type: string, isNullable: boolean, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -120,7 +124,7 @@ export const collectionRepository = {
         await sql.raw(rawSql).execute(targetDb)
     },
 
-    removeField: async (databaseId: number, physicalName: string, fieldName: string, dryRun: boolean = false) => {
+    removeField: async (databaseId: string, physicalName: string, fieldName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -130,7 +134,7 @@ export const collectionRepository = {
         await sql.raw(rawSql).execute(targetDb)
     },
 
-    renameField: async (databaseId: number, physicalName: string, oldName: string, newName: string, dryRun: boolean = false) => {
+    renameField: async (databaseId: string, physicalName: string, oldName: string, newName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -141,7 +145,7 @@ export const collectionRepository = {
     },
 
     // Index Operations
-    getIndexes: async (dataSourceId: number, physicalName: string) => {
+    getIndexes: async (dataSourceId: string, physicalName: string) => {
         const targetDb = await connectionManager.getConnection(dataSourceId)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -154,7 +158,7 @@ export const collectionRepository = {
         return result.rows
     },
 
-    createIndex: async (dataSourceId: number, physicalName: string, indexName: string, columns: string[], unique: boolean, dryRun: boolean = false) => {
+    createIndex: async (dataSourceId: string, physicalName: string, indexName: string, columns: string[], unique: boolean, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceId)
         if (!targetDb) throw new Error('Could not connect')
 
@@ -168,7 +172,7 @@ export const collectionRepository = {
         await sql.raw(rawSql).execute(targetDb)
     },
 
-    removeIndex: async (dataSourceId: number, indexName: string, dryRun: boolean = false) => {
+    removeIndex: async (dataSourceId: string, indexName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(dataSourceId)
         if (!targetDb) throw new Error('Could not connect')
 

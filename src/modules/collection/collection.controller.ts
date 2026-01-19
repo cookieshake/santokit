@@ -19,8 +19,8 @@ const resolveDatabaseId = async (c: any) => {
         throw new Error('Missing project context or database name in URL')
     }
 
-    const projectId = parseInt(rawProjectId)
-    if (isNaN(projectId)) throw new Error('Invalid Project ID header')
+    const projectId = rawProjectId;
+
 
     const database = await projectRepository.findDatabaseByName(projectId, databaseName)
     if (!database) throw new Error(`Database '${databaseName}' not found in project '${rawProjectId}'`)

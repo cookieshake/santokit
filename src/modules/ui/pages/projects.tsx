@@ -89,7 +89,7 @@ export const Projects = (props: { projects: any[]; account: any }) => (
                                 <td>
                                     <a href={`/ui/projects/${p.id}`} class="button is-small">Manage</a>
                                     {p.name !== 'system' && (
-                                        <button class="button is-small is-danger ml-2" onclick={`showDeleteModal(${p.id}, '${p.name}')`}>Delete</button>
+                                        <button class="button is-small is-danger ml-2" onclick={`showDeleteModal('${p.id}', '${p.name}')`}>Delete</button>
                                     )}
                                 </td>
                             </tr>

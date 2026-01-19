@@ -1,6 +1,7 @@
 import { projectRepository } from '@/modules/project/project.repository.js'
 import { collectionService } from '@/modules/collection/collection.service.js'
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
+import { typeid } from 'typeid-js'
 
 export const projectService = {
     create: async (name: string) => {
@@ -8,7 +9,7 @@ export const projectService = {
         const project = await projectRepository.create({ name })
         return project
     },
-    createDatabase: async (projectId: number, name: string, connectionString: string, prefix?: string) => {
+    createDatabase: async (projectId: string, name: string, connectionString: string, prefix?: string) => {
         const database = await projectRepository.createDatabase({
             projectId,
             name,
@@ -23,15 +24,15 @@ export const projectService = {
     list: async () => {
         return await projectRepository.findAll()
     },
-    getById: async (id: number) => {
+    getById: async (id: string) => {
         return await projectRepository.findById(id)
     },
-    initializeDatabase: async (databaseId: number, accountCollectionName: string = 'users') => {
+    initializeDatabase: async (databaseId: string, accountCollectionName: string = 'users') => {
         // Initialize physical accounts table in the database via Collection Service
         // This ensures it is tracked as a proper collection with type 'auth'
         // We catch error in case it already exists (idempotency)
         try {
-            await collectionService.create(databaseId, accountCollectionName, 'uuid', 'auth')
+            await collectionService.create(databaseId, accountCollectionName, 'typeid', 'auth')
         } catch (e) {
             // If it already exists, that's fine.
             if ((e as Error).message !== 'Collection already exists' && !(e as Error).message.includes('already exists')) {
@@ -39,7 +40,7 @@ export const projectService = {
             }
         }
     },
-    delete: async (id: number, deleteData: boolean) => {
+    delete: async (id: string, deleteData: boolean) => {
         const project = await projectRepository.findById(id)
         if (!project) throw new Error('Project not found')
 
@@ -61,7 +62,7 @@ export const projectService = {
 
         await projectRepository.delete(id)
     },
-    deleteDatabase: async (projectId: number, databaseId: number) => {
+    deleteDatabase: async (projectId: string, databaseId: string) => {
         const db = await projectRepository.findDatabaseById(databaseId)
         if (!db) throw new Error('Database not found')
         if (db.project_id !== projectId) throw new Error('Database does not belong to project')

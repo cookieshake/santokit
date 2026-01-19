@@ -10,9 +10,9 @@ class ConnectionManager {
     private instances: Map<string, Kysely<any>> = new Map()
     private pools: Map<string, pg.Pool> = new Map()
 
-    async getConnection(databaseId: number): Promise<Kysely<any> | null> {
+    async getConnection(databaseId: string): Promise<Kysely<any> | null> {
         // 1. Check if we already have an instance
-        const key = String(databaseId)
+        const key = databaseId
         if (this.instances.has(key)) {
             return this.instances.get(key)!
         }
@@ -47,8 +47,8 @@ class ConnectionManager {
     }
 
     // Optional: method to close specific pool or all
-    async close(databaseId: number) {
-        const key = String(databaseId)
+    async close(databaseId: string) {
+        const key = databaseId
         const instance = this.instances.get(key)
         if (instance) {
             await instance.destroy()

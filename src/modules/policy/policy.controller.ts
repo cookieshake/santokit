@@ -28,8 +28,8 @@ const resolveDatabaseId = async (c: any) => {
 
     // System Project Logic - Policies usually for standard projects, but maybe system too?
     // Assuming standard projects for now.
-    const projectId = parseInt(rawProjectId)
-    if (isNaN(projectId)) throw new Error('Invalid Project ID')
+    const projectId = rawProjectId
+
 
     const database = await projectRepository.findDatabaseByName(projectId, databaseName)
     if (!database) throw new Error(`Database '${databaseName}' not found`)
@@ -68,7 +68,7 @@ app.post('/', zValidator('json', CreatePolicySchema), async (c) => {
 // Delete Policy
 app.delete('/:id', async (c) => {
     try {
-        const id = parseInt(c.req.param('id'))
+        const id = c.req.param('id')
         await policyService.delete(id)
         return c.json({ success: true })
     } catch (e) {

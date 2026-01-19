@@ -5,7 +5,7 @@ import { sql, Kysely, PostgresDialect } from 'kysely'
 import type { Pool } from 'pg'
 
 interface UserRecord {
-  id: string | number
+  id: string
   email: string
   password: string
   roles: string[] | null
@@ -39,8 +39,8 @@ const { db, pool: systemPool } = dbModule as any
 const { projectPool, projectDb } = cmModule as any
 
 describe('User Service (Project Level)', () => {
-  let projectId1: number
-  let projectId2: number
+  let projectId1: string
+  let projectId2: string
 
   beforeEach(async () => {
     // Robust Cleanup: Drop schema
@@ -100,7 +100,7 @@ describe('User Service (Project Level)', () => {
       email: 'del@example.com',
       password: 'pw'
     }) as UserRecord
-    await accountService.deleteUser(projectId1, user.id as number)
+    await accountService.deleteUser(projectId1, user.id)
     const list = await accountService.listUsers(projectId1)
     expect(list.length).toBe(0)
   })

@@ -4,7 +4,7 @@ export async function up(db: Kysely<any>): Promise<void> {
     // Projects table
     await db.schema
         .createTable('projects')
-        .addColumn('id', 'serial', (col) => col.primaryKey())
+        .addColumn('id', 'text', (col) => col.primaryKey()) // TypeID
         .addColumn('name', 'text', (col) => col.notNull())
         .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
         .execute()
@@ -12,14 +12,15 @@ export async function up(db: Kysely<any>): Promise<void> {
     // Databases table
     await db.schema
         .createTable('databases')
-        .addColumn('id', 'serial', (col) => col.primaryKey())
-        .addColumn('project_id', 'integer', (col) =>
+        .addColumn('id', 'text', (col) => col.primaryKey()) // TypeID
+        .addColumn('project_id', 'text', (col) =>
             col.references('projects.id').onDelete('cascade')
         )
         .addColumn('name', 'text', (col) => col.notNull())
         .addColumn('connection_string', 'text', (col) => col.notNull())
         .addColumn('prefix', 'text', (col) => col.notNull().defaultTo('santoki_'))
         .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
+        .addUniqueConstraint('databases_project_id_name_unique', ['project_id', 'name'])
         .execute()
 
     // Accounts table
@@ -30,7 +31,7 @@ export async function up(db: Kysely<any>): Promise<void> {
         .addColumn('email', 'text', (col) => col.notNull().unique())
         .addColumn('password', 'text', (col) => col.notNull())
         .addColumn('roles', sql`text[]`)
-        .addColumn('project_id', 'integer')
+        .addColumn('project_id', 'text') // TypeID, technically FK but no constraint here?
         .addColumn('created_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
         .addColumn('updated_at', 'timestamp', (col) => col.defaultTo(sql`now()`))
         .execute()
@@ -38,11 +39,11 @@ export async function up(db: Kysely<any>): Promise<void> {
     // Policies table
     await db.schema
         .createTable('policies')
-        .addColumn('id', 'serial', (col) => col.primaryKey())
-        .addColumn('project_id', 'integer', (col) =>
+        .addColumn('id', 'text', (col) => col.primaryKey()) // TypeID
+        .addColumn('project_id', 'text', (col) =>
             col.references('projects.id').onDelete('cascade')
         )
-        .addColumn('database_id', 'integer', (col) =>
+        .addColumn('database_id', 'text', (col) =>
             col.references('databases.id').onDelete('cascade')
         )
         .addColumn('collection_name', 'text', (col) => col.notNull())
@@ -56,11 +57,11 @@ export async function up(db: Kysely<any>): Promise<void> {
     // Collections table
     await db.schema
         .createTable('collections')
-        .addColumn('id', 'serial', (col) => col.primaryKey())
-        .addColumn('project_id', 'integer', (col) =>
+        .addColumn('id', 'text', (col) => col.primaryKey()) // TypeID
+        .addColumn('project_id', 'text', (col) =>
             col.references('projects.id').onDelete('cascade')
         )
-        .addColumn('database_id', 'integer', (col) =>
+        .addColumn('database_id', 'text', (col) =>
             col.references('databases.id').onDelete('cascade')
         )
         .addColumn('name', 'text', (col) => col.notNull())

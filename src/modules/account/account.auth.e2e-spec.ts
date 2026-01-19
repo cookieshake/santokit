@@ -11,7 +11,7 @@ import { projectService } from '@/modules/project/project.service.js'
 import { getTestConnectionString } from '@/tests/db-setup.js'
 
 describe('User Auth (Client) E2E', () => {
-    let projectId: number
+    let projectId: string
 
     beforeEach(async () => {
         await clearDb(db)

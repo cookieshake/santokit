@@ -2,7 +2,7 @@
 import { Layout } from '../components/layout.js'
 
 export const CollectionDetail = (props: {
-    projectId: number;
+    projectId: string;
     currentDatabaseName: string;
     collectionName: string;
     detail: any;
@@ -338,7 +338,7 @@ export const CollectionDetail = (props: {
 
             <script dangerouslySetInnerHTML={{
                 __html: `
-                const projectId = ${props.projectId};
+                const projectId = "${props.projectId}";
                 const databaseName = '${props.currentDatabaseName}';
                 const collectionName = '${props.collectionName}';
                 

@@ -48,6 +48,7 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
                                     <select id="collection-id-type">
                                         <option value="serial">Incremental Integer (SERIAL)</option>
                                         <option value="uuid">UUID (v4)</option>
+                                        <option value="typeid">TypeID</option>
                                     </select>
                                 </div>
                             </div>
@@ -96,7 +97,7 @@ export const ProjectDetail = (props: { project: any; collections: any[]; project
 
         <script dangerouslySetInnerHTML={{
             __html: `
-            const projectId = ${props.project.id};
+            const projectId = "${props.project.id}";
             const databaseName = "${props.currentDatabaseName}";
             document.getElementById('new-collection-form').addEventListener('submit', async (e) => {
                 e.preventDefault();

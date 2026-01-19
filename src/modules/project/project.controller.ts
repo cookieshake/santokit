@@ -14,7 +14,7 @@ app.post('/', zValidator('json', CreateProjectSchema), async (c) => {
 })
 
 app.post('/:id/databases', zValidator('json', CreateDatabaseSchema), async (c) => {
-    const projectId = parseInt(c.req.param('id'))
+    const projectId = c.req.param('id')
     const { name, connectionString, prefix } = c.req.valid('json')
     try {
         const result = await projectService.createDatabase(projectId, name, connectionString, prefix)
@@ -25,8 +25,8 @@ app.post('/:id/databases', zValidator('json', CreateDatabaseSchema), async (c) =
 })
 
 app.delete('/:id/databases/:dbId', async (c) => {
-    const projectId = parseInt(c.req.param('id'))
-    const dbId = parseInt(c.req.param('dbId'))
+    const projectId = c.req.param('id')
+    const dbId = c.req.param('dbId')
 
     try {
         await projectService.deleteDatabase(projectId, dbId)
@@ -37,7 +37,7 @@ app.delete('/:id/databases/:dbId', async (c) => {
 })
 
 app.delete('/:id', async (c) => {
-    const id = parseInt(c.req.param('id'))
+    const id = c.req.param('id')
     const deleteData = c.req.query('deleteData') === 'true'
 
     try {

@@ -19,9 +19,7 @@ const resolveDatabaseId = async (c: any) => {
         throw new Error('Missing project context or database name')
     }
 
-    const projectId = parseInt(rawProjectId)
-    if (isNaN(projectId)) throw new Error('Invalid Project ID')
-
+    const projectId = rawProjectId;
     const database = await projectRepository.findDatabaseByName(projectId, databaseName)
     if (!database) throw new Error(`Database '${databaseName}' not found`)
     return database.id
@@ -38,7 +36,7 @@ app.get('/', async (c) => {
         const collectionName = c.req.param('collectionName')!
 
         const databaseId = await resolveDatabaseId(c)
-        const projectId = parseInt(rawProjectId)
+        const projectId = rawProjectId;
         const user = getUser(c)
 
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'read', user)
@@ -58,7 +56,7 @@ app.post('/', zValidator('json', DynamicDataInsertSchema), async (c) => {
         const body = c.req.valid('json')
 
         const databaseId = await resolveDatabaseId(c)
-        const projectId = parseInt(rawProjectId)
+        const projectId = rawProjectId;
         const user = getUser(c)
 
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'create', user)
@@ -79,7 +77,7 @@ app.patch('/:id', zValidator('json', DynamicDataInsertSchema), async (c) => {
         const body = c.req.valid('json')
 
         const databaseId = await resolveDatabaseId(c)
-        const projectId = parseInt(rawProjectId)
+        const projectId = rawProjectId;
         const user = getUser(c)
 
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'update', user)
@@ -100,7 +98,7 @@ app.delete('/:id', async (c) => {
         const id = c.req.param('id')
 
         const databaseId = await resolveDatabaseId(c)
-        const projectId = parseInt(rawProjectId)
+        const projectId = rawProjectId;
         const user = getUser(c)
 
         const policy = await policyService.evaluate(projectId, databaseId, collectionName, 'delete', user)

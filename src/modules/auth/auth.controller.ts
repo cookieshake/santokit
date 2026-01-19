@@ -11,7 +11,7 @@ import { CONSTANTS } from "@/constants.js";
 
 interface LoginResult {
     user: {
-        id: string | number;
+        id: string;
         email: string;
         name?: string | null;
         roles: string[] | null;
@@ -34,14 +34,8 @@ app.post(
         const { email, password } = c.req.valid("json");
         const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID);
 
-        if (!projectIdHeader) {
-            return c.json({ message: "Missing project ID header" }, 400);
-        }
-
-        const projectId = parseInt(projectIdHeader);
-        if (isNaN(projectId)) {
-            return c.json({ message: "Invalid project ID" }, 400);
-        }
+        // Treat 'null' string as null
+        const projectId = (projectIdHeader && projectIdHeader !== 'null') ? projectIdHeader : null;
 
         try {
             const result = await accountService.login(projectId, email, password) as LoginResult;
@@ -86,14 +80,8 @@ app.post(
         const data = c.req.valid("json");
         const projectIdHeader = c.req.header(CONSTANTS.HEADERS.PROJECT_ID);
 
-        if (!projectIdHeader) {
-            return c.json({ message: "Missing project ID header" }, 400);
-        }
-
-        const projectId = parseInt(projectIdHeader);
-        if (isNaN(projectId)) {
-            return c.json({ message: "Invalid project ID" }, 400);
-        }
+        // Treat 'null' string as null
+        const projectId = (projectIdHeader && projectIdHeader !== 'null') ? projectIdHeader : null;
 
         try {
             const user = await accountService.createUser(projectId, data);

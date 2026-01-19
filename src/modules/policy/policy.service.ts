@@ -1,15 +1,17 @@
 import { db } from "@/db/index.js"
 import { CONSTANTS } from "@/constants.js"
+import { typeid } from 'typeid-js'
 
 type PolicyAction = 'create' | 'read' | 'update' | 'delete'
 
 export const policyService = {
+
     /**
      * Evaluate policies for a given user and action on a collection.
      * Returns a SQL-safe WHERE clause string if restricted, or null if allowed without filter.
      * Throws error if access is denied.
      */
-    evaluate: async (projectId: number, databaseId: number, collectionName: string, action: PolicyAction, user: any) => {
+    evaluate: async (projectId: string, databaseId: string, collectionName: string, action: PolicyAction, user: any) => {
         // 1. Admin Bypass
         if (user?.roles?.includes('admin')) {
             return { allowed: true, filter: null }
@@ -84,10 +86,11 @@ export const policyService = {
         return { allowed: true, filter: combinedFilter }
     },
 
-    create: async (data: { project_id: number | null; database_id: number | null; collection_name: string; role: string; action: string; condition: string; effect?: string }) => {
+    create: async (data: { project_id: string | null; database_id: string | null; collection_name: string; role: string; action: string; condition: string; effect?: string }) => {
         const policy = await db
             .insertInto('policies')
             .values({
+                id: typeid('pol').toString(),
                 project_id: data.project_id,
                 database_id: data.database_id,
                 collection_name: data.collection_name,
@@ -101,7 +104,7 @@ export const policyService = {
         return policy
     },
 
-    list: async (projectId: number, databaseId: number) => {
+    list: async (projectId: string, databaseId: string) => {
         return await db
             .selectFrom('policies')
             .selectAll()
@@ -110,7 +113,7 @@ export const policyService = {
             .execute()
     },
 
-    delete: async (id: number) => {
+    delete: async (id: string) => {
         return await db
             .deleteFrom('policies')
             .where('id', '=', id)

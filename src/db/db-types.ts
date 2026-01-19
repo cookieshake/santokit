@@ -1,16 +1,17 @@
+
 import type { Generated, Insertable, Selectable, Updateable, ColumnType } from 'kysely'
 
 // Projects table
 export interface ProjectsTable {
-    id: Generated<number>
+    id: string
     name: string
     created_at: ColumnType<Date | null, never, never>
 }
 
 // Databases table
 export interface DatabasesTable {
-    id: Generated<number>
-    project_id: number | null
+    id: string
+    project_id: string | null
     name: string
     connection_string: string
     prefix: ColumnType<string, string | undefined, string>
@@ -24,16 +25,16 @@ export interface AccountsTable {
     email: string
     password: string
     roles: string[] | null
-    project_id: number | null
+    project_id: string | null
     created_at: ColumnType<Date | null, never, never>
     updated_at: ColumnType<Date | null, never, never>
 }
 
 // Policies table
 export interface PoliciesTable {
-    id: Generated<number>
-    project_id: number | null
-    database_id: number | null
+    id: string
+    project_id: string | null
+    database_id: string | null
     collection_name: string
     role: string
     action: string
@@ -44,9 +45,9 @@ export interface PoliciesTable {
 
 // Collections table
 export interface CollectionsTable {
-    id: Generated<number>
-    project_id: number | null
-    database_id: number | null
+    id: string
+    project_id: string | null
+    database_id: string | null
     name: string
     physical_name: string
     type: ColumnType<string, string | undefined, string>

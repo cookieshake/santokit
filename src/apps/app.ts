@@ -71,9 +71,8 @@ api.use('/databases/:databaseName/*', async (c, next) => {
         return c.json({ error: `Missing Project ID Header (${CONSTANTS.HEADERS.PROJECT_ID})` }, 400);
     }
 
-    // Parse Project ID
-    const projectId = parseInt(rawId)
-    if (isNaN(projectId)) return c.json({ error: "Invalid Project ID" }, 400);
+    // Project ID is string
+    const projectId = rawId
 
     if (!user) {
         return c.json({ error: "Unauthorized" }, 401);

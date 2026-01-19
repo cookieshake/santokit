@@ -40,7 +40,7 @@ app.get('/projects', async (c) => {
 })
 
 app.get('/projects/:id', async (c) => {
-    const projectId = parseInt(c.req.param('id'))
+    const projectId = c.req.param('id')
     const project = await projectService.getById(projectId)
     if (!project) return c.notFound()
 
@@ -66,7 +66,7 @@ app.get('/projects/:id', async (c) => {
 })
 
 app.get('/projects/:id/collections/:colName', async (c) => {
-    const projectId = parseInt(c.req.param('id'))
+    const projectId = c.req.param('id')
     const collectionName = c.req.param('colName')
     const account = c.get('account')
 

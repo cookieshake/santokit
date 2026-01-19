@@ -4,7 +4,7 @@ import { config } from '@/config/index.js'
 import { hashPassword, verifyPassword } from '@/lib/password.js'
 
 interface UserRecord {
-    id: string | number
+    id: string
     email: string
     password: string
     roles: string[] | null
@@ -12,7 +12,7 @@ interface UserRecord {
 }
 
 export const accountService = {
-    createUser: async (projectId: number, data: any) => {
+    createUser: async (projectId: string | null, data: any) => {
         const password = typeof data.password === 'string' ? data.password : String(data.password)
         const hashedPassword = await hashPassword(password)
         return await accountRepository.create(projectId, {
@@ -22,22 +22,25 @@ export const accountService = {
         })
     },
 
-    listUsers: async (projectId: number) => {
+    listUsers: async (projectId: string | null) => {
         return await accountRepository.findByProjectId(projectId)
     },
 
-    deleteUser: async (projectId: number, accountId: number | string) => {
+    deleteUser: async (projectId: string | null, accountId: string) => {
         return await accountRepository.delete(projectId, accountId)
     },
 
-    login: async (projectId: number, email: string, password: string) => {
+    login: async (projectId: string | null, email: string, password: string) => {
+        // console.log(`[AccountService] Login attempt for email: '${email}', projectId: ${projectId}`)
         const user = await accountRepository.findByEmail(projectId, email) as UserRecord | undefined
         if (!user) {
+            console.error(`[AccountService] User not found for email: '${email}'`)
             throw new Error('Invalid credentials')
         }
 
         const validPassword = await verifyPassword(String(user.password), password)
         if (!validPassword) {
+            console.error(`[AccountService] Password mismatch for email: '${email}'`)
             throw new Error('Invalid credentials')
         }
 

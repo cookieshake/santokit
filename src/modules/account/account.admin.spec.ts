@@ -6,7 +6,7 @@ import { sql } from 'kysely'
 import type { Pool } from 'pg'
 
 interface UserRecord {
-    id: string | number
+    id: string
     email: string
     password: string
     roles: string[] | null
@@ -33,7 +33,7 @@ vi.mock('../../db/connection-manager.js', async () => {
 const { db: mockedDb, pool } = await import('@/db/index.js') as any
 
 describe('Account Module', () => {
-    let testProjectId: number
+    let testProjectId: string
 
     beforeEach(async () => {
         // Use robust cleanup

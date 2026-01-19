@@ -31,8 +31,11 @@ describe('Collection Service (Integration)', () => {
 
 
     // Setup test data
-    await sql`INSERT INTO projects (id, name) VALUES (1, 'test_project')`.execute(db)
-    await sql`INSERT INTO databases (id, project_id, name, connection_string, prefix) VALUES (1, 1, 'default', 'pg://test', 'test_')`.execute(db)
+    // Use TypeIDs for IDs
+    const projectId = 'proj_01h2xcejqtf2nbrexx3vf36v5a';
+    const databaseId = 'db_01h2xcejqtf2nbrexx3vf36v5b';
+    await sql`INSERT INTO projects (id, name) VALUES (${projectId}, 'test_project')`.execute(db)
+    await sql`INSERT INTO databases (id, project_id, name, connection_string, prefix) VALUES (${databaseId}, ${projectId}, 'default', 'pg://test', 'test_')`.execute(db)
 
     // Setup mock connection
     vi.mocked(connectionManager.getConnection).mockResolvedValue(db as any)
@@ -45,41 +48,44 @@ describe('Collection Service (Integration)', () => {
   })
 
   it('should create a collection and a physical table', async () => {
-    const col = await collectionService.create(1, 'posts')
+    const databaseId = 'db_01h2xcejqtf2nbrexx3vf36v5b';
+    const col = await collectionService.create(databaseId, 'posts')
     expect(col).toBeDefined()
-    expect(col.physicalName).toBe('test_p1_posts')
+    expect(col.physicalName).toBe('test_pproj_01h2xcejqtf2nbrexx3vf36v5a_posts') // Verify generated name logic
 
     // Verify physical table exists using information_schema
     const tables = await sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`.execute(db)
     const tableNames = tables.rows.map((r: any) => r.tablename)
-    expect(tableNames).toContain('test_p1_posts')
+    expect(tableNames).toContain('test_pproj_01h2xcejqtf2nbrexx3vf36v5a_posts')
   })
 
   it('should create a collection with UUID id type', async () => {
-    const col = await collectionService.create(1, 'uuid_posts', 'uuid')
+    const databaseId = 'db_01h2xcejqtf2nbrexx3vf36v5b';
+    const col = await collectionService.create(databaseId, 'uuid_posts', 'uuid')
     expect(col.idType).toBe('uuid')
 
     // Verify physical table exists
     const tables = await sql`SELECT tablename FROM pg_tables WHERE schemaname = 'public'`.execute(db)
     const tableNames = tables.rows.map((r: any) => r.tablename)
-    expect(tableNames).toContain('test_p1_uuid_posts')
+    expect(tableNames).toContain('test_pproj_01h2xcejqtf2nbrexx3vf36v5a_uuid_posts')
 
     // Verify 'id' column type is uuid
     const columns = await sql`
       SELECT data_type FROM information_schema.columns 
-      WHERE table_name = 'test_p1_uuid_posts' AND column_name = 'id'
+      WHERE table_name = 'test_pproj_01h2xcejqtf2nbrexx3vf36v5a_uuid_posts' AND column_name = 'id'
     `.execute(db)
     expect((columns.rows[0] as any).data_type).toBe('uuid')
   })
 
   it('should add a field to a collection', async () => {
-    await collectionService.create(1, 'users')
-    await collectionService.addField(1, 'users', 'age', 'integer', true)
+    const databaseId = 'db_01h2xcejqtf2nbrexx3vf36v5b';
+    await collectionService.create(databaseId, 'users')
+    await collectionService.addField(databaseId, 'users', 'age', 'integer', true)
 
     // Verify column exists
     const columns = await sql`
             SELECT column_name FROM information_schema.columns 
-            WHERE table_name = 'test_p1_users' AND column_name = 'age'
+            WHERE table_name = 'test_pproj_01h2xcejqtf2nbrexx3vf36v5a_users' AND column_name = 'age'
         `.execute(db)
     expect(columns.rows.length).toBe(1)
   })

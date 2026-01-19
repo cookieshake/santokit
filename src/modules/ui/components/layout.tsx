@@ -1,6 +1,6 @@
 /** @jsxImportSource hono/jsx */
 
-export const Layout = (props: { title: string; children: any; active: string; account?: any; projects?: any[]; currentProjectId?: number; collections?: any[]; currentDatabaseName?: string; databases?: any[] }) => (
+export const Layout = (props: { title: string; children: any; active: string; account?: any; projects?: any[]; currentProjectId?: string; collections?: any[]; currentDatabaseName?: string; databases?: any[] }) => (
     <html lang="en">
         <head>
             <meta charset="UTF-8" />
