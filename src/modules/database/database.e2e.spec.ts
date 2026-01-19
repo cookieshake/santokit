@@ -14,10 +14,10 @@ describe('Database Module E2E', () => {
         cookie = await createAdminAndLogin(app)
     })
 
-    describe('POST /admin/v1/projects/:id/databases', () => {
+    describe('POST /v1/projects/:id/databases', () => {
         it('should create a database for a project', async () => {
             // Create Project
-            const projRes = await request(app, '/admin/v1/projects', {
+            const projRes = await request(app, '/v1/projects', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'DB Project' }),
                 headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
@@ -25,7 +25,7 @@ describe('Database Module E2E', () => {
             const project = await projRes.json()
 
             // Add Database
-            const res = await request(app, `/admin/v1/projects/${project.id}/databases`, {
+            const res = await request(app, `/v1/projects/${project.id}/databases`, {
                 method: 'POST',
                 body: JSON.stringify({
                     name: 'default',
@@ -42,10 +42,10 @@ describe('Database Module E2E', () => {
         })
     })
 
-    describe('DELETE /admin/v1/projects/:id/databases/:dbId', () => {
+    describe('DELETE /v1/projects/:id/databases/:dbId', () => {
         it('should delete a database', async () => {
             // Create Project
-            const projRes = await request(app, '/admin/v1/projects', {
+            const projRes = await request(app, '/v1/projects', {
                 method: 'POST',
                 body: JSON.stringify({ name: 'DB Project' }),
                 headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
@@ -53,7 +53,7 @@ describe('Database Module E2E', () => {
             const project = await projRes.json()
 
             // Add Database
-            const dbRes = await request(app, `/admin/v1/projects/${project.id}/databases`, {
+            const dbRes = await request(app, `/v1/projects/${project.id}/databases`, {
                 method: 'POST',
                 body: JSON.stringify({
                     name: 'default',
@@ -65,7 +65,7 @@ describe('Database Module E2E', () => {
             const database = await dbRes.json()
 
             // Delete Database
-            const res = await request(app, `/admin/v1/projects/${project.id}/databases/${database.id}`, {
+            const res = await request(app, `/v1/projects/${project.id}/databases/${database.id}`, {
                 method: 'DELETE',
                 headers: { 'Cookie': cookie || '' }
             })

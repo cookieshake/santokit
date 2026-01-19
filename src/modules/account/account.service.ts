@@ -13,12 +13,13 @@ interface UserRecord {
 
 export const accountService = {
     createUser: async (projectId: string | null, data: any) => {
-        const password = typeof data.password === 'string' ? data.password : String(data.password)
-        const hashedPassword = await hashPassword(password)
+        const { role, password, ...rest } = data
+        const passwordStr = typeof password === 'string' ? password : String(password)
+        const hashedPassword = await hashPassword(passwordStr)
         return await accountRepository.create(projectId, {
-            ...data,
+            ...rest,
             password: hashedPassword,
-            roles: data.roles || ['user']
+            roles: role ? [role] : ['user']
         })
     },
 

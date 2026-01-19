@@ -14,9 +14,9 @@ describe('Project Module E2E', () => {
         cookie = await createAdminAndLogin(app)
     })
 
-    describe('POST /admin/v1/projects', () => {
+    describe('POST /v1/projects', () => {
         it('should create a new project', async () => {
-            const res = await request(app, '/admin/v1/projects', {
+            const res = await request(app, '/v1/projects', {
                 method: 'POST',
                 body: JSON.stringify({
                     name: 'My Project'
@@ -33,9 +33,9 @@ describe('Project Module E2E', () => {
         })
     })
 
-    describe('GET /admin/v1/projects', () => {
+    describe('GET /v1/projects', () => {
         it('should list projects', async () => {
-            await request(app, '/admin/v1/projects', {
+            await request(app, '/v1/projects', {
                 method: 'POST',
                 body: JSON.stringify({
                     name: 'Project A'
@@ -43,7 +43,7 @@ describe('Project Module E2E', () => {
                 headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
             })
 
-            const res = await request(app, '/admin/v1/projects', {
+            const res = await request(app, '/v1/projects', {
                 headers: { 'Cookie': cookie || '' }
             })
 

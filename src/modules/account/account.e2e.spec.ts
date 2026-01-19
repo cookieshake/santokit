@@ -8,38 +8,46 @@ import { db } from '@/db/index.js'
 
 describe('User Module (Admin) E2E', () => {
     let cookie: string | null
-    let projectId: number
+    let projectId: string
 
     beforeEach(async () => {
         await clearDb(db)
         cookie = await createAdminAndLogin(app)
 
-        const dsRes = await request(app, '/admin/v1/sources', {
+        const projRes = await request(app, '/v1/projects', {
             method: 'POST',
-            body: JSON.stringify({ name: 'ds1', connectionString: 'postgres://...', prefix: '1_' }),
-            headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
-        })
-        const ds = await dsRes.json()
-
-        const projRes = await request(app, '/admin/v1/projects', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'P1', dataSourceId: ds.id }),
+            body: JSON.stringify({ name: 'P1' }),
             headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
         })
         const project = await projRes.json()
         projectId = project.id
+
+        // Create Database (Required for Accounts)
+        await request(app, `/v1/projects/${projectId}/databases`, {
+            method: 'POST',
+            body: JSON.stringify({
+                name: 'default',
+                connectionString: 'postgres://localhost:5432/test_db',
+                prefix: 'test_'
+            }),
+            headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+        })
     })
 
-    describe('POST /admin/v1/projects/:projectId/users', () => {
+    describe('POST /v1/projects/users', () => {
         it('should create a user in the project', async () => {
-            const res = await request(app, `/admin/v1/projects/${projectId}/users`, {
+            const res = await request(app, '/v1/projects/users', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: 'user@project.com',
                     password: 'password123',
                     name: 'Project User'
                 }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': projectId.toString()
+                }
             })
 
             expect(res.status).toBe(200)
@@ -48,21 +56,28 @@ describe('User Module (Admin) E2E', () => {
         })
     })
 
-    describe('GET /admin/v1/projects/:projectId/users', () => {
+    describe('GET /v1/projects/users', () => {
         it('should list users', async () => {
             // Create user
-            await request(app, `/admin/v1/projects/${projectId}/users`, {
+            await request(app, '/v1/projects/users', {
                 method: 'POST',
                 body: JSON.stringify({
                     email: 'u1@p.com',
-                    password: 'pw',
+                    password: 'password123',
                     name: 'U1'
                 }),
-                headers: { 'Content-Type': 'application/json', 'Cookie': cookie || '' }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': cookie || '',
+                    'x-project-id': projectId.toString()
+                }
             })
 
-            const res = await request(app, `/admin/v1/projects/${projectId}/users`, {
-                headers: { 'Cookie': cookie || '' }
+            const res = await request(app, '/v1/projects/users', {
+                headers: {
+                    'Cookie': cookie || '',
+                    'x-project-id': projectId.toString()
+                }
             })
 
             expect(res.status).toBe(200)
