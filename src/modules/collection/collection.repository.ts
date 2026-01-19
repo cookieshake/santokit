@@ -1,4 +1,4 @@
-import { sql } from 'kysely'
+
 import { previewRawSql } from './sql-preview.js'
 import { connectionManager } from '@/db/connection-manager.js'
 import { db } from '@/db/index.js'
@@ -56,13 +56,8 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
 
-        const result = await sql`
-            SELECT EXISTS (
-                SELECT FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name = ${physicalName}
-            )
-        `.execute(targetDb)
+        const query = adapter.tableExistsQuery(physicalName)
+        const result = await query.execute(targetDb)
         return (result.rows[0] as any).exists === true
     },
 
@@ -74,10 +69,10 @@ export const collectionRepository = {
         const rawSql = adapter.createTableSql(physicalName, idType)
 
         if (dryRun) {
-            return previewRawSql(rawSql)
+            return previewRawSql(rawSql.compile(targetDb).sql)
         }
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     },
 
     deletePhysicalTable: async (databaseId: string, physicalName: string, dryRun: boolean = false) => {
@@ -88,10 +83,10 @@ export const collectionRepository = {
         const rawSql = adapter.dropTableSql(physicalName)
 
         if (dryRun) {
-            return previewRawSql(rawSql)
+            return previewRawSql(rawSql.compile(targetDb).sql)
         }
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     },
 
     // Field Operations
@@ -101,12 +96,7 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
         const query = adapter.getColumnsQuery(physicalName)
-
-        const result = await sql`
-            SELECT column_name, data_type, is_nullable
-            FROM information_schema.columns 
-            WHERE table_name = ${physicalName}
-        `.execute(targetDb)
+        const result = await query.execute(targetDb)
         return result.rows
     },
 
@@ -117,9 +107,9 @@ export const collectionRepository = {
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
         const rawSql = adapter.addColumnSql(physicalName, fieldName, type, isNullable)
 
-        if (dryRun) return previewRawSql(rawSql)
+        if (dryRun) return previewRawSql(rawSql.compile(targetDb).sql)
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     },
 
     addArrayField: async (databaseId: string, physicalName: string, fieldName: string, elementType: string, defaultValue?: string, dryRun: boolean = false) => {
@@ -129,9 +119,9 @@ export const collectionRepository = {
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
         const rawSql = adapter.addArrayColumnSql(physicalName, fieldName, elementType, defaultValue)
 
-        if (dryRun) return previewRawSql(rawSql)
+        if (dryRun) return previewRawSql(rawSql.compile(targetDb).sql)
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     },
 
     removeField: async (databaseId: string, physicalName: string, fieldName: string, dryRun: boolean = false) => {
@@ -140,9 +130,9 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
         const rawSql = adapter.dropColumnSql(physicalName, fieldName)
-        if (dryRun) return previewRawSql(rawSql)
+        if (dryRun) return previewRawSql(rawSql.compile(targetDb).sql)
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     },
 
     renameField: async (databaseId: string, physicalName: string, oldName: string, newName: string, dryRun: boolean = false) => {
@@ -151,9 +141,9 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(databaseId) || defaultAdapter
         const rawSql = adapter.renameColumnSql(physicalName, oldName, newName)
-        if (dryRun) return previewRawSql(rawSql)
+        if (dryRun) return previewRawSql(rawSql.compile(targetDb).sql)
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     },
 
     // Index Operations
@@ -163,12 +153,7 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(dataSourceId) || defaultAdapter
         const query = adapter.getIndexesQuery(physicalName)
-
-        const result = await sql`
-            SELECT indexname, indexdef 
-            FROM pg_indexes 
-            WHERE tablename = ${physicalName}
-        `.execute(targetDb)
+        const result = await query.execute(targetDb)
         return result.rows
     },
 
@@ -179,9 +164,9 @@ export const collectionRepository = {
         const adapter = connectionManager.getAdapter(dataSourceId) || defaultAdapter
         const rawSql = adapter.createIndexSql(physicalName, indexName, columns, unique)
 
-        if (dryRun) return previewRawSql(rawSql)
+        if (dryRun) return previewRawSql(rawSql.compile(targetDb).sql)
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     },
 
     removeIndex: async (dataSourceId: string, indexName: string, dryRun: boolean = false) => {
@@ -190,9 +175,9 @@ export const collectionRepository = {
 
         const adapter = connectionManager.getAdapter(dataSourceId) || defaultAdapter
         const rawSql = adapter.dropIndexSql(indexName)
-        if (dryRun) return previewRawSql(rawSql)
+        if (dryRun) return previewRawSql(rawSql.compile(targetDb).sql)
 
-        await sql.raw(rawSql).execute(targetDb)
+        await rawSql.execute(targetDb)
     }
 }
 

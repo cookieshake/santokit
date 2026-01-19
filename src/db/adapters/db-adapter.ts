@@ -1,4 +1,4 @@
-import type { Kysely } from 'kysely'
+import type { Kysely, RawBuilder } from 'kysely'
 
 export type IdType = 'serial' | 'uuid' | 'text' | 'typeid'
 
@@ -6,23 +6,23 @@ export interface DbAdapter {
     readonly dialect: 'postgres'
 
     // DDL Operations
-    tableExistsQuery(tableName: string): { sql: string; params: any[] }
-    createTableSql(tableName: string, idType: IdType): string
-    dropTableSql(tableName: string): string
+    tableExistsQuery(tableName: string): RawBuilder<any>
+    createTableSql(tableName: string, idType: IdType): RawBuilder<any>
+    dropTableSql(tableName: string): RawBuilder<any>
 
     // Column Operations
-    addColumnSql(table: string, column: string, type: string, nullable: boolean): string
-    addArrayColumnSql(table: string, column: string, elementType: string, defaultValue?: string): string
-    dropColumnSql(table: string, column: string): string
-    renameColumnSql(table: string, oldName: string, newName: string): string
+    addColumnSql(table: string, column: string, type: string, nullable: boolean): RawBuilder<any>
+    addArrayColumnSql(table: string, column: string, elementType: string, defaultValue?: string): RawBuilder<any>
+    dropColumnSql(table: string, column: string): RawBuilder<any>
+    renameColumnSql(table: string, oldName: string, newName: string): RawBuilder<any>
 
     // Schema Introspection
-    getColumnsQuery(tableName: string): { sql: string; params: any[] }
-    getIndexesQuery(tableName: string): { sql: string; params: any[] }
+    getColumnsQuery(tableName: string): RawBuilder<any>
+    getIndexesQuery(tableName: string): RawBuilder<any>
 
     // Index Operations
-    createIndexSql(table: string, indexName: string, columns: string[], unique: boolean): string
-    dropIndexSql(indexName: string): string
+    createIndexSql(table: string, indexName: string, columns: string[], unique: boolean): RawBuilder<any>
+    dropIndexSql(indexName: string): RawBuilder<any>
 
     // Type Mapping
     mapType(type: string): string

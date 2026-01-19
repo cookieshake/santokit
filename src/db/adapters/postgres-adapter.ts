@@ -1,66 +1,58 @@
+import { sql, type RawBuilder } from 'kysely'
 import type { DbAdapter, IdType } from './db-adapter.js'
 
 export class PostgresAdapter implements DbAdapter {
     readonly dialect = 'postgres' as const
 
-    tableExistsQuery(tableName: string): { sql: string; params: any[] } {
-        return {
-            sql: `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = $1)`,
-            params: [tableName]
-        }
+    tableExistsQuery(tableName: string): RawBuilder<any> {
+        return sql`SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ${tableName})`
     }
 
-    createTableSql(tableName: string, idType: IdType): string {
+    createTableSql(tableName: string, idType: IdType): RawBuilder<any> {
         const idCol = this.mapIdColumn(idType)
-        return `CREATE TABLE "${tableName}" (${idCol}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
+        return sql`CREATE TABLE ${sql.table(tableName)} (${sql.raw(idCol)}, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW())`
     }
 
-    dropTableSql(tableName: string): string {
-        return `DROP TABLE IF EXISTS "${tableName}"`
+    dropTableSql(tableName: string): RawBuilder<any> {
+        return sql`DROP TABLE IF EXISTS ${sql.table(tableName)}`
     }
 
-    addColumnSql(table: string, column: string, type: string, nullable: boolean): string {
+    addColumnSql(table: string, column: string, type: string, nullable: boolean): RawBuilder<any> {
         const sqlType = this.mapType(type)
         const nullableStr = nullable ? 'NULL' : 'NOT NULL'
-        return `ALTER TABLE "${table}" ADD COLUMN "${column}" ${sqlType} ${nullableStr}`
+        return sql`ALTER TABLE ${sql.table(table)} ADD COLUMN ${sql.id(column)} ${sql.raw(sqlType)} ${sql.raw(nullableStr)}`
     }
 
-    addArrayColumnSql(table: string, column: string, elementType: string, defaultValue?: string): string {
+    addArrayColumnSql(table: string, column: string, elementType: string, defaultValue?: string): RawBuilder<any> {
         const sqlType = `${elementType.toUpperCase()}[]`
         const defaultClause = defaultValue ? ` DEFAULT '${defaultValue}'` : ''
-        return `ALTER TABLE "${table}" ADD COLUMN "${column}" ${sqlType}${defaultClause}`
+        return sql`ALTER TABLE ${sql.table(table)} ADD COLUMN ${sql.id(column)} ${sql.raw(sqlType)}${sql.raw(defaultClause)}`
     }
 
-    dropColumnSql(table: string, column: string): string {
-        return `ALTER TABLE "${table}" DROP COLUMN "${column}"`
+    dropColumnSql(table: string, column: string): RawBuilder<any> {
+        return sql`ALTER TABLE ${sql.table(table)} DROP COLUMN ${sql.id(column)}`
     }
 
-    renameColumnSql(table: string, oldName: string, newName: string): string {
-        return `ALTER TABLE "${table}" RENAME COLUMN "${oldName}" TO "${newName}"`
+    renameColumnSql(table: string, oldName: string, newName: string): RawBuilder<any> {
+        return sql`ALTER TABLE ${sql.table(table)} RENAME COLUMN ${sql.id(oldName)} TO ${sql.id(newName)}`
     }
 
-    getColumnsQuery(tableName: string): { sql: string; params: any[] } {
-        return {
-            sql: `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = $1`,
-            params: [tableName]
-        }
+    getColumnsQuery(tableName: string): RawBuilder<any> {
+        return sql`SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = ${tableName}`
     }
 
-    getIndexesQuery(tableName: string): { sql: string; params: any[] } {
-        return {
-            sql: `SELECT indexname, indexdef FROM pg_indexes WHERE tablename = $1`,
-            params: [tableName]
-        }
+    getIndexesQuery(tableName: string): RawBuilder<any> {
+        return sql`SELECT indexname, indexdef FROM pg_indexes WHERE tablename = ${tableName}`
     }
 
-    createIndexSql(table: string, indexName: string, columns: string[], unique: boolean): string {
+    createIndexSql(table: string, indexName: string, columns: string[], unique: boolean): RawBuilder<any> {
         const uniqueStr = unique ? 'UNIQUE ' : ''
         const colsStr = columns.map(c => `"${c}"`).join(', ')
-        return `CREATE ${uniqueStr}INDEX "${indexName}" ON "${table}" (${colsStr})`
+        return sql`CREATE ${sql.raw(uniqueStr)}INDEX ${sql.id(indexName)} ON ${sql.table(table)} (${sql.raw(colsStr)})`
     }
 
-    dropIndexSql(indexName: string): string {
-        return `DROP INDEX "${indexName}"`
+    dropIndexSql(indexName: string): RawBuilder<any> {
+        return sql`DROP INDEX ${sql.id(indexName)}`
     }
 
     mapType(type: string): string {
