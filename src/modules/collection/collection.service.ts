@@ -1,7 +1,5 @@
 import { collectionRepository } from '@/modules/collection/collection.repository.js'
 import { databaseRepository } from '@/modules/database/database.repository.js'
-import { connectionManager } from '@/db/connection-manager.js'
-import { sql } from 'kysely'
 import { previewRawSql } from './sql-preview.js'
 import { typeid } from 'typeid-js'
 
@@ -44,11 +42,8 @@ export const collectionService = {
                 await collectionRepository.addField(databaseId, physicalName, 'password', 'text', false)
                 await collectionRepository.addField(databaseId, physicalName, 'name', 'text', false)
 
-                // Add roles column manually since addField doesn't support arrays yet
-                const targetDb = await connectionManager.getConnection(databaseId)
-                if (targetDb) {
-                    await sql.raw(`ALTER TABLE "${physicalName}" ADD COLUMN "roles" TEXT[] DEFAULT '{"user"}'`).execute(targetDb)
-                }
+                // Add roles column using repository's addArrayField method
+                await collectionRepository.addArrayField(databaseId, physicalName, 'roles', 'TEXT', '{"user"}')
 
                 // Email should be unique
                 await collectionRepository.createIndex(databaseId, physicalName, `${physicalName}_email_idx`, ['email'], true)

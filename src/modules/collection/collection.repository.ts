@@ -124,6 +124,19 @@ export const collectionRepository = {
         await sql.raw(rawSql).execute(targetDb)
     },
 
+    addArrayField: async (databaseId: string, physicalName: string, fieldName: string, elementType: string, defaultValue?: string, dryRun: boolean = false) => {
+        const targetDb = await connectionManager.getConnection(databaseId)
+        if (!targetDb) throw new Error('Could not connect')
+
+        const sqlType = `${elementType.toUpperCase()}[]`
+        const defaultClause = defaultValue ? ` DEFAULT '${defaultValue}'` : ''
+        const rawSql = `ALTER TABLE "${physicalName}" ADD COLUMN "${fieldName}" ${sqlType}${defaultClause}`
+
+        if (dryRun) return previewRawSql(rawSql)
+
+        await sql.raw(rawSql).execute(targetDb)
+    },
+
     removeField: async (databaseId: string, physicalName: string, fieldName: string, dryRun: boolean = false) => {
         const targetDb = await connectionManager.getConnection(databaseId)
         if (!targetDb) throw new Error('Could not connect')
