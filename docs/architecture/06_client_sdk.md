@@ -4,8 +4,8 @@
 "인터페이스". 백엔드 API에 대해 타입이 지정된 함수형 경험을 제공합니다.
 
 ## 철학
-**"소스 트리에 코드 생성 없음 (No Code Generation in source tree)."**
-사용자의 `src/` 폴더를 `api.ts`나 모델로 어지럽히지 않습니다. 타입을 라이브러리 패키지에 직접 주입합니다.
+**"최소한의 코드 생성 (Minimal Code Generation)."**
+사용자의 `src/` 폴더를 복잡한 API 모델 파일로 어지럽히지 않고, 단 하나의 선언 파일 (`santoki-env.d.ts`)만으로 타입을 관리합니다.
 
 ## 구성 요소
 
@@ -23,13 +23,13 @@ const user = await stk.logic.users.get({ id: 123 });
 // Body: { path: "users/get", params: { id: 123 } }
 ```
 
-### 2. 가상 타입 주입 (Virtual Type Injection)
+### 2. 모듈 보강 (Module Augmentation)
 *   **트리거**: `stk sync`.
 *   **메커니즘**:
     1.  Hub에서 `manifest.json`을 다운로드합니다 (모든 로직에 대한 입력, 출력, 설명 포함).
-    2.  TypeScript 선언 파일(`index.d.ts`)을 생성합니다.
-    3.  `node_modules/@santoki/client/dist/index.d.ts`에 씁니다.
-*   **결과**: 설정 없는(Zero config) IntelliSense.
+    2.  `santoki-env.d.ts` 파일을 생성하여 `@santoki/client` 모듈의 타입을 확장(Augment)합니다.
+    3.  생성 위치는 `stk.config.json`에서 설정 가능합니다 (기본값: 프로젝트 루트).
+*   **결과**: 표준 TypeScript 기능을 활용한 안전하고 강력한 IntelliSense.
 
 ## SDK 네임스페이스
 

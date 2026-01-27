@@ -39,10 +39,10 @@
 
 ### `stk sync`
 *   Hub에서 최신 "매니페스트"를 다운로드합니다.
-*   **가상 타입 주입 (Virtual Type Injection)**:
-    *   `node_modules/@santoki/client/dist/index.d.ts`를 찾습니다.
-    *   매니페스트에서 생성된 타입 정의로 덮어씁니다.
-    *   `stk.logic.users.get(...)` 자동 완성을 즉시 활성화합니다.
+*   **타입 정의 생성 (Type Definition Generation)**:
+    *   프로젝트 루트(기본값) 또는 `stk.config.json`의 `codegen.output` 경로에 `santoki-env.d.ts`를 생성합니다.
+    *   "Module Augmentation" 방식을 사용하여 `@santoki/client`의 타입을 확장합니다.
+    *   `stk.logic` 네임스페이스에 대한 완벽한 IntelliSense를 제공합니다.
 
 ### `stk secret set [KEY] [VALUE]`
 *   비밀 정보를 Hub Vault(TLS)로 직접 전송합니다.
