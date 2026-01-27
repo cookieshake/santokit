@@ -55,3 +55,22 @@
     *   **있음**: YAML 내용을 SQL 본문과 병합합니다.
     *   **없음**: SQL 파일의 첫 번째 블록 주석 `/* --- ... --- */`을 YAML로 읽습니다.
 3.  **검증 (Validate)**: JSON Schema에 대해 확인합니다. 유효하지 않은 경우 줄 번호와 함께 강제로 실패 처리합니다.
+
+## 인증 및 보안 (Authentication)
+개발자 경험(DX)과 CI/CD 자동화를 모두 만족시키기 위해 **이원화된 인증 방식**을 사용합니다.
+
+### 1. 로컬 개발: 브라우저 기반 OAuth (Browser-based flow)
+*   **대상**: 로컬 머신에서 `stk dev`, `stk push` 등을 실행하는 개발자.
+*   **동작**:
+    1.  `stk login` 실행 시 로컬호스트 웹 서버 시작 (랜덤 포트).
+    2.  브라우저를 열어 Hub 로그인 페이지로 리다이렉트.
+    3.  로그인 성공 시 인증 코드(Auth Code)를 로컬 CLI로 콜백.
+    4.  CLI가 이를 Access/Refresh Token으로 교환하여 로컬 보안 저장소에 저장.
+*   **저장소**: OS 시스템 키체인 또는 `~/.santoki/credentials` (프로젝트 내부 아님).
+
+### 2. CI/CD 및 서버: Personal Access Token (PAT)
+*   **대상**: GitHub Actions, Docker 컨테이너, 헤드리스 환경.
+*   **동작**:
+    1.  Hub 콘솔에서 토큰 생성 (예: `stk_pat_...`).
+    2.  환경 변수 `STK_TOKEN` 또는 `stk login --token`으로 주입.
+*   **특징**: 유효 기간 설정 가능, 특정 권한 스코프 제한 가능.
