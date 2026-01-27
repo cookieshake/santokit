@@ -1,38 +1,38 @@
-# 05. Server & Edge Specification (The Bridge)
+# 05. Server & Edge 명세 (브리지)
 
-## Role
-The "Data Plane". Executes logic close to the user.
+## 역할
+"데이터 플레인(Data Plane)". 사용자 가까이에서 로직을 실행합니다.
 
-## Architecture: Hybrid (Go-WASM + Workers)
-*   **Platform**: Cloudflare Workers (or compatible Edge Runtime).
-*   **Core Logic**: Written in **Go**, compiled to **WebAssembly (WASM)**.
-    *   Why? To maintain code consistency with Hub (if needed) and performance for complex parsing/routing mechanisms.
-*   **Wrapper**: Thin JavaScript/TypeScript layer to bridge Workers API to the WASM core.
+## 아키텍처: 하이브리드 (Go-WASM + Workers)
+*   **플랫폼**: Cloudflare Workers (또는 호환되는 Edge 런타임).
+*   **핵심 로직**: **Go**로 작성되고 **WebAssembly (WASM)**로 컴파일됩니다.
+    *   이유: Hub와의 코드 일관성을 유지하고(필요한 경우), 복잡한 파싱/라우팅 메커니즘의 성능을 위해서입니다.
+*   **래퍼(Wrapper)**: Workers API를 WASM 코어와 연결하기 위한 얇은 JavaScript/TypeScript 계층입니다.
 
-## Runtime Flow
+## 런타임 흐름
 
-1.  **Request**: `POST /call` comes in from Client.
-2.  **Context Load (Zero-Latency)**:
-    *   Server checks local memory cache for Project Config.
-    *   If missing, reads from **Edge KV** (`project:{id}:latest`).
-    *   *Note: Does NOT call Hub.*
-3.  **Secret Hydration**:
-    *   Config contains encrypted secrets (DB URL, API Keys).
-    *   Server uses its Environment Variable (Master Key) to decrypt them in-memory.
-4.  **Security Check**:
-    *   Validates Session / JWT verification (using rules from `auth.yaml`).
-5.  **Execution**:
-    *   Router finds the logic function (e.g., `users/get.sql`).
-    *   **SQL Logic**: Uses the **Connection Proxy** (e.g., Hyperdrive) to execute query against DB.
-    *   **JS Logic**: Executes safe sandboxed JS.
-6.  **Response**: returns JSON to client.
+1.  **요청**: 클라이언트로부터 `POST /call` 요청이 들어옵니다.
+2.  **컨텍스트 로드 (제로 레이턴시)**:
+    *   서버는 로컬 메모리 캐시에서 프로젝트 설정을 확인합니다.
+    *   없으면 **Edge KV**(`project:{id}:latest`)에서 읽습니다.
+    *   *참고: Hub를 호출하지 않습니다.*
+3.  **비밀 정보 수화(Hydration)**:
+    *   설정에는 암호화된 비밀 정보(DB URL, API 키)가 포함되어 있습니다.
+    *   서버는 환경 변수(마스터 키)를 사용하여 메모리 내에서 이를 복호화합니다.
+4.  **보안 확인**:
+    *   세션 / JWT 검증을 수행합니다 (`auth.yaml`의 규칙 사용).
+5.  **실행**:
+    *   라우터가 로직 함수를 찾습니다 (예: `users/get.sql`).
+    *   **SQL 로직**: **연결 프록시** (예: Hyperdrive)를 사용하여 DB에 쿼리를 실행합니다.
+    *   **JS 로직**: 안전한 샌드박스 JS를 실행합니다.
+6.  **응답**: JSON을 클라이언트에 반환합니다.
 
-## Key Technologies
-*   **Edge KV**: "Global Shared State". Stores logic code and configs.
-*   **Connection Pooling (Hyperdrive)**: Critical for Edge. Maintains warm TCP connections to the database to prevent handshake latency and connection exhaustion.
-*   **WASM**: Allows the complex "Santoki Engine" (YAML parsing, parameter validation) to be written efficiently in Go and run on JS workers.
+## 주요 기술
+*   **Edge KV**: "글로벌 공유 상태". 로직 코드와 설정을 저장합니다.
+*   **연결 풀링 (Hyperdrive)**: Edge에 필수적입니다. 데이터베이스의 웜(warm) TCP 연결을 유지하여 핸드셰이크 지연과 연결 고갈을 방지합니다.
+*   **WASM**: 복잡한 "Santoki 엔진"(YAML 파싱, 파라미터 검증)을 Go로 효율적으로 작성하고 JS 워커에서 실행할 수 있게 합니다.
 
-## Local Runtime (stk dev)
-*   mimics this exact behavior but runs as a local Go http server.
-*   Reads `logic/` directly from disk instead of KV.
-*   Uses local Docker DB instead of Hyperdrive.
+## 로컬 런타임 (stk dev)
+*   이 정확한 동작을 모방하지만 로컬 Go http 서버로 실행됩니다.
+*   KV 대신 디스크의 `logic/`을 직접 읽습니다.
+*   Hyperdrive 대신 로컬 Docker DB를 사용합니다.

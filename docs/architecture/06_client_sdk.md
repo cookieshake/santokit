@@ -1,52 +1,52 @@
-# 06. Client SDK Specification
+# 06. Client SDK 명세
 
-## Role
-The "Interface". Provides a typed, function-like experience for backend APIs.
+## 역할
+"인터페이스". 백엔드 API에 대해 타입이 지정된 함수형 경험을 제공합니다.
 
-## Philosophy
-**"No Code Generation (in source tree)."**
-We do not clutter the user's `src/` folder with `api.ts` or models. We inject types directly into the library package.
+## 철학
+**"소스 트리에 코드 생성 없음 (No Code Generation in source tree)."**
+사용자의 `src/` 폴더를 `api.ts`나 모델로 어지럽히지 않습니다. 타입을 라이브러리 패키지에 직접 주입합니다.
 
-## Components
+## 구성 요소
 
-### 1. The Proxy (`@santoki/client`)
-At runtime, the client is a lightweight Proxy wrapper.
+### 1. 프록시 (`@santoki/client`)
+런타임에 클라이언트는 경량 프록시 래퍼입니다.
 
 ```javascript
 import { stk } from '@santoki/client';
 
-// The user calls this:
+// 사용자가 호출하는 코드:
 const user = await stk.logic.users.get({ id: 123 });
 
-// The Proxy translates it to:
+// 프록시가 변환하는 내용:
 // POST https://device-edge.santoki.run/call
 // Body: { path: "users/get", params: { id: 123 } }
 ```
 
-### 2. Virtual Type Injection
-*   **Trigger**: `stk sync`.
-*   **Mechanism**:
-    1.  Downloads `manifest.json` from Hub (contains inputs, outputs, description for all logic).
-    2.  Generates a TypeScript Declaration file (`index.d.ts`).
-    3.  Writes to `node_modules/@santoki/client/dist/index.d.ts`.
-*   **Result**: Zero config IntelliSense.
+### 2. 가상 타입 주입 (Virtual Type Injection)
+*   **트리거**: `stk sync`.
+*   **메커니즘**:
+    1.  Hub에서 `manifest.json`을 다운로드합니다 (모든 로직에 대한 입력, 출력, 설명 포함).
+    2.  TypeScript 선언 파일(`index.d.ts`)을 생성합니다.
+    3.  `node_modules/@santoki/client/dist/index.d.ts`에 씁니다.
+*   **결과**: 설정 없는(Zero config) IntelliSense.
 
-## SDK Namespaces
+## SDK 네임스페이스
 
 ### `stk.auth`
-*   `login(provider)`: Initiates OAuth flow.
-*   `logout()`: Clears tokens.
-*   `me()`: Returns current session info.
-*   `getToken()`: Internal use for attaching headers.
+*   `login(provider)`: OAuth 흐름을 시작합니다.
+*   `logout()`: 토큰을 지웁니다.
+*   `me()`: 현재 세션 정보를 반환합니다.
+*   `getToken()`: 헤더 첨부 등을 위한 내부용 함수입니다.
 
 ### `stk.files`
-*   `upload(file, bucketAlias)`: Uploads to signed URL provided by Server.
-*   `getPublicUrl(path)`: generating CDN URLs.
+*   `upload(file, bucketAlias)`: 서버가 제공한 서명된 URL에 업로드합니다.
+*   `getPublicUrl(path)`: CDN URL 생성.
 
 ### `stk.logic`
-*   Dynamic namespace matching the `logic/` folder structure.
-*   Fully typed inputs and outputs based on the YAML definitions / SQL analysis.
+*   `logic/` 폴더 구조와 일치하는 동적 네임스페이스입니다.
+*   YAML 정의 / SQL 분석을 기반으로 입력과 출력이 완전히 타이핑됩니다.
 
-## SSR/Edge Compatibility
-*   The SDK must be isomorphic (work in Node.js and Browser).
-*   For Next.js App Router (Server Components), it handles fetch headers correctly to propagate auth context.
+## SSR/Edge 호환성
+*   SDK는 동형(isomorphic)이어야 합니다 (Node.js와 브라우저 모두에서 작동).
+*   Next.js App Router (서버 컴포넌트)의 경우, 인증 컨텍스트를 전파하기 위해 fetch 헤더를 올바르게 처리합니다.

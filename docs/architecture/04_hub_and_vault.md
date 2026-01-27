@@ -1,46 +1,46 @@
-# 04. Hub & Vault Specification
+# 04. Hub & Vault 명세
 
-## Role
-The "Control Plane". It manages state, security, and distribution. It does NOT execute user logic for production traffic.
+## 역할
+"제어 플레인(Control Plane)". 상태, 보안, 배포를 관리합니다. 프로덕션 트래픽에 대한 사용자 로직을 실행하지 **않습니다**.
 
-## Architecture
-*   **Language**: Go.
-*   **Database**: System DB (PostgreSQL) for user accounts, projects, and version history.
+## 아키텍처
+*   **언어**: Go.
+*   **데이터베이스**: 사용자 계정, 프로젝트, 버전 기록을 위한 시스템 DB (PostgreSQL).
 
-## 3 Core Engines
+## 3가지 핵심 엔진
 
-### 1. Manifest Registry
-*   Stores the "Source of Truth" for every project version.
-*   **Logic Versioning**: Stores immutable snapshots of logic deployments.
-*   **Schema History**: Tracks applied migrations via Atlas cloud or internal tracking.
+### 1. 매니페스트 레지스트리
+*   모든 프로젝트 버전의 "진실의 원천(Source of Truth)"을 저장합니다.
+*   **로직 버전 관리**: 로직 배포의 불변 스냅샷을 저장합니다.
+*   **스키마 기록**: Atlas 클라우드 또는 내부 추적을 통해 적용된 마이그레이션을 추적합니다.
 
-### 2. Santoki-Vault (Security)
-*   **Responsibility**: The only place where plaintext secrets exist (at rest, encrypted).
-*   **Encryption**: AES-256-GCM.
-*   **Input**: Via `stk secret set`.
-*   **Output (Provisioning)**:
-    *   When pushing to Server (Edge), secrets are re-encrypted with a shared Master Key known only to Hub and Server.
-    *   Secrets are bundled into the "Provisioning Package".
+### 2. Santoki-Vault (보안)
+*   **책임**: 평문 비밀 정보가 존재하는 유일한 곳입니다 (저장 시 암호화됨).
+*   **암호화**: AES-256-GCM.
+*   **입력**: `stk secret set`을 통해 입력.
+*   **출력 (프로비저닝)**:
+    *   Server(Edge)로 푸시할 때, 비밀 정보는 Hub와 Server만 아는 공유 마스터 키로 재암호화됩니다.
+    *   비밀 정보는 "프로비저닝 패키지"에 포함됩니다.
 
-### 3. Schema Executor (Atlas Integration)
-*   Receives `base/*.hcl` content.
-*   Calculates diff against current DB state (using Atlas).
-*   Generates SQL migration plan.
-*   Executes migration upon user approval.
+### 3. 스키마 실행기 (Atlas 통합)
+*   `base/*.hcl` 내용을 수신합니다.
+*   (Atlas를 사용하여) 현재 DB 상태와의 차이를 계산합니다.
+*   SQL 마이그레이션 계획을 생성합니다.
+*   사용자 승인 시 마이그레이션을 실행합니다.
 
-## Provisioning Mechanism (The "Push" Strategy)
-How the Edge knows what to do without asking Hub every time.
+## 프로비저닝 메커니즘 ("Push" 전략)
+Edge가 매번 Hub에 묻지 않고 수행할 작업을 아는 방법입니다.
 
-1.  **Event**: User runs `stk logic push`.
-2.  **Build**: Hub validates and bundles the logic + decrypted-then-re-encrypted secrets + config.
-3.  **Distribute**:
-    *   Hub pushes this bundle to **Cloudflare KV (Edge Storage)**.
-    *   Key: `project:{id}:latest`.
-    *   Value: Compressed JSON/Binary containing all logic and metadata.
-4.  **Result**: Edge nodes globally now have the latest definitions instantly available.
+1.  **이벤트**: 사용자가 `stk logic push`를 실행합니다.
+2.  **빌드**: Hub가 로직 + (복호화 후 재암호화된) 비밀 정보 + 설정을 검증하고 번들링합니다.
+3.  **배포**:
+    *   Hub가 이 번들을 **Cloudflare KV (Edge Storage)**로 푸시합니다.
+    *   키: `project:{id}:latest`.
+    *   값: 모든 로직과 메타데이터를 포함한 압축된 JSON/Binary.
+4.  **결과**: 전 세계의 Edge 노드에서 최신 정의를 즉시 사용할 수 있게 됩니다.
 
-## Console (Web UI)
-*   **Dashboard**: Project status, request volume, error rates.
-*   **Data Explorer**: Since DB connections are managed, a simple SQL runner/viewer can be provided.
-*   **Logs**: Aggregated logs from Edge workers.
-*   **Team**: Member management (RBAC).
+## 콘솔 (웹 UI)
+*   **대시보드**: 프로젝트 상태, 요청량, 에러율.
+*   **데이터 탐색기**: DB 연결이 관리되므로 간단한 SQL 실행기/뷰어를 제공할 수 있습니다.
+*   **로그**: Edge 워커에서 수집된 통합 로그.
+*   **팀**: 멤버 관리 (RBAC).

@@ -1,58 +1,58 @@
-# 01. Santoki Architecture Overview
+# 01. Santoki 아키텍처 개요
 
-## Core Philosophy
-**"Simple, Fast, and Managed."**
-Santoki (stk) is designed to abstract away the complexity of backend infrastructure, allowing developers to focus purely on business logic and data schema. It leverages Edge Computing for zero-latency execution and a "No-Code-Gen" approach for seamless development experience.
+## 핵심 철학
+**"단순함, 빠름, 그리고 관리됨."**
+Santoki (stk)는 백엔드 인프라의 복잡성을 추상화하여 개발자가 비즈니스 로직과 데이터 스키마에만 집중할 수 있도록 설계되었습니다. 엣지 컴퓨팅(Edge Computing)을 활용하여 지연 없는(zero-latency) 실행을 보장하며, "No-Code-Gen" 접근 방식으로 매끄러운 개발 경험을 제공합니다.
 
-## The 4 Core Components
+## 4가지 핵심 구성 요소
 
-### 1. The CLI (`stk`)
-*   **Location**: Developer's Local Machine.
-*   **Role**: The "Hands and Feet". It watches files, parses intent, and communicates with the Hub.
-*   **Key Responsibilities**:
-    *   Scanning and parsing `base/` and `logic/` directories.
-    *   Pushing logic and schema changes to the Hub.
-    *   Injecting "Virtual Types" (`.d.ts`) into `node_modules`.
-    *   Running the local development environment (`stk dev`).
+### 1. CLI (`stk`)
+*   **위치**: 개발자의 로컬 머신.
+*   **역할**: "손과 발". 파일을 감시하고, 의도를 파악(파싱)하며, Hub와 통신합니다.
+*   **주요 책임**:
+    *   `base/` 및 `logic/` 디렉토리 스캔 및 파싱.
+    *   로직 및 스키마 변경 사항을 Hub로 푸시.
+    *   "가상 타입(Virtual Types)" (`.d.ts`)을 `node_modules`에 주입.
+    *   로컬 개발 환경 실행 (`stk dev`).
 
-### 2. The Hub (`Santoki-Hub`)
-*   **Location**: Central Management Server (Go-based).
-*   **Role**: The "Brain" and "Control Plane".
-*   **Key Responsibilities**:
-    *   **Registry**: Stores versions of logic (SQL/JS/WASM) and schema plans.
-    *   **Vault**: Securely encrypts and stores secrets (DB credentials, API keys).
-    *   **Schema Engine**: Uses Atlas to manage and migrate DB schemas safely.
-    *   **Provisioner**: Pre-distributes logic and encrypted secrets to Edge KV for the Server to consume.
-    *   **Console**: Web UI for monitoring, team management, and connection settings.
+### 2. Hub (`Santoki-Hub`)
+*   **위치**: 중앙 관리 서버 (Go 기반).
+*   **역할**: "뇌" 및 "제어 플레인(Control Plane)".
+*   **주요 책임**:
+    *   **레지스트리**: 로직(SQL/JS/WASM) 및 스키마 계획의 버전을 저장.
+    *   **볼트(Vault)**: 비밀 정보(DB 자격 증명, API 키)를 안전하게 암호화하여 저장.
+    *   **스키마 엔진**: Atlas를 사용하여 DB 스키마를 안전하게 관리하고 마이그레이션.
+    *   **프로비저너**: 서버가 사용할 수 있도록 로직과 암호화된 비밀 정보를 Edge KV로 미리 배포.
+    *   **콘솔**: 모니터링, 팀 관리, 연결 설정을 위한 웹 UI.
 
-### 3. The Server (`Santoki-Server`)
-*   **Location**: Edge Runtime (Cloudflare Workers or Standard Container + Type Script).
-*   **Role**: The "Bridge" and "Muscle" (Data Plane).
-*   **Key Responsibilities**:
-    *   **Execution**: Validates auth and executes logic found in the Edge KV.
-    *   **Zero-Latency**: Runs on the edge node closest to the user.
-    *   **Security**: Decrypts DB credentials in-memory using environment keys.
-    *   **Proxying**: Manages DB connections and object storage interactions.
+### 3. Server (`Santoki-Server`)
+*   **위치**: 엣지 런타임 (Cloudflare Workers 또는 표준 컨테이너 + TypeScript).
+*   **역할**: "다리" 및 "근육" (데이터 플레인).
+*   **주요 책임**:
+    *   **실행**: 인증을 검증하고 Edge KV에 있는 로직을 실행.
+    *   **제로 레이턴시**: 사용자와 가장 가까운 엣지 노드에서 실행.
+    *   **보안**: 환경 키를 사용하여 메모리 내에서 DB 자격 증명 복호화.
+    *   **프록시**: DB 연결 및 객체 스토리지 상호 작용 관리.
 
-### 4. The Client (`Santoki-Client`)
-*   **Location**: Another Frontend Application (Browser/Node).
-*   **Role**: The "Interface" and "Magic".
-*   **Key Responsibilities**:
-    *   **Virtual Typing**: Provides full IntelliSense without generating actual TS files in the source tree.
-    *   **Proxy Calls**: Intercepts function calls and routes them to the Server.
-    *   **Namespaces**:
-        *   `stk.auth`: Identity management.
-        *   `stk.files`: File upload/download.
-        *   `stk.logic`: Business logic execution.
+### 4. Client (`Santoki-Client`)
+*   **위치**: 또 다른 프론트엔드 애플리케이션 (브라우저/Node).
+*   **역할**: "인터페이스" 및 "마법".
+*   **주요 책임**:
+    *   **가상 타이핑**: 소스 트리 내에 실제 TS 파일을 생성하지 않고도 완전한 IntelliSense 제공.
+    *   **프록시 호출**: 함수 호출을 가로채서 서버로 라우팅.
+    *   **네임스페이스**:
+        *   `stk.auth`: 신원(Identity) 관리.
+        *   `stk.files`: 파일 업로드/다운로드.
+        *   `stk.logic`: 비즈니스 로직 실행.
 
-## Interaction Flow (The Lifecycle)
+## 상호 작용 흐름 (라이프사이클)
 
-1.  **Develop**: User edits `logic/users/get.sql`. `stk` detects change.
-2.  **Deploy (`stk push`)**: `stk` parses files, validates YAML, and uploads to Hub.
-3.  **Provision**: Hub validates logic, encrypts necessary secrets, and pushes the package to **Edge KV**.
-4.  **Sync (`stk sync`)**: `stk` downloads the API manifest from Hub and updates `node_modules/@santoki/client` for autocomplete.
-5.  **Runtime**: Frontend calls `stk.logic.users.get()`.
-    *   Edge Server receives request.
-    *   Fetches logic + encrypted config from local **Edge KV**.
-    *   Decrypts config, connects to DB, executes SQL/WASM.
-    *   Returns result to Client.
+1.  **개발 (Develop)**: 사용자가 `logic/users/get.sql`을 수정합니다. `stk`가 변경 사항을 감지합니다.
+2.  **배포 (Deploy `stk push`)**: `stk`가 파일을 파싱하고, YAML을 검증한 뒤 Hub로 업로드합니다.
+3.  **프로비저닝 (Provision)**: Hub가 로직을 검증하고, 필요한 비밀 정보를 암호화하여 패키지를 **Edge KV**로 푸시합니다.
+4.  **동기화 (Sync `stk sync`)**: `stk`가 Hub에서 API 매니페스트를 다운로드하고 자동 완성을 위해 `node_modules/@santoki/client`를 업데이트합니다.
+5.  **런타임 (Runtime)**: 프론트엔드가 `stk.logic.users.get()`을 호출합니다.
+    *   Edge Server가 요청을 받습니다.
+    *   로컬 **Edge KV**에서 로직과 암호화된 설정을 가져옵니다.
+    *   설정을 복호화하고, DB에 연결하여 SQL/WASM을 실행합니다.
+    *   결과를 클라이언트에 반환합니다.
