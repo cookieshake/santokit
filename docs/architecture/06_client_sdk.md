@@ -40,13 +40,10 @@ const user = await stk.logic.users.get({ id: 123 });
 *   `me()`: 현재 세션 정보를 반환합니다.
 *   `getToken()`: 헤더 첨부 등을 위한 내부용 함수입니다.
 
-### `stk.files` (Interface)
-*   **역할**: 파일 스토리지에 대한 추상화된 인터페이스입니다.
-*   **어댑터 패턴**: 실제 파일 저장은 `base/storage.yaml`에 정의된 공급자(AWS S3, Cloudflare R2, 로컬 등)로 위임됩니다. **암시적인 "기본 버킷"은 존재하지 않으며**, 명시적으로 설정된 버킷을 사용해야 합니다.
-*   `upload(file, bucketAlias)`: 서버가 제공한 서명된 URL에 업로드합니다.
-*   `getPublicUrl(path)`: CDN URL 생성.
-
 ### `stk.logic`
+*   `logic/` 폴더 구조와 일치하는 동적 네임스페이스입니다.
+*   **파일 처리**: 별도의 `stk.files` 네임스페이스는 존재하지 않습니다. 파일 업로드/다운로드는 사용자가 작성한 로직(예: `stk.logic.uploads.getPresignedUrl()`)을 통해 처리합니다.
+*   YAML 정의 / SQL 분석을 기반으로 입력과 출력이 완전히 타이핑됩니다.
 *   `logic/` 폴더 구조와 일치하는 동적 네임스페이스입니다.
 *   YAML 정의 / SQL 분석을 기반으로 입력과 출력이 완전히 타이핑됩니다.
 

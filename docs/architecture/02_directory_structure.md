@@ -36,15 +36,27 @@ Infrastructure-as-Code 정의를 포함합니다. 이곳의 변경 사항은 영
     *   예: `santoki/base/analytics.hcl`은 로직 파일에서 `target: analytics`로 참조할 수 있는 DB 리소스를 생성합니다.
 *   **예약된 설정 파일**:
     *   `auth.yaml`: 자격 증명 공급자(Identity Provider), 세션 규칙, RBAC 역할.
-    *   `storage.yaml`: R2/S3 버킷 정의 및 액세스 정책.
+    *   `auth.yaml`: 자격 증명 공급자(Identity Provider), 세션 규칙, RBAC 역할.
+    *   `storage.yaml`: 스토리지 버킷 정의 (공급자, 공개 여부 등). 복잡한 권한 규칙은 제거되었습니다 (로직으로 위임).
 
 ## 2. `logic/` 디렉토리 (애플리케이션)
 서버에서 실행되는 실제 함수들을 포함합니다. `stk logic push`를 통해 처리됩니다.
 
-*   **파일 형식**:
     *   **단일 파일 (권장)**: 주석에 YAML Frontmatter가 포함된 SQL/JS 파일.
         *   파일 수를 적게 유지합니다.
         *   단순하거나 중간 정도 복잡도의 쿼리에 가장 적합합니다.
+
+## 3. 로직 가시성 (Logic Visibility)
+**캡슐화**를 위해 파일명 규칙을 사용하여 로직의 노출 여부를 결정합니다.
+
+*   **Public (기본값)**: `users/get.sql`
+    *   클라이언트 SDK (`stk.logic.users.get`)에 노출됩니다.
+    *   외부 API로 직접 호출 가능합니다.
+*   **Internal (Private)**: `users/_insert.sql` (`_` 접두사)
+    *   **클라이언트 SDK에 노출되지 않습니다.**
+    *   외부 API 호출 시 접근이 거부됩니다.
+    *   오직 다른 **JS 로직** 내부에서 `context.invoke('users/_insert', ...)` 형태로만 호출할 수 있습니다.
+    *   *용도: 유효성 검사, 전처리 로직이 필수적인 SQL 쿼리를 숨길 때 사용.*
 
 ## 3. 설정 및 인텔리센스 (IntelliSense)
 YAML 설정에서 타입 안전성과 정확성을 보장하기 위해:

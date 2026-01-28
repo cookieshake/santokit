@@ -25,7 +25,11 @@
 5.  **실행**:
     *   라우터가 로직 함수를 찾습니다 (예: `users/get.sql`).
     *   **SQL 로직**: **연결 프록시** (예: Hyperdrive)를 사용하여 DB에 쿼리를 실행합니다.
-    *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다. (외부 라이브러리 없는 순수 연산/조합 로직)
+    *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다.
+        *   **Context API**:
+            *   `context.storage.createUploadUrl(bucket, path)`: 서명된 업로드 URL 생성.
+            *   `context.invoke(path, args)`: 다른 로직(Internal 포함) 호출.
+            *   `context.db`: DB 쿼리 실행.
     *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다. (외부 라이브러리 없는 순수 연산/조합 로직)
 6.  **응답 및 캐싱**:
     *   로직 설정에 캐싱이 명시된 경우, 응답을 Edge Cache API에 저장하여 다음 요청 시 즉시 반환합니다.
