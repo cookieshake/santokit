@@ -1,0 +1,30 @@
+# Storage Configuration
+# Reserved filename: storage.yaml
+
+buckets:
+  # User avatars bucket
+  avatars:
+    public: true
+    maxFileSize: 5MB
+    allowedTypes:
+      - image/jpeg
+      - image/png
+      - image/webp
+    
+  # Order attachments bucket  
+  attachments:
+    public: false
+    maxFileSize: 50MB
+    allowedTypes:
+      - application/pdf
+      - image/*
+      
+  # Temporary uploads bucket
+  temp:
+    public: false
+    maxFileSize: 100MB
+    ttl: 24h  # Auto-delete after 24 hours
+
+# Global settings
+defaults:
+  region: auto  # Use nearest edge location

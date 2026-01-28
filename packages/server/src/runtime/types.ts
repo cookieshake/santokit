@@ -1,0 +1,80 @@
+/**
+ * LogicHandler represents a business logic handler function.
+ */
+export type LogicHandler = (
+  params: Record<string, unknown>,
+  context: import('../context/index.js').Context
+) => Promise<unknown>;
+
+/**
+ * LogicConfig represents the configuration for a logic endpoint.
+ */
+export interface LogicConfig {
+  /** Target database alias (e.g., "main", "logs") */
+  target?: string;
+  
+  /** Parameter definitions */
+  params?: Record<string, ParamConfig>;
+  
+  /** Access control: "public", "authenticated", or role name */
+  access?: string;
+  
+  /** Cache duration (e.g., "5m", "1h", "1d") */
+  cache?: string;
+  
+  /** SQL query (for SQL-based logic) */
+  sql?: string;
+  
+  /** Handler function (for JS-based logic) */
+  handler?: LogicHandler;
+}
+
+/**
+ * ParamConfig defines a parameter's schema
+ */
+export interface ParamConfig {
+  type: 'string' | 'int' | 'bool' | 'json';
+  required?: boolean;
+  default?: unknown;
+}
+
+/**
+ * RequestInfo contains information about the incoming request
+ */
+export interface RequestInfo {
+  /** Request method */
+  method: string;
+  
+  /** Request path (namespace/name) */
+  path: string;
+  
+  /** Request headers */
+  headers: Headers;
+  
+  /** Authenticated user info (if any) */
+  user?: UserInfo;
+  
+  /** Request ID for tracing */
+  requestId: string;
+}
+
+/**
+ * UserInfo represents an authenticated user
+ */
+export interface UserInfo {
+  id: string;
+  email?: string;
+  roles: string[];
+}
+
+/**
+ * Bundle represents a loaded logic bundle from Edge KV
+ */
+export interface Bundle {
+  type: 'sql' | 'js';
+  namespace: string;
+  name: string;
+  config: LogicConfig;
+  content: string;
+  hash: string;
+}

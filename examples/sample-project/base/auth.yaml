@@ -1,0 +1,49 @@
+# Authentication Configuration
+# Reserved filename: auth.yaml
+
+# JWT Settings
+jwt:
+  secret: ${JWT_SECRET}  # Use secret reference
+  expiresIn: "7d"
+  refreshExpiresIn: "30d"
+
+# Session Settings
+session:
+  secure: true
+  httpOnly: true
+  sameSite: "lax"
+
+# OAuth Providers
+providers:
+  google:
+    enabled: true
+    clientId: ${GOOGLE_CLIENT_ID}
+    clientSecret: ${GOOGLE_CLIENT_SECRET}
+    scopes:
+      - email
+      - profile
+
+  github:
+    enabled: true
+    clientId: ${GITHUB_CLIENT_ID}
+    clientSecret: ${GITHUB_CLIENT_SECRET}
+    scopes:
+      - user:email
+
+# Email/Password Settings
+emailPassword:
+  enabled: true
+  requireEmailVerification: true
+  passwordMinLength: 8
+
+# Role-Based Access Control
+roles:
+  - name: admin
+    description: Full system access
+  - name: user
+    description: Standard user access
+  - name: guest
+    description: Read-only access
+
+# Default role for new users
+defaultRole: user
