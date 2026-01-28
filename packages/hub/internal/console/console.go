@@ -1,4 +1,3 @@
-package console
 // Package console provides the Web Console API for the Hub.
 // It serves the admin dashboard and provides APIs for monitoring and management.
 package console
@@ -11,10 +10,10 @@ import (
 
 // DashboardStats represents overview statistics
 type DashboardStats struct {
-	TotalProjects   int       `json:"total_projects"`
-	TotalDeployments int      `json:"total_deployments"`
-	ActiveUsers     int       `json:"active_users"`
-	LastDeployment  time.Time `json:"last_deployment"`
+	TotalProjects    int       `json:"total_projects"`
+	TotalDeployments int       `json:"total_deployments"`
+	ActiveUsers      int       `json:"active_users"`
+	LastDeployment   time.Time `json:"last_deployment"`
 }
 
 // Project represents a project in the console
@@ -29,9 +28,9 @@ type Project struct {
 
 // Team represents a team/organization
 type Team struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Members   []Member `json:"members"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Members   []Member  `json:"members"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -43,49 +42,48 @@ type Member struct {
 }
 
 // Service provides console operations
+type Service struct{}
 
+// NewService creates a new console service
+func NewService() *Service {
+	return &Service{}
+}
 
+// HandleGetStats returns dashboard statistics
+func (s *Service) HandleGetStats(w http.ResponseWriter, r *http.Request) {
+	// TODO: Fetch real stats from database
+	stats := DashboardStats{
+		TotalProjects:    0,
+		TotalDeployments: 0,
+		ActiveUsers:      0,
+		LastDeployment:   time.Time{},
+	}
 
+	json.NewEncoder(w).Encode(stats)
+}
 
+// HandleListProjects returns all projects for a team
+func (s *Service) HandleListProjects(w http.ResponseWriter, r *http.Request) {
+	// TODO: Implement project listing
+	projects := []Project{}
+	json.NewEncoder(w).Encode(projects)
+}
 
+// HandleGetProject returns a single project
+func (s *Service) HandleGetProject(w http.ResponseWriter, r *http.Request) {
+	// TODO: Implement project retrieval
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
+// HandleListTeams returns all teams for a user
+func (s *Service) HandleListTeams(w http.ResponseWriter, r *http.Request) {
+	// TODO: Implement team listing
+	teams := []Team{}
+	json.NewEncoder(w).Encode(teams)
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-}	w.WriteHeader(http.StatusNotImplemented)	// TODO: Implement member invitationfunc (s *Service) HandleInviteMember(w http.ResponseWriter, r *http.Request) {// HandleInviteMember invites a new team member}	json.NewEncoder(w).Encode(teams)	teams := []Team{}	// TODO: Implement team listingfunc (s *Service) HandleListTeams(w http.ResponseWriter, r *http.Request) {// HandleListTeams returns all teams for a user}	w.WriteHeader(http.StatusNotImplemented)	// TODO: Implement project retrievalfunc (s *Service) HandleGetProject(w http.ResponseWriter, r *http.Request) {// HandleGetProject returns a single project}	json.NewEncoder(w).Encode(projects)	projects := []Project{}	// TODO: Implement project listingfunc (s *Service) HandleListProjects(w http.ResponseWriter, r *http.Request) {// HandleListProjects returns all projects for a team}	json.NewEncoder(w).Encode(stats)		}		LastDeployment:   time.Time{},		ActiveUsers:      0,		TotalDeployments: 0,		TotalProjects:    0,	stats := DashboardStats{	// TODO: Fetch real stats from databasefunc (s *Service) HandleGetStats(w http.ResponseWriter, r *http.Request) {// HandleGetStats returns dashboard statistics}	return &Service{}func NewService() *Service {// NewService creates a new console servicetype Service struct{}
+// HandleInviteMember invites a new team member
+func (s *Service) HandleInviteMember(w http.ResponseWriter, r *http.Request) {
+	// TODO: Implement member invitation
+	w.WriteHeader(http.StatusNotImplemented)
+}
