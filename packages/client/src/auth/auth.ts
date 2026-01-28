@@ -6,8 +6,8 @@ import type {
   OAuthProvider,
   OAuthOptions,
   RegisterData,
-} from './types.js';
-import type { ClientConfig, TokenStorage } from '../types/config.js';
+} from './types.ts';
+import type { ClientConfig, TokenStorage } from '../types/config.ts';
 
 /**
  * Create the authentication module
@@ -140,11 +140,14 @@ export function createAuthModule(
  * Authentication error
  */
 export class AuthError extends Error {
+  public statusCode: number;
+
   constructor(
     message: string,
-    public statusCode: number
+    statusCode: number
   ) {
     super(message);
     this.name = 'AuthError';
+    this.statusCode = statusCode;
   }
 }

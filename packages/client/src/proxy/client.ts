@@ -1,7 +1,7 @@
-import type { ClientConfig, RequestOptions, TokenStorage } from '../types/config.js';
-import { BrowserTokenStorage, MemoryTokenStorage } from '../types/config.js';
-import { createAuthModule } from '../auth/auth.js';
-import type { AuthModule } from '../auth/types.js';
+import type { ClientConfig, RequestOptions, TokenStorage } from '../types/config.ts';
+import { BrowserTokenStorage, MemoryTokenStorage } from '../types/config.ts';
+import { createAuthModule } from '../auth/auth.ts';
+import type { AuthModule } from '../auth/types.ts';
 
 /**
  * Santoki Client interface
@@ -131,12 +131,17 @@ function createLogicProxy(
  * Santoki API error
  */
 export class SantokiError extends Error {
+  public statusCode: number;
+  public path: string;
+
   constructor(
     message: string,
-    public statusCode: number,
-    public path: string
+    statusCode: number,
+    path: string
   ) {
     super(message);
     this.name = 'SantokiError';
+    this.statusCode = statusCode;
+    this.path = path;
   }
 }

@@ -5,6 +5,8 @@ package parser
 import (
 	"fmt"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // LogicConfig represents the parsed configuration from a logic file
@@ -66,7 +68,10 @@ func (p *Parser) ParseLogicFile(content string, filename string) (*LogicConfig, 
 	if strings.HasPrefix(content, "---") {
 		parts := strings.SplitN(content, "---", 3)
 		if len(parts) >= 3 {
-			// TODO: Parse YAML frontmatter from parts[1]
+			// Parse YAML frontmatter
+			if err := yaml.Unmarshal([]byte(parts[1]), config); err != nil {
+				return nil, fmt.Errorf("failed to parse YAML frontmatter: %w", err)
+			}
 			content = strings.TrimSpace(parts[2])
 		}
 	}
@@ -92,6 +97,7 @@ func (p *Parser) ParseSchemaFile(content string, filename string) (*SchemaConfig
 	}
 
 	// TODO: Parse HCL content using hashicorp/hcl
+	// For now, we just pass the raw content as Atlas uses it directly
 	fmt.Printf("Parsing schema: %s\n", alias)
 
 	return config, nil

@@ -11,6 +11,9 @@ import (
 
 	"github.com/cookieshake/santoki/packages/hub/api"
 	"github.com/cookieshake/santoki/packages/hub/internal/config"
+	"github.com/cookieshake/santoki/packages/hub/internal/registry"
+	"github.com/cookieshake/santoki/packages/hub/internal/store/memory"
+	"github.com/cookieshake/santoki/packages/hub/internal/vault"
 )
 
 func main() {
@@ -19,7 +22,19 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	router := api.NewRouter(cfg)
+	// Initialize repositories (In-Memory for now)
+	regRepo := memory.NewRegistryRepository()
+	vaultRepo := memory.NewVaultRepository()
+
+	// Initialize services
+	regService := registry.NewService(regRepo)
+	vaultService, err := vault.NewService(vaultRepo, cfg.EncryptionKey)
+	if err != nil {
+		log.Fatalf("Failed to initialize vault service: %v", err)
+	}
+
+	// Initialize API router
+	router := api.NewRouter(cfg, regService, vaultService)
 
 	server := &http.Server{
 		Addr:         cfg.ServerAddr,

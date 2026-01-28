@@ -1,15 +1,31 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/cookieshake/santoki/packages/hub/internal/config"
+	"github.com/cookieshake/santoki/packages/hub/internal/registry"
+	"github.com/cookieshake/santoki/packages/hub/internal/vault"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+// API holds the service dependencies
+type API struct {
+	config   *config.Config
+	registry *registry.Service
+	vault    *vault.Service
+}
+
 // NewRouter creates the main API router
-func NewRouter(cfg *config.Config) http.Handler {
+func NewRouter(cfg *config.Config, reg *registry.Service, vlt *vault.Service) http.Handler {
+	api := &API{
+		config:   cfg,
+		registry: reg,
+		vault:    vlt,
+	}
+
 	r := chi.NewRouter()
 
 	// Middleware
@@ -27,38 +43,38 @@ func NewRouter(cfg *config.Config) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth routes
 		r.Route("/auth", func(r chi.Router) {
-			r.Post("/login", handleLogin)
-			r.Post("/token", handleCreateToken)
+			r.Post("/login", api.handleLogin)
+			r.Post("/token", api.handleCreateToken)
 		})
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
-			r.Use(authMiddleware(cfg))
+			r.Use(api.authMiddleware())
 
 			// Manifest Registry
 			r.Route("/manifest", func(r chi.Router) {
-				r.Get("/", handleGetManifest)
-				r.Post("/", handlePushManifest)
+				r.Get("/", api.handleGetManifest)
+				r.Post("/", api.handlePushManifest)
 			})
 
 			// Secrets Vault
 			r.Route("/secrets", func(r chi.Router) {
-				r.Get("/", handleListSecrets)
-				r.Post("/", handleSetSecret)
-				r.Delete("/{key}", handleDeleteSecret)
+				r.Get("/", api.handleListSecrets)
+				r.Post("/", api.handleSetSecret)
+				r.Delete("/{key}", api.handleDeleteSecret)
 			})
 
 			// Schema Engine
 			r.Route("/schema", func(r chi.Router) {
-				r.Post("/plan", handleSchemaPlan)
-				r.Post("/apply", handleSchemaApply)
+				r.Post("/plan", api.handleSchemaPlan)
+				r.Post("/apply", api.handleSchemaApply)
 			})
 
 			// Projects
 			r.Route("/projects", func(r chi.Router) {
-				r.Get("/", handleListProjects)
-				r.Post("/", handleCreateProject)
-				r.Get("/{id}", handleGetProject)
+				r.Get("/", api.handleListProjects)
+				r.Post("/", api.handleCreateProject)
+				r.Get("/{id}", api.handleGetProject)
 			})
 		})
 	})
@@ -66,72 +82,129 @@ func NewRouter(cfg *config.Config) http.Handler {
 	return r
 }
 
-// Placeholder handlers - to be implemented
-
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement OAuth flow
+func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func handleCreateToken(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement PAT creation
+func (a *API) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func handleGetManifest(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement manifest retrieval
+func (a *API) handleGetManifest(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id required", http.StatusBadRequest)
+		return
+	}
+
+	manifest, err := a.registry.GetLatest(r.Context(), projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(manifest)
+}
+
+func (a *API) handlePushManifest(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ProjectID string            `json:"project_id"`
+		Bundles   []registry.Bundle `json:"bundles"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Get user ID from context
+	userID := "user_1"
+
+	manifest, err := a.registry.Push(r.Context(), req.ProjectID, req.Bundles, userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(manifest)
+}
+
+func (a *API) handleListSecrets(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		http.Error(w, "project_id required", http.StatusBadRequest)
+		return
+	}
+
+	keys, err := a.vault.List(r.Context(), projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(keys)
+}
+
+func (a *API) handleSetSecret(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ProjectID string `json:"project_id"`
+		Key       string `json:"key"`
+		Value     string `json:"value"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := a.vault.Set(r.Context(), req.ProjectID, req.Key, req.Value); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *API) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("project_id")
+	key := chi.URLParam(r, "key")
+	
+	if err := a.vault.Delete(r.Context(), projectID, key); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (a *API) handleSchemaPlan(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func handlePushManifest(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement manifest push
+func (a *API) handleSchemaApply(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func handleListSecrets(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement secrets listing
+func (a *API) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func handleSetSecret(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement secret storage
+func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement secret deletion
+func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-func handleSchemaPlan(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement schema planning via Atlas
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func handleSchemaApply(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement schema migration via Atlas
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func handleListProjects(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement project listing
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func handleCreateProject(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement project creation
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func handleGetProject(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement project retrieval
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-func authMiddleware(cfg *config.Config) func(http.Handler) http.Handler {
+func (a *API) authMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// TODO: Implement JWT/PAT validation
+			// For now, allow all
 			next.ServeHTTP(w, r)
 		})
 	}

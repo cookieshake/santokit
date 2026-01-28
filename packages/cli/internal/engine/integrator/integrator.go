@@ -12,12 +12,13 @@ import (
 
 // Bundle represents a deployable bundle of logic or schema
 type Bundle struct {
-	Type      BundleType
-	Namespace string
-	Name      string
-	Content   []byte
-	Hash      string
-	CreatedAt time.Time
+	Type      BundleType             `json:"type"`
+	Namespace string                 `json:"namespace"`
+	Name      string                 `json:"name"`
+	Content   []byte                 `json:"content"`
+	Hash      string                 `json:"hash"`
+	Config    map[string]interface{} `json:"config,omitempty"`
+	CreatedAt time.Time              `json:"created_at"`
 }
 
 // BundleType represents the type of bundle
@@ -30,10 +31,10 @@ const (
 
 // Manifest represents the complete project manifest
 type Manifest struct {
-	Version   string
-	ProjectID string
-	Bundles   []Bundle
-	CreatedAt time.Time
+	Version   string   `json:"version"`
+	ProjectID string   `json:"project_id"`
+	Bundles   []Bundle `json:"bundles"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Integrator handles bundling and integration
@@ -47,22 +48,47 @@ func New() *Integrator {
 // BundleLogic creates a deployable bundle from a logic config
 func (i *Integrator) BundleLogic(config *parser.LogicConfig) (*Bundle, error) {
 	var content []byte
+	var bundleType BundleType
 
 	if config.SQL != "" {
 		content = []byte(config.SQL)
+		bundleType = "sql" // Server expects "sql" or "js"
 	} else if config.JS != "" {
-		// TODO: Bundle JS with esbuild (no external dependencies)
+		// NOTE: In the future, we should bundle JS with esbuild to support internal module imports.
+		// For now, we assume the JS file is self-contained (Zero Dependency policy).
 		content = []byte(config.JS)
+		bundleType = "js"
 	}
 
 	hash := sha256.Sum256(content)
 
+	// Map config
+	cfg := map[string]interface{}{
+		"target": config.Target,
+		"access": config.Access,
+		"cache":  config.Cache,
+	}
+	
+	// Convert params map
+	if config.Params != nil {
+		params := make(map[string]interface{})
+		for k, v := range config.Params {
+			params[k] = map[string]interface{}{
+				"type": v.Type,
+				"required": v.Required,
+				"default": v.Default,
+			}
+		}
+		cfg["params"] = params
+	}
+
 	return &Bundle{
-		Type:      BundleTypeLogic,
+		Type:      bundleType,
 		Namespace: config.Namespace,
 		Name:      config.Name,
 		Content:   content,
 		Hash:      hex.EncodeToString(hash[:]),
+		Config:    cfg,
 		CreatedAt: time.Now(),
 	}, nil
 }

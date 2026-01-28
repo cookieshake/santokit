@@ -1,5 +1,5 @@
-import { createContext, type Context } from '../context/index.js';
-import type { Bundle, LogicConfig, RequestInfo, UserInfo } from './types.js';
+import { createContext, type Context } from '../context/index.ts';
+import type { Bundle, LogicConfig, RequestInfo, UserInfo } from './types.ts';
 
 /**
  * KVStore interface for Edge KV operations
@@ -149,10 +149,28 @@ export class SantokiServer {
     }
 
     const token = authHeader.slice(7);
-    // TODO: Implement JWT validation
-    // For now, return undefined (unauthenticated)
-    void token;
-    return undefined;
+    
+    try {
+      // Decode JWT payload (without signature verification for now)
+      // Token format: header.payload.signature
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        return undefined;
+      }
+      
+      const payload = JSON.parse(atob(parts[1]));
+      
+      // Map payload to UserInfo
+      // Assuming standard claims: sub (id), email, roles
+      return {
+        id: payload.sub || payload.id,
+        email: payload.email,
+        roles: payload.roles || [],
+      };
+    } catch (e) {
+      console.error('Failed to parse JWT:', e);
+      return undefined;
+    }
   }
 
   private checkAccess(config: LogicConfig, user?: UserInfo): boolean {

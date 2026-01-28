@@ -16,9 +16,9 @@
  * ```
  */
 
-export { createClient, type SantokiClient } from './proxy/client.js';
-export { type AuthModule, type User, type Session } from './auth/types.js';
-export { type ClientConfig, type RequestOptions } from './types/config.js';
+export { createClient, type SantokiClient } from './proxy/client.ts';
+export { type AuthModule, type User, type Session } from './auth/types.ts';
+export { type ClientConfig, type RequestOptions } from './types/config.ts';
 
 // Module augmentation interface for type generation
 // Users will have santoki-env.d.ts that augments this
