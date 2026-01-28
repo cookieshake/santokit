@@ -6,6 +6,6 @@
  * Cloudflare Workers, Docker, AWS Lambda, or any Standard Web API compatible runtime.
  */
 
-export { SantokiServer } from './runtime/server.ts';
-export { createContext, type Context } from './context/index.ts';
-export type { LogicHandler, LogicConfig, RequestInfo } from './runtime/types.ts';
+export { SantokiServer } from './runtime/server.js';
+export { createContext, type Context } from './context/index.js';
+export type { LogicHandler, LogicConfig, RequestInfo } from './runtime/types.js';

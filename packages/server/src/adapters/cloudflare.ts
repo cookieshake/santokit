@@ -5,7 +5,7 @@
  * using Cloudflare KV for bundle storage and Hyperdrive for database connections.
  */
 
-import { SantokiServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.ts';
+import { SantokiServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
 
 /**
  * Cloudflare environment bindings

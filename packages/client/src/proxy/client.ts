@@ -1,7 +1,7 @@
-import type { ClientConfig, RequestOptions, TokenStorage } from '../types/config.ts';
-import { BrowserTokenStorage, MemoryTokenStorage } from '../types/config.ts';
-import { createAuthModule } from '../auth/auth.ts';
-import type { AuthModule } from '../auth/types.ts';
+import type { ClientConfig, RequestOptions, TokenStorage } from '../types/config.js';
+import { BrowserTokenStorage, MemoryTokenStorage } from '../types/config.js';
+import { createAuthModule } from '../auth/auth.js';
+import type { AuthModule } from '../auth/types.js';
 
 /**
  * Santoki Client interface

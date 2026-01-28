@@ -6,8 +6,8 @@ import type {
   OAuthProvider,
   OAuthOptions,
   RegisterData,
-} from './types.ts';
-import type { ClientConfig, TokenStorage } from '../types/config.ts';
+} from './types.js';
+import type { ClientConfig, TokenStorage } from '../types/config.js';
 
 /**
  * Create the authentication module

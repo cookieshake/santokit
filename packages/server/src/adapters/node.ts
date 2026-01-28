@@ -5,7 +5,7 @@
  * suitable for Docker deployments or local development.
  */
 
-import { SantokiServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.ts';
+import { SantokiServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
 
 /**
  * Node.js environment configuration

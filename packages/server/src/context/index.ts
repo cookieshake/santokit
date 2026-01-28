@@ -1,5 +1,5 @@
-import type { KVStore, DatabasePool } from '../runtime/server.ts';
-import type { RequestInfo } from '../runtime/types.ts';
+import type { KVStore, DatabasePool } from '../runtime/server.js';
+import type { RequestInfo } from '../runtime/types.js';
 
 /**
  * Context provides the runtime API for logic handlers.

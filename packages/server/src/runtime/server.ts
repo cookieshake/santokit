@@ -1,5 +1,5 @@
-import { createContext, type Context } from '../context/index.ts';
-import type { Bundle, LogicConfig, RequestInfo, UserInfo } from './types.ts';
+import { createContext, type Context } from '../context/index.js';
+import type { Bundle, LogicConfig, RequestInfo, UserInfo } from './types.js';
 
 /**
  * KVStore interface for Edge KV operations

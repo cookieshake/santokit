@@ -21,8 +21,8 @@ type EdgeBundle struct {
 
 // Config holds provisioner configuration
 type Config struct {
-	EdgeKVURL   string
-	EdgeKVToken string
+	KVURL   string
+	KVToken string
 }
 
 // Service provides Edge provisioning operations
@@ -83,12 +83,12 @@ func (s *Service) uploadBundle(ctx context.Context, bundle EdgeBundle) error {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "PUT", s.config.EdgeKVURL+"/"+bundle.Key, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, "PUT", s.config.KVURL+"/"+bundle.Key, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.config.EdgeKVToken)
+	req.Header.Set("Authorization", "Bearer "+s.config.KVToken)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -105,12 +105,12 @@ func (s *Service) uploadBundle(ctx context.Context, bundle EdgeBundle) error {
 }
 
 func (s *Service) deleteBundle(ctx context.Context, key string) error {
-	req, err := http.NewRequestWithContext(ctx, "DELETE", s.config.EdgeKVURL+"/"+key, nil)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", s.config.KVURL+"/"+key, nil)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.config.EdgeKVToken)
+	req.Header.Set("Authorization", "Bearer "+s.config.KVToken)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
