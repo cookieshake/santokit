@@ -8,6 +8,7 @@
 *   **핵심 로직**: **TypeScript**로 작성되어 Cloudflare Workers에서 네이티브로 실행됩니다.
     *   이유: Cloudflare Workers의 First-class 언어인 JavaScript/TypeScript 생태계를 100% 활용하고, 디버깅 용이성을 확보하기 위함입니다.
 *   **구조**: 경량화된 라우터와 실행 엔진이 순수 JavaScript/TypeScript로 구현되어 있습니다.
+*   **정책 (Policy)**: "Zero Dependency". 사용자 로직은 외부 npm 의존성을 가질 수 없으며, 플랫폼이 제공하는 Standard API와 내부 파일 import만 허용됩니다.
 
 ## 런타임 흐름
 
@@ -24,7 +25,7 @@
 5.  **실행**:
     *   라우터가 로직 함수를 찾습니다 (예: `users/get.sql`).
     *   **SQL 로직**: **연결 프록시** (예: Hyperdrive)를 사용하여 DB에 쿼리를 실행합니다.
-    *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다.
+    *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다. (외부 라이브러리 없는 순수 연산/조합 로직)
 6.  **응답**: JSON을 클라이언트에 반환합니다.
 
 ## 주요 기술
