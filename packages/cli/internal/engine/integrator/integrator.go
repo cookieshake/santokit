@@ -47,16 +47,16 @@ func New() *Integrator {
 // BundleLogic creates a deployable bundle from a logic config
 func (i *Integrator) BundleLogic(config *parser.LogicConfig) (*Bundle, error) {
 	var content []byte
-	
+
 	if config.SQL != "" {
 		content = []byte(config.SQL)
 	} else if config.JS != "" {
 		// TODO: Bundle JS with esbuild (no external dependencies)
 		content = []byte(config.JS)
 	}
-	
+
 	hash := sha256.Sum256(content)
-	
+
 	return &Bundle{
 		Type:      BundleTypeLogic,
 		Namespace: config.Namespace,
@@ -71,7 +71,7 @@ func (i *Integrator) BundleLogic(config *parser.LogicConfig) (*Bundle, error) {
 func (i *Integrator) BundleSchema(config *parser.SchemaConfig) (*Bundle, error) {
 	content := []byte(config.Raw)
 	hash := sha256.Sum256(content)
-	
+
 	return &Bundle{
 		Type:      BundleTypeSchema,
 		Namespace: "base",

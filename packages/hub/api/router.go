@@ -3,9 +3,9 @@ package api
 import (
 	"net/http"
 
+	"github.com/cookieshake/santoki/packages/hub/internal/config"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/cookieshake/santoki/packages/hub/internal/config"
 )
 
 // NewRouter creates the main API router

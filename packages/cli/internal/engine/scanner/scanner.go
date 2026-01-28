@@ -26,8 +26,8 @@ type ScannedFile struct {
 
 // Scanner watches and scans project directories
 type Scanner struct {
-	rootDir string
-	baseDir string
+	rootDir  string
+	baseDir  string
 	logicDir string
 }
 
@@ -52,7 +52,7 @@ func (s *Scanner) ScanLogic() ([]ScannedFile, error) {
 
 func (s *Scanner) scanDir(dir string) ([]ScannedFile, error) {
 	var files []ScannedFile
-	
+
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -60,10 +60,10 @@ func (s *Scanner) scanDir(dir string) ([]ScannedFile, error) {
 		if info.IsDir() {
 			return nil
 		}
-		
+
 		ext := filepath.Ext(path)
 		var fileType FileType
-		
+
 		switch ext {
 		case ".hcl":
 			fileType = FileTypeHCL
@@ -76,18 +76,18 @@ func (s *Scanner) scanDir(dir string) ([]ScannedFile, error) {
 		default:
 			return nil // Skip unknown file types
 		}
-		
+
 		filename := filepath.Base(path)
 		isPublic := filename[0] != '_'
-		
+
 		files = append(files, ScannedFile{
 			Path:     path,
 			Type:     fileType,
 			IsPublic: isPublic,
 		})
-		
+
 		return nil
 	})
-	
+
 	return files, err
 }

@@ -10,11 +10,11 @@ import (
 // LogicConfig represents the parsed configuration from a logic file
 type LogicConfig struct {
 	// Metadata from YAML frontmatter
-	Target  string            `yaml:"target"`  // DB alias (e.g., "main", "logs")
-	Params  map[string]Param  `yaml:"params"`  // Input parameters
-	Access  string            `yaml:"access"`  // "public", "authenticated", "admin"
-	Cache   string            `yaml:"cache"`   // Cache duration (e.g., "5m", "1h")
-	
+	Target string           `yaml:"target"` // DB alias (e.g., "main", "logs")
+	Params map[string]Param `yaml:"params"` // Input parameters
+	Access string           `yaml:"access"` // "public", "authenticated", "admin"
+	Cache  string           `yaml:"cache"`  // Cache duration (e.g., "5m", "1h")
+
 	// Parsed content
 	Namespace string // Derived from directory structure
 	Name      string // Derived from filename
@@ -31,9 +31,9 @@ type Param struct {
 
 // SchemaConfig represents a parsed HCL schema file
 type SchemaConfig struct {
-	Alias   string   // DB alias derived from filename
-	Tables  []Table  // Parsed table definitions
-	Raw     string   // Raw HCL content for Atlas
+	Alias  string  // DB alias derived from filename
+	Tables []Table // Parsed table definitions
+	Raw    string  // Raw HCL content for Atlas
 }
 
 // Table represents a database table definition
@@ -61,7 +61,7 @@ func New() *Parser {
 // ParseLogicFile parses a logic file (SQL or JS with YAML frontmatter)
 func (p *Parser) ParseLogicFile(content string, filename string) (*LogicConfig, error) {
 	config := &LogicConfig{}
-	
+
 	// Check for YAML frontmatter (starts with ---)
 	if strings.HasPrefix(content, "---") {
 		parts := strings.SplitN(content, "---", 3)
@@ -70,14 +70,14 @@ func (p *Parser) ParseLogicFile(content string, filename string) (*LogicConfig, 
 			content = strings.TrimSpace(parts[2])
 		}
 	}
-	
+
 	// Determine content type from filename
 	if strings.HasSuffix(filename, ".sql") {
 		config.SQL = content
 	} else if strings.HasSuffix(filename, ".js") {
 		config.JS = content
 	}
-	
+
 	return config, nil
 }
 
@@ -85,14 +85,14 @@ func (p *Parser) ParseLogicFile(content string, filename string) (*LogicConfig, 
 func (p *Parser) ParseSchemaFile(content string, filename string) (*SchemaConfig, error) {
 	// Derive alias from filename (e.g., "main.hcl" -> "main")
 	alias := strings.TrimSuffix(filename, ".hcl")
-	
+
 	config := &SchemaConfig{
 		Alias: alias,
 		Raw:   content,
 	}
-	
+
 	// TODO: Parse HCL content using hashicorp/hcl
 	fmt.Printf("Parsing schema: %s\n", alias)
-	
+
 	return config, nil
 }

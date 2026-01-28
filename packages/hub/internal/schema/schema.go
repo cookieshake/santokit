@@ -37,15 +37,15 @@ func NewService(atlasURL string) *Service {
 // Plan generates a migration plan from HCL schema files
 func (s *Service) Plan(ctx context.Context, projectID string, schemas map[string]string) (*PlanResult, error) {
 	// schemas: map of alias -> HCL content (e.g., "main" -> "table users {...}")
-	
+
 	// TODO: Implement Atlas integration
 	// 1. Connect to Atlas API
 	// 2. Submit current schema state
 	// 3. Submit desired schema (HCL files)
 	// 4. Get migration plan
-	
+
 	fmt.Printf("Planning schema changes for project: %s\n", projectID)
-	
+
 	return &PlanResult{
 		HasChanges: false,
 		Summary:    "No changes detected",
@@ -58,9 +58,9 @@ func (s *Service) Apply(ctx context.Context, projectID string, migrations []Migr
 	// 1. Connect to project database (via IP-whitelisted runner)
 	// 2. Execute migrations in order
 	// 3. Record migration history
-	
+
 	fmt.Printf("Applying %d migrations for project: %s\n", len(migrations), projectID)
-	
+
 	return nil
 }
 
@@ -70,7 +70,7 @@ func (s *Service) Validate(ctx context.Context, hcl string) error {
 	// 1. Parse HCL
 	// 2. Validate table definitions
 	// 3. Check for conflicts
-	
+
 	return nil
 }
 
@@ -79,6 +79,6 @@ func (s *Service) GetState(ctx context.Context, projectID, alias string) (string
 	// TODO: Implement schema state retrieval
 	// 1. Query database for current schema
 	// 2. Convert to HCL format
-	
+
 	return "", nil
 }

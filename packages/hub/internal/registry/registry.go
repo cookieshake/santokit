@@ -31,13 +31,13 @@ type Bundle struct {
 type Repository interface {
 	// GetLatest retrieves the latest manifest for a project
 	GetLatest(ctx context.Context, projectID string) (*Manifest, error)
-	
+
 	// GetByVersion retrieves a specific manifest version
 	GetByVersion(ctx context.Context, projectID, version string) (*Manifest, error)
-	
+
 	// Save stores a new manifest
 	Save(ctx context.Context, manifest *Manifest) error
-	
+
 	// ListVersions lists all manifest versions for a project
 	ListVersions(ctx context.Context, projectID string) ([]string, error)
 }
@@ -61,11 +61,11 @@ func (s *Service) Push(ctx context.Context, projectID string, bundles []Bundle, 
 		CreatedAt: time.Now(),
 		CreatedBy: userID,
 	}
-	
+
 	if err := s.repo.Save(ctx, manifest); err != nil {
 		return nil, err
 	}
-	
+
 	return manifest, nil
 }
 

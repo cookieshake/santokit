@@ -19,7 +19,7 @@ var initCmd = &cobra.Command{
 		if len(args) > 0 {
 			projectName = args[0]
 		}
-		
+
 		fmt.Printf("Initializing Santoki project: %s\n", projectName)
 		// TODO: Implement project scaffolding
 		// - Create base/ directory with sample schema

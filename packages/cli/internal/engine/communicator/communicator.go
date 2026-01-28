@@ -15,8 +15,8 @@ import (
 
 // Config holds communicator configuration
 type Config struct {
-	HubURL   string
-	Token    string
+	HubURL    string
+	Token     string
 	ProjectID string
 }
 
@@ -40,10 +40,10 @@ func NewFromEnv() (*Communicator, error) {
 	if hubURL == "" {
 		hubURL = "https://hub.santoki.dev"
 	}
-	
+
 	token := os.Getenv("STK_TOKEN")
 	projectID := os.Getenv("STK_PROJECT_ID")
-	
+
 	return New(&Config{
 		HubURL:    hubURL,
 		Token:     token,
@@ -57,25 +57,25 @@ func (c *Communicator) PushManifest(manifest *integrator.Manifest) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal manifest: %w", err)
 	}
-	
+
 	req, err := http.NewRequest("POST", c.config.HubURL+"/api/v1/manifest", bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	c.setHeaders(req)
-	
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to push manifest: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("hub returned error: %s", string(body))
 	}
-	
+
 	return nil
 }
 
@@ -85,20 +85,20 @@ func (c *Communicator) FetchManifest() (*integrator.Manifest, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	c.setHeaders(req)
-	
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch manifest: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	var manifest integrator.Manifest
 	if err := json.NewDecoder(resp.Body).Decode(&manifest); err != nil {
 		return nil, fmt.Errorf("failed to decode manifest: %w", err)
 	}
-	
+
 	return &manifest, nil
 }
 
@@ -108,25 +108,25 @@ func (c *Communicator) SetSecret(key, value string) error {
 		"key":   key,
 		"value": value,
 	})
-	
+
 	req, err := http.NewRequest("POST", c.config.HubURL+"/api/v1/secrets", bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	c.setHeaders(req)
-	
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to set secret: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("hub returned error: %s", string(body))
 	}
-	
+
 	return nil
 }
 
@@ -136,20 +136,20 @@ func (c *Communicator) ListSecrets() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	c.setHeaders(req)
-	
+
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list secrets: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	var keys []string
 	if err := json.NewDecoder(resp.Body).Decode(&keys); err != nil {
 		return nil, fmt.Errorf("failed to decode secrets: %w", err)
 	}
-	
+
 	return keys, nil
 }
 

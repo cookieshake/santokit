@@ -44,7 +44,7 @@ func NewService(repo Repository, encryptionKey string) (*Service, error) {
 	if len(key) != 32 {
 		return nil, ErrInvalidKey
 	}
-	
+
 	return &Service{
 		repo:          repo,
 		encryptionKey: key,
@@ -57,13 +57,13 @@ func (s *Service) Set(ctx context.Context, projectID, key, value string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	secret := &Secret{
 		Key:          key,
 		EncryptedVal: base64.StdEncoding.EncodeToString(encrypted),
 		ProjectID:    projectID,
 	}
-	
+
 	return s.repo.Set(ctx, secret)
 }
 
@@ -73,17 +73,17 @@ func (s *Service) Get(ctx context.Context, projectID, key string) (string, error
 	if err != nil {
 		return "", err
 	}
-	
+
 	encrypted, err := base64.StdEncoding.DecodeString(secret.EncryptedVal)
 	if err != nil {
 		return "", err
 	}
-	
+
 	decrypted, err := s.decrypt(encrypted)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return string(decrypted), nil
 }
 
@@ -103,23 +103,23 @@ func (s *Service) ReEncryptForEdge(ctx context.Context, projectID, key string, e
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Encrypt with edge key
 	block, err := aes.NewCipher(edgeKey)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, err
 	}
-	
+
 	return gcm.Seal(nonce, nonce, []byte(value), nil), nil
 }
 
@@ -129,17 +129,17 @@ func (s *Service) encrypt(plaintext []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return nil, err
 	}
-	
+
 	return gcm.Seal(nonce, nonce, plaintext, nil), nil
 }
 
@@ -149,18 +149,18 @@ func (s *Service) decrypt(ciphertext []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if len(ciphertext) < gcm.NonceSize() {
 		return nil, errors.New("ciphertext too short")
 	}
-	
+
 	nonce := ciphertext[:gcm.NonceSize()]
 	ciphertext = ciphertext[gcm.NonceSize():]
-	
+
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
