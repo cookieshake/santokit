@@ -3,11 +3,11 @@
 ## 역할
 "데이터 플레인(Data Plane)". 사용자 가까이에서 로직을 실행합니다.
 
-## 아키텍처: 하이브리드 (Go-WASM + Workers)
+## 아키텍처: TypeScript 런타임
 *   **플랫폼**: Cloudflare Workers (또는 호환되는 Edge 런타임).
-*   **핵심 로직**: **Go**로 작성되고 **WebAssembly (WASM)**로 컴파일됩니다.
-    *   이유: Hub와의 코드 일관성을 유지하고(필요한 경우), 복잡한 파싱/라우팅 메커니즘의 성능을 위해서입니다.
-*   **래퍼(Wrapper)**: Workers API를 WASM 코어와 연결하기 위한 얇은 JavaScript/TypeScript 계층입니다.
+*   **핵심 로직**: **TypeScript**로 작성되어 Cloudflare Workers에서 네이티브로 실행됩니다.
+    *   이유: Cloudflare Workers의 First-class 언어인 JavaScript/TypeScript 생태계를 100% 활용하고, 디버깅 용이성을 확보하기 위함입니다.
+*   **구조**: 경량화된 라우터와 실행 엔진이 순수 JavaScript/TypeScript로 구현되어 있습니다.
 
 ## 런타임 흐름
 
@@ -24,15 +24,15 @@
 5.  **실행**:
     *   라우터가 로직 함수를 찾습니다 (예: `users/get.sql`).
     *   **SQL 로직**: **연결 프록시** (예: Hyperdrive)를 사용하여 DB에 쿼리를 실행합니다.
-    *   **JS 로직**: 안전한 샌드박스 JS를 실행합니다.
+    *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다.
 6.  **응답**: JSON을 클라이언트에 반환합니다.
 
 ## 주요 기술
 *   **Edge KV**: "글로벌 공유 상태". 로직 코드와 설정을 저장합니다.
 *   **연결 풀링 (Hyperdrive)**: Edge에 필수적입니다. 데이터베이스의 웜(warm) TCP 연결을 유지하여 핸드셰이크 지연과 연결 고갈을 방지합니다.
-*   **WASM**: 복잡한 "Santoki 엔진"(YAML 파싱, 파라미터 검증)을 Go로 효율적으로 작성하고 JS 워커에서 실행할 수 있게 합니다.
+*   **TypeScript 엔진**: 복잡한 컴파일 과정 없이 순수 JS 런타임 위에서 동작하여 가볍고 빠릅니다.
 
 ## 로컬 런타임 (stk dev)
-*   이 정확한 동작을 모방하지만 로컬 Go http 서버로 실행됩니다.
+*   이 정확한 동작을 모방하지만 로컬 Node.js/Bun 서버로 실행됩니다.
 *   KV 대신 디스크의 `logic/`을 직접 읽습니다.
 *   Hyperdrive 대신 로컬 Docker DB를 사용합니다.
