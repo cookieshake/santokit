@@ -13,9 +13,9 @@ import (
 
 // EdgeBundle represents a bundle ready for Edge deployment
 type EdgeBundle struct {
-	Key       string    `json:"key"`       // KV key (e.g., "project:namespace:name")
-	Content   []byte    `json:"content"`   // Encrypted content
-	Hash      string    `json:"hash"`      // Content hash
+	Key       string    `json:"key"`     // KV key (e.g., "project:namespace:name")
+	Content   []byte    `json:"content"` // Encrypted content
+	Hash      string    `json:"hash"`    // Content hash
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 }
 
