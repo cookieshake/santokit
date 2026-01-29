@@ -31,9 +31,9 @@ const (
 
 // Manifest represents the complete project manifest
 type Manifest struct {
-	Version   string   `json:"version"`
-	ProjectID string   `json:"project_id"`
-	Bundles   []Bundle `json:"bundles"`
+	Version   string    `json:"version"`
+	ProjectID string    `json:"project_id"`
+	Bundles   []Bundle  `json:"bundles"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -68,15 +68,15 @@ func (i *Integrator) BundleLogic(config *parser.LogicConfig) (*Bundle, error) {
 		"access": config.Access,
 		"cache":  config.Cache,
 	}
-	
+
 	// Convert params map
 	if config.Params != nil {
 		params := make(map[string]interface{})
 		for k, v := range config.Params {
 			params[k] = map[string]interface{}{
-				"type": v.Type,
+				"type":     v.Type,
 				"required": v.Required,
-				"default": v.Default,
+				"default":  v.Default,
 			}
 		}
 		cfg["params"] = params
@@ -100,7 +100,7 @@ func (i *Integrator) BundleSchema(config *parser.SchemaConfig) (*Bundle, error) 
 
 	return &Bundle{
 		Type:      BundleTypeSchema,
-		Namespace: "base",
+		Namespace: "schema",
 		Name:      config.Alias,
 		Content:   content,
 		Hash:      hex.EncodeToString(hash[:]),

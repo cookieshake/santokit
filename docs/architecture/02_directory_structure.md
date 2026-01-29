@@ -14,7 +14,7 @@ Santokit는 엄격한 "Simple is Best" 철학을 따릅니다. 명확한 관심�
 
 ```text
 sample-santokit-project/
-├── base/                # [스키마] DB 스키마 정의 (Schema)
+├── schema/                # [스키마] DB 스키마 정의 (Schema)
 │   ├── main.hcl         # [DB 스키마] 별칭: 'main'
 │   ├── logs.hcl         # [DB 스키마] 별칭: 'logs'
 ├── config/              # [설정] 프로젝트 설정 (Config)
@@ -30,12 +30,12 @@ sample-santokit-project/
         └── create.sql   # [트윈 파일 모드] 순수 SQL
 ```
 
-## 1. `base/` 디렉토리 (스키마)
+## 1. `schema/` 디렉토리 (스키마)
 DB 스키마(IaC) 정의를 포함합니다. 이곳의 변경 사항은 영향력이 크며 `stk schema plan`을 통해 처리됩니다.
 
 *   **멀티 DB 전략 (파일을 별칭으로 사용)**:
     *   `filename.hcl`은 DB 별칭에 직접 매핑됩니다.
-    *   예: `santokit/base/analytics.hcl`은 로직 파일에서 `target: analytics`로 참조할 수 있는 DB 리소스를 생성합니다.
+    *   예: `santokit/schema/analytics.hcl`은 로직 파일에서 `target: analytics`로 참조할 수 있는 DB 리소스를 생성합니다.
 ## 2. `config/` 디렉토리 (프로젝트 설정)
 프로젝트 설정을 관리합니다. `stk config apply`로 Hub에 반영합니다.
 

@@ -10,10 +10,9 @@ import (
 
 type CLI struct {
 	Init    InitCmd    `cmd:"" help:"Initialize a new Santokit project."`
-	Dev     DevCmd     `cmd:"" help:"Start local development server."`
 	Profile ProfileCmd `cmd:"" help:"Manage Hub profiles."`
 	Project ProjectCmd `cmd:"" help:"Manage project settings."`
-	Schema  SchemaCmd  `cmd:"" help:"Manage database schema definitions." aliases:"base"`
+	Schema  SchemaCmd  `cmd:"" help:"Manage database schema definitions."`
 	Config  ConfigCmd  `cmd:"" help:"Manage project configuration."`
 	Logic   LogicCmd   `cmd:"" help:"Deploy and validate logic."`
 	Sync    SyncCmd    `cmd:"" help:"Download manifest and generate type definitions."`
@@ -39,13 +38,13 @@ func Execute() error {
 }
 
 var (
- 	styleSuccess = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
- 	styleWarn    = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
- 	styleError   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
- 	styleTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
- 	styleInfo    = lipgloss.NewStyle().Foreground(lipgloss.Color("248"))
- 	styleHeader  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
- 	styleCell    = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	styleSuccess = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	styleWarn    = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+	styleError   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	styleTitle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	styleInfo    = lipgloss.NewStyle().Foreground(lipgloss.Color("248"))
+	styleHeader  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
+	styleCell    = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 )
 
 func success(msg string) {

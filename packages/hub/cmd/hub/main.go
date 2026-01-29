@@ -30,14 +30,15 @@ func main() {
 	vaultRepo := memory.NewVaultRepository()
 
 	// Initialize services
+	// Initialize services
 	regService := registry.NewService(regRepo)
-	schemaService := schema.NewService(cfg.AtlasURL)
 	projectConfigService := projectconfig.NewService()
 	projectService := projects.NewService()
 	vaultService, err := vault.NewService(vaultRepo, cfg.EncryptionKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize vault service: %v", err)
 	}
+	schemaService := schema.NewService(cfg.AtlasURL, vaultService)
 
 	// Initialize API router
 	router := api.NewRouter(cfg, regService, schemaService, projectConfigService, projectService, vaultService)

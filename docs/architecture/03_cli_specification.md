@@ -16,15 +16,6 @@
 *   `stk.config.json`을 통해 프로젝트를 Hub에 연결합니다 (비밀 정보가 아닌 프로젝트 ID 저장).
 *   **환경 설정**: `tsconfig.json`과 `.stk/types.d.ts`를 생성하여 VS Code IntelliSense를 활성화합니다.
 
-### `stk dev` (로컬 브리지)
-*   **목표**: 설정 없는(Zero-config) 로컬 개발.
-*   **동작**:
-    1.  **로컬 DB**: 정의된 DB에 대해 Docker 컨테이너를 실행합니다 (또는 기존 컨테이너 사용).
-    2.  **로컬 런타임**: Edge 환경을 시뮬레이션하는 경량 Node.js/Bun 기반 로컬 서버를 시작합니다.
-    3.  **핫 리로드 (Hot Reload)**: `logic/`을 감시하고 로컬 런타임을 메모리 내에서 즉시 업데이트합니다.
-    4.  **프록시**: `@santokit/client`가 `localhost`를 가리키도록 합니다.
-    5.  **타입 동기화**: 프로젝트 변경 시 `.stk/types.d.ts`를 자동 갱신합니다.
-
 ### `stk profile`
 *   Hub 연결 정보를 프로파일로 관리합니다 (`~/.santokit/config.json`).
     *   `stk profile list`

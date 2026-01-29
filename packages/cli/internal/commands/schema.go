@@ -111,7 +111,7 @@ func (c *SchemaPlanCmd) Run() error {
 
 func loadSchemaFiles(rootDir string) (map[string]string, error) {
 	scan := scanner.New(rootDir)
-	files, err := scan.ScanBase()
+	files, err := scan.ScanSchema()
 	if err != nil {
 		return nil, err
 	}

@@ -26,23 +26,23 @@ type ScannedFile struct {
 
 // Scanner watches and scans project directories
 type Scanner struct {
-	rootDir  string
-	baseDir  string
-	logicDir string
+	rootDir   string
+	schemaDir string
+	logicDir  string
 }
 
 // New creates a new Scanner for the given project root
 func New(rootDir string) *Scanner {
 	return &Scanner{
-		rootDir:  rootDir,
-		baseDir:  filepath.Join(rootDir, "base"),
-		logicDir: filepath.Join(rootDir, "logic"),
+		rootDir:   rootDir,
+		schemaDir: filepath.Join(rootDir, "schema"),
+		logicDir:  filepath.Join(rootDir, "logic"),
 	}
 }
 
-// ScanBase scans the base/ directory for schema files
-func (s *Scanner) ScanBase() ([]ScannedFile, error) {
-	return s.scanDir(s.baseDir)
+// ScanSchema scans the schema/ directory for schema files
+func (s *Scanner) ScanSchema() ([]ScannedFile, error) {
+	return s.scanDir(s.schemaDir)
 }
 
 // ScanLogic scans the logic/ directory for business logic files
