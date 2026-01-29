@@ -4,8 +4,12 @@ package schema
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 )
 
 // Migration represents a database migration
@@ -27,12 +31,19 @@ type PlanResult struct {
 
 // Service provides schema management operations
 type Service struct {
-	atlasURL string
+	atlasURL    string
+	mu          sync.RWMutex
+	state       map[string]map[string]string // projectID -> alias -> hcl
+	lastPlanned map[string]map[string]string
 }
 
 // NewService creates a new schema service
 func NewService(atlasURL string) *Service {
-	return &Service{atlasURL: atlasURL}
+	return &Service{
+		atlasURL:    atlasURL,
+		state:       make(map[string]map[string]string),
+		lastPlanned: make(map[string]map[string]string),
+	}
 }
 
 // Plan generates a migration plan from HCL schema files
@@ -45,43 +56,74 @@ func (s *Service) Plan(ctx context.Context, projectID string, schemas map[string
 		return nil, fmt.Errorf("schemas required")
 	}
 
-	// TODO: Implement Atlas integration
-	// 1. Connect to Atlas API
-	// 2. Submit current schema state
-	// 3. Submit desired schema (HCL files)
-	// 4. Get migration plan
+	// Local mode: diff against in-memory state (Atlas integration not configured).
+	s.mu.RLock()
+	current := s.state[projectID]
+	s.mu.RUnlock()
 
-	fmt.Printf("Planning schema changes for project: %s\n", projectID)
+	changes := []Migration{}
+	for alias, desired := range schemas {
+		existing := ""
+		if current != nil {
+			existing = current[alias]
+		}
+		if normalizeHCL(existing) == normalizeHCL(desired) {
+			continue
+		}
+
+		changes = append(changes, Migration{
+			ID:          fmt.Sprintf("%s-%s", projectID, shortHash(desired)),
+			ProjectID:   projectID,
+			Version:     time.Now().Format("20060102150405"),
+			SQL:         "-- local mode: no SQL generated",
+			Description: fmt.Sprintf("schema update for %s", alias),
+			Applied:     false,
+		})
+	}
+
+	s.mu.Lock()
+	s.lastPlanned[projectID] = copySchemas(schemas)
+	s.mu.Unlock()
 
 	return &PlanResult{
-		HasChanges: false,
-		Summary:    "Local mode: no changes detected",
+		Migrations: changes,
+		HasChanges: len(changes) > 0,
+		Summary:    planSummary(len(changes)),
 	}, nil
 }
 
 // Apply executes pending migrations
 func (s *Service) Apply(ctx context.Context, projectID string, migrations []Migration) error {
-	// TODO: Implement Atlas migration execution
-	// 1. Connect to project database (via IP-whitelisted runner)
-	// 2. Execute migrations in order
-	// 3. Record migration history
-
+	// Local mode: apply the last planned schemas (no SQL execution).
 	if projectID == "" {
 		return fmt.Errorf("projectID required")
 	}
-	fmt.Printf("Applying %d migrations for project: %s\n", len(migrations), projectID)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	planned, ok := s.lastPlanned[projectID]
+	if !ok {
+		if len(migrations) == 0 {
+			return nil
+		}
+		return fmt.Errorf("no planned schemas to apply")
+	}
+
+	s.state[projectID] = copySchemas(planned)
+	delete(s.lastPlanned, projectID)
 
 	return nil
 }
 
 // Validate checks HCL schema syntax and semantics
 func (s *Service) Validate(ctx context.Context, hcl string) error {
-	// TODO: Implement HCL validation
-	// 1. Parse HCL
-	// 2. Validate table definitions
-	// 3. Check for conflicts
+	// Minimal validation in local mode.
 	if strings.TrimSpace(hcl) == "" {
 		return fmt.Errorf("schema content is empty")
+	}
+	if !hasBalancedBraces(hcl) {
+		return fmt.Errorf("schema braces are not balanced")
 	}
 
 	return nil
@@ -89,9 +131,67 @@ func (s *Service) Validate(ctx context.Context, hcl string) error {
 
 // GetState retrieves the current schema state for a project
 func (s *Service) GetState(ctx context.Context, projectID, alias string) (string, error) {
-	// TODO: Implement schema state retrieval
-	// 1. Query database for current schema
-	// 2. Convert to HCL format
+	if strings.TrimSpace(projectID) == "" {
+		return "", fmt.Errorf("projectID required")
+	}
+	if strings.TrimSpace(alias) == "" {
+		return "", fmt.Errorf("alias required")
+	}
+	_ = ctx
 
-	return "", nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	projectState, ok := s.state[projectID]
+	if !ok {
+		return "", fmt.Errorf("schema state not found")
+	}
+	hcl, ok := projectState[alias]
+	if !ok {
+		return "", fmt.Errorf("schema alias not found")
+	}
+	return hcl, nil
+}
+
+func copySchemas(src map[string]string) map[string]string {
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func normalizeHCL(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func shortHash(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:6])
+}
+
+func hasBalancedBraces(value string) bool {
+	count := 0
+	for _, r := range value {
+		switch r {
+		case '{':
+			count++
+		case '}':
+			count--
+			if count < 0 {
+				return false
+			}
+		}
+	}
+	return count == 0
+}
+
+func planSummary(changeCount int) string {
+	if changeCount == 0 {
+		return "Local mode: no changes detected"
+	}
+	if changeCount == 1 {
+		return "Local mode: 1 schema change detected"
+	}
+	return fmt.Sprintf("Local mode: %d schema changes detected", changeCount)
 }

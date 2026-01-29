@@ -2,14 +2,19 @@ package api
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/cookieshake/santokit/packages/hub/internal/config"
 	"github.com/cookieshake/santokit/packages/hub/internal/projectconfig"
+	"github.com/cookieshake/santokit/packages/hub/internal/projects"
 	"github.com/cookieshake/santokit/packages/hub/internal/registry"
 	"github.com/cookieshake/santokit/packages/hub/internal/schema"
 	"github.com/cookieshake/santokit/packages/hub/internal/vault"
@@ -19,21 +24,23 @@ import (
 
 // API holds the service dependencies
 type API struct {
-	config   *config.Config
-	project  *projectconfig.Service
-	registry *registry.Service
-	schema   *schema.Service
-	vault    *vault.Service
+	config        *config.Config
+	projectConfig *projectconfig.Service
+	projects      *projects.Service
+	registry      *registry.Service
+	schema        *schema.Service
+	vault         *vault.Service
 }
 
 // NewRouter creates the main API router
-func NewRouter(cfg *config.Config, reg *registry.Service, schemaSvc *schema.Service, proj *projectconfig.Service, vlt *vault.Service) http.Handler {
+func NewRouter(cfg *config.Config, reg *registry.Service, schemaSvc *schema.Service, projCfg *projectconfig.Service, projSvc *projects.Service, vlt *vault.Service) http.Handler {
 	api := &API{
-		config:   cfg,
-		project:  proj,
-		registry: reg,
-		schema:   schemaSvc,
-		vault:    vlt,
+		config:        cfg,
+		projectConfig: projCfg,
+		projects:      projSvc,
+		registry:      reg,
+		schema:        schemaSvc,
+		vault:         vlt,
 	}
 
 	r := chi.NewRouter()
@@ -99,11 +106,89 @@ func NewRouter(cfg *config.Config, reg *registry.Service, schemaSvc *schema.Serv
 }
 
 func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	var req struct {
+		UserID string `json:"user_id"`
+		Email  string `json:"email"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := strings.TrimSpace(req.UserID)
+	if userID == "" && strings.TrimSpace(req.Email) != "" {
+		userID = strings.TrimSpace(req.Email)
+	}
+	if userID == "" {
+		userID = "local"
+	}
+
+	token, exp, err := a.issueToken(userID, req.Email, "login", 24*time.Hour)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"user_id":    userID,
+		"email":      req.Email,
+		"token":      token,
+		"expires_at": exp,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (a *API) handleCreateToken(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	var req struct {
+		UserID    string `json:"user_id"`
+		Email     string `json:"email"`
+		ExpiresIn int64  `json:"expires_in"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := strings.TrimSpace(req.UserID)
+	if userID == "" {
+		if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
+			if id, ok := a.parseUserIDFromToken(authHeader[7:]); ok {
+				userID = id
+			}
+		}
+	}
+	if userID == "" && strings.TrimSpace(req.Email) != "" {
+		userID = strings.TrimSpace(req.Email)
+	}
+	if userID == "" {
+		http.Error(w, "user_id required", http.StatusBadRequest)
+		return
+	}
+
+	ttl := 30 * 24 * time.Hour
+	if req.ExpiresIn > 0 {
+		ttl = time.Duration(req.ExpiresIn) * time.Second
+	}
+
+	token, exp, err := a.issueToken(userID, req.Email, "pat", ttl)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"user_id":    userID,
+		"email":      req.Email,
+		"token":      token,
+		"expires_at": exp,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (a *API) handleGetManifest(w http.ResponseWriter, r *http.Request) {
@@ -189,7 +274,7 @@ func (a *API) handleSetSecret(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("project_id")
 	key := chi.URLParam(r, "key")
-	
+
 	if err := a.vault.Delete(r.Context(), projectID, key); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -303,7 +388,7 @@ func (a *API) handleConfigApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.project.Set(r.Context(), projectID, projectconfig.Config{
+	if err := a.projectConfig.Set(r.Context(), projectID, projectconfig.Config{
 		Databases: req.Configs.Databases,
 		Auth:      req.Configs.Auth,
 		Storage:   req.Configs.Storage,
@@ -325,7 +410,7 @@ func (a *API) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := a.project.Get(r.Context(), projectID)
+	cfg, err := a.projectConfig.Get(r.Context(), projectID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -336,15 +421,76 @@ func (a *API) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleListProjects(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	if a.projects == nil {
+		http.Error(w, "projects service not configured", http.StatusInternalServerError)
+		return
+	}
+
+	userID := userIDFromContext(r.Context())
+	teamID := strings.TrimSpace(r.URL.Query().Get("team_id"))
+	projectsList, err := a.projects.ListProjects(r.Context(), userID, teamID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(projectsList)
 }
 
 func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	if a.projects == nil {
+		http.Error(w, "projects service not configured", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		TeamID      string `json:"team_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := userIDFromContext(r.Context())
+	if userID == "" {
+		http.Error(w, "user_id required", http.StatusUnauthorized)
+		return
+	}
+
+	project, err := a.projects.CreateProject(r.Context(), userID, req.Name, req.Description, req.TeamID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(project)
 }
 
 func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
+	if a.projects == nil {
+		http.Error(w, "projects service not configured", http.StatusInternalServerError)
+		return
+	}
+
+	projectID := chi.URLParam(r, "id")
+	if strings.TrimSpace(projectID) == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+
+	project, err := a.projects.GetProject(r.Context(), projectID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(project)
 }
 
 func (a *API) authMiddleware() func(http.Handler) http.Handler {
@@ -354,7 +500,7 @@ func (a *API) authMiddleware() func(http.Handler) http.Handler {
 			if mode == "" || mode == "local" || os.Getenv("STK_DISABLE_AUTH") == "true" {
 				userID := "local"
 				if authHeader := r.Header.Get("Authorization"); strings.HasPrefix(authHeader, "Bearer ") {
-					if id, ok := parseUserIDFromToken(authHeader[7:]); ok {
+					if id, ok := a.parseUserIDFromToken(authHeader[7:]); ok {
 						userID = id
 					}
 				}
@@ -368,7 +514,7 @@ func (a *API) authMiddleware() func(http.Handler) http.Handler {
 				return
 			}
 
-			userID, ok := parseUserIDFromToken(authHeader[7:])
+			userID, ok := a.parseUserIDFromToken(authHeader[7:])
 			if !ok || userID == "" {
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
@@ -418,4 +564,100 @@ func parseUserIDFromToken(token string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func (a *API) parseUserIDFromToken(token string) (string, bool) {
+	userID, ok := parseUserIDFromToken(token)
+	if !ok || userID == "" {
+		return "", false
+	}
+
+	if !a.verifyToken(token) {
+		return "", false
+	}
+
+	return userID, true
+}
+
+func (a *API) issueToken(userID, email, tokenType string, ttl time.Duration) (string, time.Time, error) {
+	if strings.TrimSpace(userID) == "" {
+		return "", time.Time{}, fmt.Errorf("user_id required")
+	}
+
+	now := time.Now()
+	exp := now.Add(ttl)
+	header := map[string]string{
+		"alg": "HS256",
+		"typ": "JWT",
+	}
+	payload := map[string]interface{}{
+		"sub": userID,
+		"iat": now.Unix(),
+		"exp": exp.Unix(),
+		"typ": tokenType,
+	}
+	if strings.TrimSpace(email) != "" {
+		payload["email"] = email
+	}
+
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	payloadJSON, err := json.Marshal(payload)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
+	encodedHeader := base64.RawURLEncoding.EncodeToString(headerJSON)
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	signingInput := encodedHeader + "." + encodedPayload
+
+	signature := a.signToken(signingInput)
+	token := signingInput + "." + signature
+	return token, exp, nil
+}
+
+func (a *API) signToken(input string) string {
+	mac := hmac.New(sha256.New, []byte(a.config.JWTSecret))
+	mac.Write([]byte(input))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func (a *API) verifyToken(token string) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+
+	signingInput := parts[0] + "." + parts[1]
+	expected := a.signToken(signingInput)
+	if !hmac.Equal([]byte(expected), []byte(parts[2])) {
+		return false
+	}
+
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return false
+	}
+
+	if expRaw, ok := payload["exp"]; ok {
+		switch exp := expRaw.(type) {
+		case float64:
+			if time.Now().Unix() > int64(exp) {
+				return false
+			}
+		case int64:
+			if time.Now().Unix() > exp {
+				return false
+			}
+		}
+	}
+
+	return true
 }

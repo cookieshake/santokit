@@ -12,6 +12,7 @@ import (
 	"github.com/cookieshake/santokit/packages/hub/api"
 	"github.com/cookieshake/santokit/packages/hub/internal/config"
 	"github.com/cookieshake/santokit/packages/hub/internal/projectconfig"
+	"github.com/cookieshake/santokit/packages/hub/internal/projects"
 	"github.com/cookieshake/santokit/packages/hub/internal/registry"
 	"github.com/cookieshake/santokit/packages/hub/internal/schema"
 	"github.com/cookieshake/santokit/packages/hub/internal/store/memory"
@@ -31,14 +32,15 @@ func main() {
 	// Initialize services
 	regService := registry.NewService(regRepo)
 	schemaService := schema.NewService(cfg.AtlasURL)
-	projectService := projectconfig.NewService()
+	projectConfigService := projectconfig.NewService()
+	projectService := projects.NewService()
 	vaultService, err := vault.NewService(vaultRepo, cfg.EncryptionKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize vault service: %v", err)
 	}
 
 	// Initialize API router
-	router := api.NewRouter(cfg, regService, schemaService, projectService, vaultService)
+	router := api.NewRouter(cfg, regService, schemaService, projectConfigService, projectService, vaultService)
 
 	server := &http.Server{
 		Addr:         cfg.ServerAddr,
