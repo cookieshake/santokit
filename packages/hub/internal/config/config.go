@@ -28,7 +28,7 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		ServerAddr:    getEnv("STK_HUB_ADDR", ":8080"),
-		DatabaseURL:   getEnv("STK_DATABASE_URL", "postgres://localhost:5432/santoki?sslmode=disable"),
+		DatabaseURL:   getEnv("STK_DATABASE_URL", "postgres://localhost:5432/santokit?sslmode=disable"),
 		JWTSecret:     getEnv("STK_JWT_SECRET", "change-me-in-production"),
 		EncryptionKey: getEnv("STK_ENCRYPTION_KEY", "32-byte-key-for-aes-256-gcm!!!!!"), // Must be 32 bytes
 		AtlasURL:      getEnv("STK_ATLAS_URL", ""),

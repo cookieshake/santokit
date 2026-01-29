@@ -1,4 +1,4 @@
-import { SantokiServer } from './packages/bridge/src/index.ts';
+import { SantokitServer } from './packages/bridge/src/index.ts';
 import * as http from 'http';
 import { createClient } from 'redis';
 import pg from 'pg';
@@ -50,7 +50,7 @@ class PostgresPool {
 
 async function start() {
   const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
-  const dbUrl = process.env.DATABASE_URL || 'postgres://postgres:password@postgres:5432/santoki';
+  const dbUrl = process.env.DATABASE_URL || 'postgres://postgres:password@postgres:5432/santokit';
 
   console.log(`Connecting to Redis: ${redisUrl}`);
   const kvStore = new RedisKVStore(redisUrl);
@@ -60,7 +60,7 @@ async function start() {
   const dbPool = new PostgresPool(dbUrl);
 
   // 3. Start Server
-  const server = new SantokiServer({
+  const server = new SantokitServer({
     projectId: 'default',
     kv: kvStore,
     db: { main: dbPool },
@@ -91,7 +91,7 @@ async function start() {
       res.statusCode = 500; res.end('Internal Error'); 
     }
   }).listen(port, '0.0.0.0', () => {
-    console.log('Santoki Test Server running on 3000');
+    console.log('Santokit Test Server running on 3000');
   });
 }
 

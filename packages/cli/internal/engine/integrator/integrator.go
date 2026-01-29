@@ -7,7 +7,7 @@ import (
 	"encoding/hex"
 	"time"
 
-	"github.com/cookieshake/santoki/packages/cli/internal/engine/parser"
+	"github.com/cookieshake/santokit/packages/cli/internal/engine/parser"
 )
 
 // Bundle represents a deployable bundle of logic or schema

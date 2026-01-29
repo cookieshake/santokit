@@ -5,7 +5,7 @@ import * as path from "path";
 import { execSync } from "child_process";
 import * as fs from "fs";
 
-describe("Santoki Integration Flow", () => {
+describe("Santokit Integration Flow", () => {
   let network: StartedNetwork;
   let redisContainer: StartedGenericContainer;
   let postgresContainer: StartedGenericContainer;
@@ -37,7 +37,7 @@ describe("Santoki Integration Flow", () => {
       .withEnvironment({
         POSTGRES_USER: "postgres",
         POSTGRES_PASSWORD: "password",
-        POSTGRES_DB: "santoki"
+        POSTGRES_DB: "santokit"
       })
       .withExposedPorts(5432)
       // Wait for the SECOND ready message or just wait a bit safe margin
@@ -50,9 +50,9 @@ describe("Santoki Integration Flow", () => {
     while (retries > 0) {
         try {
             // Use psql to actually check DB existence
-            const check = await postgresContainer.exec(["psql", "-U", "postgres", "-d", "santoki", "-c", "SELECT 1"]);
+            const check = await postgresContainer.exec(["psql", "-U", "postgres", "-d", "santokit", "-c", "SELECT 1"]);
             if (check.exitCode === 0) {
-                console.log("DB santoki is ready.");
+                console.log("DB santokit is ready.");
                 break;
             } else {
                 console.log("psql check failed:", check.output);
@@ -60,21 +60,21 @@ describe("Santoki Integration Flow", () => {
         } catch (e) {
             console.log("psql check error:", e);
         }
-        console.log(`Waiting for DB santoki... (${retries})`);
+        console.log(`Waiting for DB santokit... (${retries})`);
         await new Promise(r => setTimeout(r, 1000));
         retries--;
     }
 
     // Initialize DB Schema
     const createTable = await postgresContainer.exec([
-        "psql", "-U", "postgres", "-d", "santoki", "-c", 
+        "psql", "-U", "postgres", "-d", "santokit", "-c", 
         "CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT, name TEXT, roles TEXT[], created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP, avatar_url TEXT, metadata JSONB);"
     ]);
     console.log("Create Table:", createTable.output);
     if (createTable.exitCode !== 0) throw new Error("Failed to create table: " + createTable.output);
 
     const insertUser = await postgresContainer.exec([
-        "psql", "-U", "postgres", "-d", "santoki", "-c", 
+        "psql", "-U", "postgres", "-d", "santokit", "-c", 
         "INSERT INTO users (id, email, name, roles) VALUES ('user_123', 'test@example.com', 'Test User', '{user}');"
     ]);
     console.log("Insert User:", insertUser.output);
@@ -83,7 +83,7 @@ describe("Santoki Integration Flow", () => {
     // 3. Start Hub
     console.log("Building Hub image...");
     const hubImage = await GenericContainer.fromDockerfile(projectRoot, "packages/integration-tests/test/integration/Dockerfile.hub")
-      .build("santoki-hub-test", { deleteOnExit: true });
+      .build("santokit-hub-test", { deleteOnExit: true });
 
     hubContainer = await hubImage
       .withNetwork(network)
@@ -103,17 +103,17 @@ describe("Santoki Integration Flow", () => {
     // 4. Start Server
     console.log("Building Server image...");
     const serverImage = await GenericContainer.fromDockerfile(projectRoot, "packages/integration-tests/test/integration/Dockerfile.server")
-      .build("santoki-server-test", { deleteOnExit: true });
+      .build("santokit-server-test", { deleteOnExit: true });
 
     serverContainer = await serverImage
       .withNetwork(network)
       .withNetworkAliases("server")
       .withEnvironment({
           REDIS_URL: "redis://redis:6379",
-          DATABASE_URL: "postgres://postgres:password@postgres:5432/santoki"
+          DATABASE_URL: "postgres://postgres:password@postgres:5432/santokit"
       })
       .withExposedPorts(3000)
-      .withWaitStrategy(Wait.forLogMessage(/Santoki Test Server running/))
+      .withWaitStrategy(Wait.forLogMessage(/Santokit Test Server running/))
       .start();
     
     (await serverContainer.logs()).pipe(process.stdout);
@@ -130,8 +130,8 @@ describe("Santoki Integration Flow", () => {
     if (network) await network.stop();
   });
 
-  it("should push logic via CLI and execute via Client SDK", async () => {
-    console.log("Running CLI Push...");
+  it("should apply logic via CLI and execute via Client SDK", async () => {
+      console.log("Running CLI Apply...");
     
     // Setup temporary logic dir for CLI
     const tempLogicDir = path.join(projectRoot, "logic");
@@ -146,20 +146,20 @@ describe("Santoki Integration Flow", () => {
         STK_TOKEN: "test-token"
       };
 
-      // Run go run packages/cli/cmd/stk/main.go logic push from project root
+      // Run go run packages/cli/cmd/stk/main.go logic apply from project root
       // We must ensure go.work exists for go run to work from root
       if (!fs.existsSync(path.join(projectRoot, "go.work"))) {
           execSync("go work init && go work use packages/cli packages/hub", { cwd: projectRoot });
       }
 
-      console.log("Pushing logic...");
-      execSync("go run packages/cli/cmd/stk/main.go logic push", { 
+      console.log("Applying logic...");
+      execSync("go run packages/cli/cmd/stk/main.go logic apply", { 
           cwd: projectRoot,
           env: cliEnv,
           stdio: "inherit"
       });
 
-      console.log("Logic pushed. Testing API...");
+      console.log("Logic applied. Testing API...");
 
       // Now use the client SDK to call the server
       const stk = createClient({ baseUrl: apiUrl });
@@ -173,6 +173,16 @@ describe("Santoki Integration Flow", () => {
       expect(result).toBeDefined();
       expect(result[0].id).toBe("user_123");
       expect(result[0].name).toBe("Test User");
+
+      const updated: any = await stk.request(
+        'users/update',
+        { id: 'user_123', name: 'Updated User' },
+        { headers: { 'Authorization': `Bearer ${dummyToken}` } }
+      );
+      console.log("API Update Result:", updated);
+      expect(updated).toBeDefined();
+      expect(updated.updated).toBe(true);
+      expect(updated.user.name).toBe("Updated User");
 
     } finally {
       if (fs.existsSync(tempLogicDir)) fs.rmSync(tempLogicDir, { recursive: true });

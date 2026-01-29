@@ -86,6 +86,45 @@ func (p *Parser) ParseLogicFile(content string, filename string) (*LogicConfig, 
 	return config, nil
 }
 
+// ValidateLogicConfig performs minimal validation of a parsed logic config.
+func ValidateLogicConfig(config *LogicConfig) error {
+	if strings.TrimSpace(config.Namespace) == "" || config.Namespace == "." {
+		return fmt.Errorf("namespace is required")
+	}
+	if strings.TrimSpace(config.Name) == "" {
+		return fmt.Errorf("name is required")
+	}
+
+	hasSQL := strings.TrimSpace(config.SQL) != ""
+	hasJS := strings.TrimSpace(config.JS) != ""
+	if !hasSQL && !hasJS {
+		return fmt.Errorf("logic must contain SQL or JS content")
+	}
+	if hasSQL && hasJS {
+		return fmt.Errorf("logic must not contain both SQL and JS content")
+	}
+
+	if config.Access != "" && strings.TrimSpace(config.Access) == "" {
+		return fmt.Errorf("access value is invalid")
+	}
+
+	if config.Params != nil {
+		allowed := map[string]bool{
+			"string": true,
+			"int":    true,
+			"bool":   true,
+			"json":   true,
+		}
+		for name, param := range config.Params {
+			if !allowed[param.Type] {
+				return fmt.Errorf("param %q has invalid type %q", name, param.Type)
+			}
+		}
+	}
+
+	return nil
+}
+
 // ParseSchemaFile parses an HCL schema file
 func (p *Parser) ParseSchemaFile(content string, filename string) (*SchemaConfig, error) {
 	// Derive alias from filename (e.g., "main.hcl" -> "main")

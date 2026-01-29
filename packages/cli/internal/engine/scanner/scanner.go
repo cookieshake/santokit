@@ -40,7 +40,7 @@ func New(rootDir string) *Scanner {
 	}
 }
 
-// ScanBase scans the base/ directory for infrastructure files
+// ScanBase scans the base/ directory for schema files
 func (s *Scanner) ScanBase() ([]ScannedFile, error) {
 	return s.scanDir(s.baseDir)
 }

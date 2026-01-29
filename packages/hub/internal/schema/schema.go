@@ -5,6 +5,7 @@ package schema
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // Migration represents a database migration
@@ -37,6 +38,12 @@ func NewService(atlasURL string) *Service {
 // Plan generates a migration plan from HCL schema files
 func (s *Service) Plan(ctx context.Context, projectID string, schemas map[string]string) (*PlanResult, error) {
 	// schemas: map of alias -> HCL content (e.g., "main" -> "table users {...}")
+	if projectID == "" {
+		return nil, fmt.Errorf("projectID required")
+	}
+	if len(schemas) == 0 {
+		return nil, fmt.Errorf("schemas required")
+	}
 
 	// TODO: Implement Atlas integration
 	// 1. Connect to Atlas API
@@ -48,7 +55,7 @@ func (s *Service) Plan(ctx context.Context, projectID string, schemas map[string
 
 	return &PlanResult{
 		HasChanges: false,
-		Summary:    "No changes detected",
+		Summary:    "Local mode: no changes detected",
 	}, nil
 }
 
@@ -59,6 +66,9 @@ func (s *Service) Apply(ctx context.Context, projectID string, migrations []Migr
 	// 2. Execute migrations in order
 	// 3. Record migration history
 
+	if projectID == "" {
+		return fmt.Errorf("projectID required")
+	}
 	fmt.Printf("Applying %d migrations for project: %s\n", len(migrations), projectID)
 
 	return nil
@@ -70,6 +80,9 @@ func (s *Service) Validate(ctx context.Context, hcl string) error {
 	// 1. Parse HCL
 	// 2. Validate table definitions
 	// 3. Check for conflicts
+	if strings.TrimSpace(hcl) == "" {
+		return fmt.Errorf("schema content is empty")
+	}
 
 	return nil
 }

@@ -2,62 +2,97 @@ package commands
 
 import (
 	"fmt"
+	"os"
 
-	"github.com/spf13/cobra"
+	"github.com/cookieshake/santokit/packages/cli/internal/engine/communicator"
 )
 
-var secretCmd = &cobra.Command{
-	Use:   "secret",
-	Short: "Manage secrets in Hub Vault",
-	Long:  `Commands for managing encrypted secrets stored in Hub Vault.`,
+type SecretCmd struct {
+	Set    SecretSetCmd    `cmd:"" help:"Store a secret in Hub Vault."`
+	List   SecretListCmd   `cmd:"" help:"List all secret keys."`
+	Delete SecretDeleteCmd `cmd:"" help:"Delete a secret from Hub Vault."`
 }
 
-var secretSetCmd = &cobra.Command{
-	Use:   "set <key> <value>",
-	Short: "Store a secret in Hub Vault",
-	Long: `Store a secret securely in Santoki Hub Vault.
-
-Secrets are:
-  - Transmitted over TLS
-  - Encrypted with AES-256-GCM in Hub
-  - Re-encrypted with Project Master Key for Edge
-  - Never stored in plain text
-
-Use ${KEY_NAME} syntax in config files to reference secrets.`,
-	Args: cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
-		key := args[0]
-		value := args[1]
-		fmt.Printf("Setting secret: %s\n", key)
-		_ = value // Use value
-		// TODO: Implement secret set
-		// - Validate key format
-		// - Send to Hub Vault via Communicator
-	},
+type SecretSetCmd struct {
+	Key   string `arg:"" name:"key"`
+	Value string `arg:"" name:"value"`
 }
 
-var secretListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List all secret keys (values are hidden)",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Listing secrets...")
-		// TODO: Implement secret list
-	},
+func (c *SecretSetCmd) Run() error {
+	title("Secret Set")
+	info(fmt.Sprintf("key: %s", c.Key))
+	comm, err := communicator.NewFromEnv()
+	if err != nil {
+		return errorf("❌ Failed to initialize communicator: %v", err)
+	}
+	projectID := comm.Config().ProjectID
+	if projectID == "" {
+		projectID = os.Getenv("STK_PROJECT_ID")
+	}
+	if projectID == "" {
+		return errorf("❌ STK_PROJECT_ID is required")
+	}
+
+	if err := comm.SetSecret(projectID, c.Key, c.Value); err != nil {
+		return errorf("❌ Failed to set secret: %v", err)
+	}
+	success("✅ Secret stored.")
+	return nil
 }
 
-var secretDeleteCmd = &cobra.Command{
-	Use:   "delete <key>",
-	Short: "Delete a secret from Hub Vault",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		key := args[0]
-		fmt.Printf("Deleting secret: %s\n", key)
-		// TODO: Implement secret delete
-	},
+type SecretListCmd struct{}
+
+func (c *SecretListCmd) Run() error {
+	title("Secret List")
+	comm, err := communicator.NewFromEnv()
+	if err != nil {
+		return errorf("❌ Failed to initialize communicator: %v", err)
+	}
+	projectID := comm.Config().ProjectID
+	if projectID == "" {
+		projectID = os.Getenv("STK_PROJECT_ID")
+	}
+	if projectID == "" {
+		return errorf("❌ STK_PROJECT_ID is required")
+	}
+
+	keys, err := comm.ListSecrets(projectID)
+	if err != nil {
+		return errorf("❌ Failed to list secrets: %v", err)
+	}
+	if len(keys) == 0 {
+		fmt.Println("No secrets found.")
+		return nil
+	}
+	fmt.Println(styleHeader.Render(tableRow("KEY", "", "")))
+	for _, key := range keys {
+		fmt.Println(styleCell.Render(tableRow(key, "", "")))
+	}
+	return nil
 }
 
-func init() {
-	secretCmd.AddCommand(secretSetCmd)
-	secretCmd.AddCommand(secretListCmd)
-	secretCmd.AddCommand(secretDeleteCmd)
+type SecretDeleteCmd struct {
+	Key string `arg:"" name:"key"`
+}
+
+func (c *SecretDeleteCmd) Run() error {
+	title("Secret Delete")
+	info(fmt.Sprintf("key: %s", c.Key))
+	comm, err := communicator.NewFromEnv()
+	if err != nil {
+		return errorf("❌ Failed to initialize communicator: %v", err)
+	}
+	projectID := comm.Config().ProjectID
+	if projectID == "" {
+		projectID = os.Getenv("STK_PROJECT_ID")
+	}
+	if projectID == "" {
+		return errorf("❌ STK_PROJECT_ID is required")
+	}
+
+	if err := comm.DeleteSecret(projectID, c.Key); err != nil {
+		return errorf("❌ Failed to delete secret: %v", err)
+	}
+	success("✅ Secret deleted.")
+	return nil
 }

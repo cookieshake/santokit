@@ -11,8 +11,8 @@
   "license": "ISC",
   "type": "commonjs",
   "devDependencies": {
-    "@santoki/client": "workspace:*",
-    "@santoki/bridge": "workspace:*",
+    "@santokit/client": "workspace:*",
+    "@santokit/bridge": "workspace:*",
     "testcontainers": "^10.7.1",
     "tsx": "^4.7.1",
     "vitest": "^1.3.1"

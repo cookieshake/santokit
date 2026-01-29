@@ -1,5 +1,6 @@
 import { createContext, type Context } from '../context/index.js';
 import type { Bundle, LogicConfig, RequestInfo, UserInfo } from './types.js';
+import { executeBundle } from './logic.js';
 
 /**
  * KVStore interface for Edge KV operations
@@ -27,9 +28,9 @@ export interface ServerConfig {
 }
 
 /**
- * SantokiServer is the main Edge runtime server
+ * SantokitServer is the main Edge runtime server
  */
-export class SantokiServer {
+export class SantokitServer {
   private config: ServerConfig;
   private bundleCache: Map<string, Bundle> = new Map();
 
@@ -236,47 +237,7 @@ export class SantokiServer {
     params: Record<string, unknown>,
     context: Context
   ): Promise<unknown> {
-    if (bundle.type === 'sql') {
-      // Execute SQL query
-      const target = bundle.config.target || 'main';
-      const db = this.config.db[target];
-      if (!db) {
-        throw new Error(`Database "${target}" not configured`);
-      }
-      
-      // Replace parameter placeholders in SQL
-      const { sql, values } = this.prepareSql(bundle.content, params);
-      return await db.query(sql, values);
-    }
-
-    if (bundle.type === 'js') {
-      // Execute JS handler
-      // Note: In production, this would use isolated VM execution
-      const handler = bundle.config.handler;
-      if (!handler) {
-        throw new Error('JS handler not found');
-      }
-      return await handler(params, context);
-    }
-
-    throw new Error(`Unknown bundle type: ${bundle.type}`);
-  }
-
-  private prepareSql(
-    template: string,
-    params: Record<string, unknown>
-  ): { sql: string; values: unknown[] } {
-    const values: unknown[] = [];
-    let paramIndex = 0;
-    
-    // Replace :param_name with $1, $2, etc.
-    const sql = template.replace(/:(\w+)/g, (_, name) => {
-      paramIndex++;
-      values.push(params[name]);
-      return `$${paramIndex}`;
-    });
-    
-    return { sql, values };
+    return await executeBundle(bundle, params, { db: this.config.db, context });
   }
 
   private getCacheHeaders(config: LogicConfig): Record<string, string> {

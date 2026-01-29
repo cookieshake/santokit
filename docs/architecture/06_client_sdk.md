@@ -5,21 +5,21 @@
 
 ## 철학
 **"최소한의 코드 생성 (Minimal Code Generation)."**
-사용자의 `src/` 폴더를 복잡한 API 모델 파일로 어지럽히지 않고, 단 하나의 선언 파일 (`santoki-env.d.ts`)만으로 타입을 관리합니다.
+사용자의 `src/` 폴더를 복잡한 API 모델 파일로 어지럽히지 않고, 단 하나의 선언 파일 (`santokit-env.d.ts`)만으로 타입을 관리합니다.
 
 ## 구성 요소
 
-### 1. 프록시 (`@santoki/client`)
+### 1. 프록시 (`@santokit/client`)
 런타임에 클라이언트는 경량 프록시 래퍼입니다.
 
 ```javascript
-import { stk } from '@santoki/client';
+import { stk } from '@santokit/client';
 
 // 사용자가 호출하는 코드:
 const user = await stk.logic.users.get({ id: 123 });
 
 // 프록시가 변환하는 내용:
-// POST https://device-edge.santoki.run/call
+// POST https://device-edge.santokit.run/call
 // Body: { path: "users/get", params: { id: 123 } }
 ```
 
@@ -27,7 +27,7 @@ const user = await stk.logic.users.get({ id: 123 });
 *   **트리거**: `stk sync`.
 *   **메커니즘**:
     1.  Hub에서 `manifest.json`을 다운로드합니다 (모든 로직에 대한 입력, 출력, 설명 포함).
-    2.  `santoki-env.d.ts` 파일을 생성하여 `@santoki/client` 모듈의 타입을 확장(Augment)합니다.
+    2.  `santokit-env.d.ts` 파일을 생성하여 `@santokit/client` 모듈의 타입을 확장(Augment)합니다.
     3.  생성 위치는 `stk.config.json`에서 설정 가능합니다 (기본값: 프로젝트 루트).
 *   **결과**: 표준 TypeScript 기능을 활용한 안전하고 강력한 IntelliSense.
 

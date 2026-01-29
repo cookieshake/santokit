@@ -1,11 +1,13 @@
 /**
- * Node.js / Docker Adapter for Santoki Server
+ * Node.js / Docker Adapter for Santokit Server
  * 
- * This adapter allows Santoki Server to run as a standalone Node.js server,
+ * This adapter allows Santokit Server to run as a standalone Node.js server,
  * suitable for Docker deployments or local development.
  */
 
-import { SantokiServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
+import { SantokitServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
+import { createClient } from 'redis';
+import pg from 'pg';
 
 /**
  * Node.js environment configuration
@@ -47,11 +49,19 @@ class InMemoryKVStore implements KVStore {
  */
 async function createKVStore(redisUrl?: string): Promise<KVStore> {
   if (redisUrl) {
-    // TODO: Implement Redis adapter
-    // const redis = createClient({ url: redisUrl });
-    // await redis.connect();
-    // return { get: redis.get, put: redis.set };
-    console.warn('Redis not implemented, using in-memory KV store');
+    const client = createClient({ url: redisUrl });
+    client.on('error', (err) => {
+      console.error('Redis client error:', err);
+    });
+    await client.connect();
+    return {
+      get: async (key: string) => {
+        return await client.get(key);
+      },
+      put: async (key: string, value: string) => {
+        await client.set(key, value);
+      },
+    };
   }
   
   return new InMemoryKVStore();
@@ -60,23 +70,26 @@ async function createKVStore(redisUrl?: string): Promise<KVStore> {
 /**
  * Create a PostgreSQL database pool
  */
-function createDbPool(_connectionString: string): DatabasePool {
-  // TODO: Implement with pg or postgres.js
-  // const pool = new Pool({ connectionString });
+function createDbPool(connectionString: string): DatabasePool {
+  const pool = new pg.Pool({ connectionString });
   return {
-    query: async (_sql: string, _params?: unknown[]) => {
-      // const result = await pool.query(sql, params);
-      // return result.rows;
-      throw new Error('Database pool not implemented');
+    query: async (sql: string, params?: unknown[]) => {
+      try {
+        const result = await pool.query(sql, params);
+        return result.rows;
+      } catch (error) {
+        console.error('Database query error:', error);
+        throw error;
+      }
     },
   };
 }
 
 /**
- * Create and start a Santoki Server for Node.js
+ * Create and start a Santokit Server for Node.js
  */
 export async function createNodeServer(env: NodeEnv): Promise<{
-  server: SantokiServer;
+  server: SantokitServer;
   start: () => Promise<void>;
 }> {
   const kv = await createKVStore(env.redisUrl);
@@ -90,7 +103,7 @@ export async function createNodeServer(env: NodeEnv): Promise<{
     encryptionKey: env.encryptionKey,
   };
 
-  const server = new SantokiServer(config);
+  const server = new SantokitServer(config);
   const port = env.port ?? 3000;
 
   return {
@@ -126,7 +139,7 @@ export async function createNodeServer(env: NodeEnv): Promise<{
       });
 
       httpServer.listen(port, () => {
-        console.log(`Santoki Server listening on http://localhost:${port}`);
+        console.log(`Santokit Server listening on http://localhost:${port}`);
       });
     },
   };
@@ -138,9 +151,9 @@ export async function createNodeServer(env: NodeEnv): Promise<{
 export async function main(): Promise<void> {
   const env: NodeEnv = {
     port: parseInt(process.env.PORT ?? '3000'),
-    databaseUrl: process.env.DATABASE_URL ?? 'postgres://localhost:5432/santoki',
-    projectId: process.env.SANTOKI_PROJECT_ID ?? 'default',
-    encryptionKey: process.env.SANTOKI_ENCRYPTION_KEY ?? '32-byte-key-for-aes-256-gcm!!!',
+    databaseUrl: process.env.DATABASE_URL ?? 'postgres://localhost:5432/santokit',
+    projectId: process.env.SANTOKIT_PROJECT_ID ?? 'default',
+    encryptionKey: process.env.SANTOKIT_ENCRYPTION_KEY ?? '32-byte-key-for-aes-256-gcm!!!',
     redisUrl: process.env.REDIS_URL,
   };
 

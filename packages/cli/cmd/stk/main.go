@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/cookieshake/santoki/packages/cli/internal/commands"
+	"github.com/cookieshake/santokit/packages/cli/internal/commands"
 )
 
 func main() {

@@ -1,4 +1,4 @@
-module github.com/cookieshake/santoki/packages/hub
+module github.com/cookieshake/santokit/packages/hub
 
 go 1.22
 

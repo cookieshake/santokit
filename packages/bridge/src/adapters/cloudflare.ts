@@ -1,27 +1,27 @@
 /**
- * Cloudflare Workers Adapter for Santoki Server
+ * Cloudflare Workers Adapter for Santokit Server
  * 
- * This adapter integrates Santoki Server with Cloudflare Workers runtime,
+ * This adapter integrates Santokit Server with Cloudflare Workers runtime,
  * using Cloudflare KV for bundle storage and Hyperdrive for database connections.
  */
 
-import { SantokiServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
+import { SantokitServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
 
 /**
  * Cloudflare environment bindings
  */
 export interface CloudflareEnv {
   /** Cloudflare KV namespace for bundles */
-  SANTOKI_KV: KVNamespace;
+  SANTOKIT_KV: KVNamespace;
   
   /** Hyperdrive binding for database */
-  SANTOKI_DB: Hyperdrive;
+  SANTOKIT_DB: Hyperdrive;
   
   /** Project ID */
-  SANTOKI_PROJECT_ID: string;
+  SANTOKIT_PROJECT_ID: string;
   
   /** Encryption key for secrets */
-  SANTOKI_ENCRYPTION_KEY: string;
+  SANTOKIT_ENCRYPTION_KEY: string;
 }
 
 /**
@@ -69,19 +69,19 @@ function createDbAdapter(_hyperdrive: Hyperdrive): DatabasePool {
 }
 
 /**
- * Create a Santoki Server configured for Cloudflare Workers
+ * Create a Santokit Server configured for Cloudflare Workers
  */
-export function createCloudflareServer(env: CloudflareEnv): SantokiServer {
+export function createCloudflareServer(env: CloudflareEnv): SantokitServer {
   const config: ServerConfig = {
-    projectId: env.SANTOKI_PROJECT_ID,
-    kv: createKVAdapter(env.SANTOKI_KV),
+    projectId: env.SANTOKIT_PROJECT_ID,
+    kv: createKVAdapter(env.SANTOKIT_KV),
     db: {
-      main: createDbAdapter(env.SANTOKI_DB),
+      main: createDbAdapter(env.SANTOKIT_DB),
     },
-    encryptionKey: env.SANTOKI_ENCRYPTION_KEY,
+    encryptionKey: env.SANTOKIT_ENCRYPTION_KEY,
   };
 
-  return new SantokiServer(config);
+  return new SantokitServer(config);
 }
 
 /**
@@ -89,15 +89,15 @@ export function createCloudflareServer(env: CloudflareEnv): SantokiServer {
  * 
  * Usage in wrangler.toml:
  * ```toml
- * name = "my-santoki-server"
- * main = "node_modules/@santoki/bridge/dist/adapters/cloudflare.js"
+ * name = "my-santokit-server"
+ * main = "node_modules/@santokit/bridge/dist/adapters/cloudflare.js"
  * 
  * [[kv_namespaces]]
- * binding = "SANTOKI_KV"
+ * binding = "SANTOKIT_KV"
  * id = "your-kv-namespace-id"
  * 
  * [[hyperdrive]]
- * binding = "SANTOKI_DB"
+ * binding = "SANTOKIT_DB"
  * id = "your-hyperdrive-config-id"
  * ```
  */

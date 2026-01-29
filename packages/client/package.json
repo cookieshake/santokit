@@ -1,7 +1,7 @@
 {
-  "name": "@santoki/client",
+  "name": "@santokit/client",
   "version": "0.1.0",
-  "description": "Santoki Client SDK - Type-safe backend calls with full IntelliSense",
+  "description": "Santokit Client SDK - Type-safe backend calls with full IntelliSense",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

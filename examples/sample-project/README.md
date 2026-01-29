@@ -1,13 +1,15 @@
-# Sample Santoki Project
+# Sample Santokit Project
 
-This is a sample Santoki project demonstrating the standard directory structure.
+This is a sample Santokit project demonstrating the standard directory structure.
 
 ## Structure
 
 ```
 sample-project/
-├── base/           # Infrastructure definitions
-│   ├── main.hcl    # Main database schema
+├── base/           # Schema definitions
+│   └── main.hcl    # Main database schema
+├── config/         # Project config
+│   ├── databases.yaml # Database connections
 │   ├── auth.yaml   # Authentication configuration
 │   └── storage.yaml # Storage buckets configuration
 └── logic/          # Business logic
@@ -20,9 +22,9 @@ sample-project/
 
 ## Getting Started
 
-1. Install the Santoki CLI:
+1. Install the Santokit CLI:
    ```bash
-   go install github.com/cookieshake/santoki/packages/cli/cmd/stk@latest
+   go install github.com/cookieshake/santokit/packages/cli/cmd/stk@latest
    ```
 
 2. Initialize your project:
@@ -37,6 +39,7 @@ sample-project/
 
 4. Deploy to production:
    ```bash
-   stk base push
-   stk logic push
+   stk schema plan
+   stk config apply
+   stk logic apply
    ```

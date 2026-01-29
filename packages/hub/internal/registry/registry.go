@@ -99,7 +99,7 @@ func (s *Service) Push(ctx context.Context, projectID string, bundles []Bundle, 
 	}
 
 	// Option 2: File System (Fallback)
-	kvDir := filepath.Join(os.Getenv("HOME"), ".santoki", "tmp", "kv")
+	kvDir := filepath.Join(os.Getenv("HOME"), ".santokit", "tmp", "kv")
 	if err := os.MkdirAll(kvDir, 0755); err != nil {
 		fmt.Printf("Warning: Failed to create KV dir: %v\n", err)
 	} else {

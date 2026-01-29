@@ -4,9 +4,9 @@ import { createAuthModule } from '../auth/auth.js';
 import type { AuthModule } from '../auth/types.js';
 
 /**
- * Santoki Client interface
+ * Santokit Client interface
  */
-export interface SantokiClient {
+export interface SantokitClient {
   /** Authentication module */
   auth: AuthModule;
   
@@ -18,7 +18,7 @@ export interface SantokiClient {
 }
 
 /**
- * Logic proxy type - will be augmented by santoki-env.d.ts
+ * Logic proxy type - will be augmented by santokit-env.d.ts
  */
 export type LogicProxy = {
   [namespace: string]: {
@@ -27,9 +27,9 @@ export type LogicProxy = {
 };
 
 /**
- * Create a Santoki client instance
+ * Create a Santokit client instance
  */
-export function createClient(config: ClientConfig): SantokiClient {
+export function createClient(config: ClientConfig): SantokitClient {
   const fetchFn = config.fetch ?? globalThis.fetch;
   const timeout = config.timeout ?? 30000;
   const baseUrl = config.baseUrl.replace(/\/$/, '');
@@ -82,7 +82,7 @@ export function createClient(config: ClientConfig): SantokiClient {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({}));
-        throw new SantokiError(
+        throw new SantokitError(
           error.message || `Request failed with status ${response.status}`,
           response.status,
           path
@@ -128,9 +128,9 @@ function createLogicProxy(
 }
 
 /**
- * Santoki API error
+ * Santokit API error
  */
-export class SantokiError extends Error {
+export class SantokitError extends Error {
   public statusCode: number;
   public path: string;
 
@@ -140,7 +140,7 @@ export class SantokiError extends Error {
     path: string
   ) {
     super(message);
-    this.name = 'SantokiError';
+    this.name = 'SantokitError';
     this.statusCode = statusCode;
     this.path = path;
   }

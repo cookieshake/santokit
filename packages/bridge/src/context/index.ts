@@ -1,5 +1,6 @@
 import type { KVStore, DatabasePool } from '../runtime/server.js';
-import type { RequestInfo } from '../runtime/types.js';
+import type { Bundle, RequestInfo } from '../runtime/types.js';
+import { executeBundle } from '../runtime/logic.js';
 
 /**
  * Context provides the runtime API for logic handlers.
@@ -74,7 +75,7 @@ export interface ContextConfig {
  * Create a new context for a logic handler
  */
 export function createContext(config: ContextConfig): Context {
-  return {
+  const ctx: Context = {
     db: {
       query: async (target: string, sql: string, params?: unknown[]) => {
         const pool = config.db[target];
@@ -96,12 +97,12 @@ export function createContext(config: ContextConfig): Context {
       createUploadUrl: async (bucket: string, path: string, options?: UploadOptions) => {
         // TODO: Implement presigned URL generation
         void options;
-        return `https://storage.santoki.dev/${config.projectId}/${bucket}/${path}?upload=1`;
+        return `https://storage.santokit.dev/${config.projectId}/${bucket}/${path}?upload=1`;
       },
       createDownloadUrl: async (bucket: string, path: string, options?: DownloadOptions) => {
         // TODO: Implement presigned URL generation
         void options;
-        return `https://storage.santoki.dev/${config.projectId}/${bucket}/${path}`;
+        return `https://storage.santokit.dev/${config.projectId}/${bucket}/${path}`;
       },
       delete: async (bucket: string, path: string) => {
         // TODO: Implement file deletion
@@ -111,14 +112,13 @@ export function createContext(config: ContextConfig): Context {
     
     invoke: async (path: string, params?: Record<string, unknown>) => {
       // Invoke another logic endpoint internally
-      const key = `${config.projectId}:logic:${path.replace('/', ':')}`;
+      const key = `${config.projectId}:logic:${path.replace(/\//g, ':')}`;
       const data = await config.kv.get(key);
       if (!data) {
         throw new Error(`Logic "${path}" not found`);
       }
-      // TODO: Execute the loaded logic
-      void params;
-      return null;
+      const bundle = JSON.parse(data) as Bundle;
+      return await executeBundle(bundle, params ?? {}, { db: config.db, context: ctx });
     },
     
     request: config.request,
@@ -133,4 +133,6 @@ export function createContext(config: ContextConfig): Context {
       return encrypted;
     },
   };
+
+  return ctx;
 }

@@ -2,7 +2,7 @@
  * Client configuration options
  */
 export interface ClientConfig {
-  /** Base URL of the Santoki server */
+  /** Base URL of the Santokit server */
   baseUrl: string;
   
   /** Default request timeout in milliseconds (default: 30000) */
@@ -48,7 +48,7 @@ export interface RequestOptions {
  * Default token storage for browser (localStorage)
  */
 export class BrowserTokenStorage implements TokenStorage {
-  private key = 'santoki_token';
+  private key = 'santokit_token';
 
   async getToken(): Promise<string | null> {
     if (typeof localStorage === 'undefined') {

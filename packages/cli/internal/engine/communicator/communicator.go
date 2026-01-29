@@ -1,4 +1,4 @@
-// Package communicator handles all communication with Santoki Hub.
+// Package communicator handles all communication with Santokit Hub.
 // It manages authentication, API calls, and data transfer.
 package communicator
 
@@ -10,7 +10,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/cookieshake/santoki/packages/cli/internal/engine/integrator"
+	"github.com/cookieshake/santokit/packages/cli/internal/engine/integrator"
+	"github.com/cookieshake/santokit/packages/cli/internal/userconfig"
 )
 
 // Config holds communicator configuration
@@ -26,6 +27,30 @@ type Communicator struct {
 	client *http.Client
 }
 
+// ProjectConfig represents stored project configuration
+type ProjectConfig struct {
+	Databases string `json:"databases"`
+	Auth      string `json:"auth"`
+	Storage   string `json:"storage"`
+}
+
+// Migration represents a schema migration
+type Migration struct {
+	ID          string `json:"id"`
+	ProjectID   string `json:"project_id"`
+	Version     string `json:"version"`
+	SQL         string `json:"sql"`
+	Description string `json:"description"`
+	Applied     bool   `json:"applied"`
+}
+
+// PlanResult represents schema plan results
+type PlanResult struct {
+	Migrations []Migration `json:"migrations"`
+	HasChanges bool        `json:"has_changes"`
+	Summary    string      `json:"summary"`
+}
+
 // New creates a new Communicator
 func New(config *Config) *Communicator {
 	return &Communicator{
@@ -36,19 +61,41 @@ func New(config *Config) *Communicator {
 
 // NewFromEnv creates a Communicator using environment variables
 func NewFromEnv() (*Communicator, error) {
+	cfg, _ := userconfig.Load()
+	var profile userconfig.Profile
+	if cfg != nil {
+		if p, ok := cfg.CurrentProfile(); ok {
+			profile = p
+		}
+	}
+
 	hubURL := os.Getenv("STK_HUB_URL")
 	if hubURL == "" {
-		hubURL = "https://hub.santoki.dev"
+		hubURL = profile.HubURL
+		if hubURL == "" {
+			hubURL = "https://hub.santokit.dev"
+		}
 	}
 
 	token := os.Getenv("STK_TOKEN")
+	if token == "" {
+		token = profile.Token
+	}
 	projectID := os.Getenv("STK_PROJECT_ID")
+	if projectID == "" {
+		projectID = profile.ProjectID
+	}
 
 	return New(&Config{
 		HubURL:    hubURL,
 		Token:     token,
 		ProjectID: projectID,
 	}), nil
+}
+
+// Config returns communicator configuration
+func (c *Communicator) Config() *Config {
+	return c.config
 }
 
 // PushManifest uploads a manifest to Hub
@@ -79,9 +126,138 @@ func (c *Communicator) PushManifest(manifest *integrator.Manifest) error {
 	return nil
 }
 
+// PlanSchema requests a schema migration plan from Hub
+func (c *Communicator) PlanSchema(projectID string, schemas map[string]string) (*PlanResult, error) {
+	payload := map[string]interface{}{
+		"project_id": projectID,
+		"schemas":    schemas,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal schema plan: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.config.HubURL+"/api/v1/schema/plan", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to plan schema: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("hub returned error: %s", string(body))
+	}
+
+	var result PlanResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("failed to decode plan: %w", err)
+	}
+
+	return &result, nil
+}
+
+// ApplySchema applies migrations via Hub
+func (c *Communicator) ApplySchema(projectID string, migrations []Migration) error {
+	payload := map[string]interface{}{
+		"project_id": projectID,
+		"migrations": migrations,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal schema apply: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.config.HubURL+"/api/v1/schema/apply", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to apply schema: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("hub returned error: %s", string(body))
+	}
+
+	return nil
+}
+
+// ApplyConfig uploads project configuration to Hub
+func (c *Communicator) ApplyConfig(projectID string, configs map[string]string) error {
+	payload := map[string]interface{}{
+		"project_id": projectID,
+		"configs":    configs,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", c.config.HubURL+"/api/v1/config/apply", bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to apply config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("hub returned error: %s", string(body))
+	}
+
+	return nil
+}
+
+// GetConfig retrieves project configuration from Hub
+func (c *Communicator) GetConfig(projectID string) (*ProjectConfig, error) {
+	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/config?project_id="+projectID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("hub returned error: %s", string(body))
+	}
+
+	var cfg ProjectConfig
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("failed to decode config: %w", err)
+	}
+
+	return &cfg, nil
+}
+
 // FetchManifest downloads the current manifest from Hub
-func (c *Communicator) FetchManifest() (*integrator.Manifest, error) {
-	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/manifest", nil)
+func (c *Communicator) FetchManifest(projectID string) (*integrator.Manifest, error) {
+	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/manifest?project_id="+projectID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -103,10 +279,11 @@ func (c *Communicator) FetchManifest() (*integrator.Manifest, error) {
 }
 
 // SetSecret stores a secret in Hub Vault
-func (c *Communicator) SetSecret(key, value string) error {
+func (c *Communicator) SetSecret(projectID, key, value string) error {
 	data, _ := json.Marshal(map[string]string{
-		"key":   key,
-		"value": value,
+		"project_id": projectID,
+		"key":        key,
+		"value":      value,
 	})
 
 	req, err := http.NewRequest("POST", c.config.HubURL+"/api/v1/secrets", bytes.NewReader(data))
@@ -131,8 +308,8 @@ func (c *Communicator) SetSecret(key, value string) error {
 }
 
 // ListSecrets retrieves all secret keys (values are not returned)
-func (c *Communicator) ListSecrets() ([]string, error) {
-	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/secrets", nil)
+func (c *Communicator) ListSecrets(projectID string) ([]string, error) {
+	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/secrets?project_id="+projectID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -151,6 +328,29 @@ func (c *Communicator) ListSecrets() ([]string, error) {
 	}
 
 	return keys, nil
+}
+
+// DeleteSecret removes a secret key from Hub Vault
+func (c *Communicator) DeleteSecret(projectID, key string) error {
+	req, err := http.NewRequest("DELETE", c.config.HubURL+"/api/v1/secrets/"+key+"?project_id="+projectID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.setHeaders(req)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete secret: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("hub returned error: %s", string(body))
+	}
+
+	return nil
 }
 
 func (c *Communicator) setHeaders(req *http.Request) {

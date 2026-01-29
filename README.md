@@ -1,6 +1,6 @@
-# Santoki
+# Santokit
 
-**Backend infrastructure made simple.** Santoki abstracts away backend complexity so developers can focus on business logic and data schemas.
+**Backend infrastructure made simple.** Santokit abstracts away backend complexity so developers can focus on business logic and data schemas.
 
 > 🚧 **Work in Progress** - This project is under active development.
 
@@ -14,7 +14,7 @@
 
 ## Architecture
 
-Santoki consists of 4 core components:
+Santokit consists of 4 core components:
 
 | Component | Language | Role | Description |
 |-----------|----------|------|-------------|
@@ -26,7 +26,7 @@ Santoki consists of 4 core components:
 ## Project Structure
 
 ```
-santoki/
+santokit/
 ├── packages/
 │   ├── cli/                 # stk CLI (Go)
 │   │   ├── cmd/stk/         # Entry point
@@ -38,7 +38,7 @@ santoki/
 │   │           ├── integrator/   # Bundling
 │   │           └── communicator/ # Hub API client
 │   │
-│   ├── hub/                 # Santoki Hub (Go)
+│   ├── hub/                 # Santokit Hub (Go)
 │   │   ├── cmd/hub/         # Entry point
 │   │   ├── api/             # HTTP handlers
 │   │   └── internal/
@@ -62,7 +62,8 @@ santoki/
 │
 ├── examples/
 │   └── sample-project/      # Example user project
-│       ├── base/            # DB schemas, auth, storage config
+│       ├── base/            # DB schemas
+│       ├── config/          # Project config (databases, auth, storage)
 │       └── logic/           # Business logic (SQL, JS)
 │
 └── docs/
@@ -71,12 +72,14 @@ santoki/
 
 ## User Project Structure
 
-When you create a Santoki project, it follows this structure:
+When you create a Santokit project, it follows this structure:
 
 ```
 my-project/
-├── base/                    # Infrastructure definitions
+├── base/                    # Schema definitions
 │   ├── main.hcl             # Database schema (alias: 'main')
+├── config/                  # Project config
+│   ├── databases.yaml        # Database connections
 │   ├── auth.yaml            # Authentication config
 │   └── storage.yaml         # Storage buckets config
 │
@@ -97,7 +100,7 @@ my-project/
 
 ```bash
 # Install CLI
-go install github.com/cookieshake/santoki/packages/cli/cmd/stk@latest
+go install github.com/cookieshake/santokit/packages/cli/cmd/stk@latest
 
 # Or build from source
 cd packages/cli && go build -o stk ./cmd/stk
@@ -114,14 +117,19 @@ cd my-app
 stk dev
 
 # Deploy
-stk base push   # Deploy infrastructure
-stk logic push  # Deploy business logic
+stk schema plan # Plan schema changes
+stk config apply # Apply project config
+stk logic apply  # Deploy business logic
+
+# Profiles
+stk profile set local --hub-url http://localhost:8080 --project-id default --token test-token
+stk profile use local
 ```
 
 ### Client SDK Usage
 
 ```typescript
-import { createClient } from '@santoki/client';
+import { createClient } from '@santokit/client';
 
 const stk = createClient({
   baseUrl: 'https://api.myapp.com'

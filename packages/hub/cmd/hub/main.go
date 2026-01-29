@@ -9,11 +9,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cookieshake/santoki/packages/hub/api"
-	"github.com/cookieshake/santoki/packages/hub/internal/config"
-	"github.com/cookieshake/santoki/packages/hub/internal/registry"
-	"github.com/cookieshake/santoki/packages/hub/internal/store/memory"
-	"github.com/cookieshake/santoki/packages/hub/internal/vault"
+	"github.com/cookieshake/santokit/packages/hub/api"
+	"github.com/cookieshake/santokit/packages/hub/internal/config"
+	"github.com/cookieshake/santokit/packages/hub/internal/projectconfig"
+	"github.com/cookieshake/santokit/packages/hub/internal/registry"
+	"github.com/cookieshake/santokit/packages/hub/internal/schema"
+	"github.com/cookieshake/santokit/packages/hub/internal/store/memory"
+	"github.com/cookieshake/santokit/packages/hub/internal/vault"
 )
 
 func main() {
@@ -28,13 +30,15 @@ func main() {
 
 	// Initialize services
 	regService := registry.NewService(regRepo)
+	schemaService := schema.NewService(cfg.AtlasURL)
+	projectService := projectconfig.NewService()
 	vaultService, err := vault.NewService(vaultRepo, cfg.EncryptionKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize vault service: %v", err)
 	}
 
 	// Initialize API router
-	router := api.NewRouter(cfg, regService, vaultService)
+	router := api.NewRouter(cfg, regService, schemaService, projectService, vaultService)
 
 	server := &http.Server{
 		Addr:         cfg.ServerAddr,
@@ -58,7 +62,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("Santoki Hub starting on %s", cfg.ServerAddr)
+	log.Printf("Santokit Hub starting on %s", cfg.ServerAddr)
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("Server error: %v", err)
 	}

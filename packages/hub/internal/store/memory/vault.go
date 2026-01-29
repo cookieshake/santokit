@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cookieshake/santoki/packages/hub/internal/vault"
+	"github.com/cookieshake/santokit/packages/hub/internal/vault"
 )
 
 // VaultRepository implements vault.Repository using in-memory storage

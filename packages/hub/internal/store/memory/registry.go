@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/cookieshake/santoki/packages/hub/internal/registry"
+	"github.com/cookieshake/santokit/packages/hub/internal/registry"
 )
 
 // RegistryRepository implements registry.Repository using in-memory storage
