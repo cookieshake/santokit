@@ -8,7 +8,7 @@ RUN npm install -g tsx typescript
 RUN npm install redis pg @types/pg
 
 # Copy packages
-COPY packages/server /app/packages/server
+COPY packages/bridge /app/packages/bridge
 COPY packages/client /app/packages/client
 
 # Inject the Test Server Runner Script

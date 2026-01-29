@@ -12,7 +12,7 @@
   "type": "commonjs",
   "devDependencies": {
     "@santoki/client": "workspace:*",
-    "@santoki/server": "workspace:*",
+    "@santoki/bridge": "workspace:*",
     "testcontainers": "^10.7.1",
     "tsx": "^4.7.1",
     "vitest": "^1.3.1"

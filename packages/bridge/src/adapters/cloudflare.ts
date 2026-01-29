@@ -90,7 +90,7 @@ export function createCloudflareServer(env: CloudflareEnv): SantokiServer {
  * Usage in wrangler.toml:
  * ```toml
  * name = "my-santoki-server"
- * main = "node_modules/@santoki/server/dist/adapters/cloudflare.js"
+ * main = "node_modules/@santoki/bridge/dist/adapters/cloudflare.js"
  * 
  * [[kv_namespaces]]
  * binding = "SANTOKI_KV"

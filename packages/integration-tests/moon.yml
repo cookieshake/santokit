@@ -1,0 +1,7 @@
+$schema: "https://moonrepo.dev/schemas/project.json"
+
+language: "javascript"
+
+tasks:
+  test:
+    command: "pnpm run test"

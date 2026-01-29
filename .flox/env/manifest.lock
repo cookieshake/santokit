@@ -6,6 +6,9 @@
       "go": {
         "pkg-path": "go"
       },
+      "moon": {
+        "pkg-path": "moon"
+      },
       "nodejs_24": {
         "pkg-path": "nodejs_24"
       },
@@ -136,6 +139,122 @@
       ],
       "outputs": {
         "out": "/nix/store/zzvsjgylnphvhms3lgr2qlwdxmc68z66-go-1.25.5"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "moon",
+      "broken": false,
+      "derivation": "/nix/store/v9pmppm0z05sb5bvips98hjn1ja3c1z8-moon-1.41.8.drv",
+      "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
+      "install_id": "moon",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "name": "moon-1.41.8",
+      "pname": "moon",
+      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
+      "rev_count": 933481,
+      "rev_date": "2026-01-23T12:18:02Z",
+      "scrape_date": "2026-01-26T04:35:35.236920Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.41.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/58c4b426hh42i410f2x148df9agzcz5c-moon-1.41.8"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "moon",
+      "broken": false,
+      "derivation": "/nix/store/kq2q6fniawck7p1lhh0vyh5jcg9rq387-moon-1.41.8.drv",
+      "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
+      "install_id": "moon",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "name": "moon-1.41.8",
+      "pname": "moon",
+      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
+      "rev_count": 933481,
+      "rev_date": "2026-01-23T12:18:02Z",
+      "scrape_date": "2026-01-26T05:17:31.214867Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.41.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/f2s1yihqc3wvsrnskzgrjybrfcs3i23j-moon-1.41.8"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "moon",
+      "broken": false,
+      "derivation": "/nix/store/sq8iy6h9vxbhpbxxsjvffiifbddimp8m-moon-1.41.8.drv",
+      "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
+      "install_id": "moon",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "name": "moon-1.41.8",
+      "pname": "moon",
+      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
+      "rev_count": 933481,
+      "rev_date": "2026-01-23T12:18:02Z",
+      "scrape_date": "2026-01-26T05:56:27.430043Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.41.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/bkvw6d2h0pm3xvbwyqbq74wdypaanc9n-moon-1.41.8"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "moon",
+      "broken": false,
+      "derivation": "/nix/store/4mpyvy47261klj7w4nda2lz0cif0h37f-moon-1.41.8.drv",
+      "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
+      "install_id": "moon",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "name": "moon-1.41.8",
+      "pname": "moon",
+      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
+      "rev_count": 933481,
+      "rev_date": "2026-01-23T12:18:02Z",
+      "scrape_date": "2026-01-26T06:51:43.632983Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.41.8",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/cv27mki246d62358b6agdsfgi5hararn-moon-1.41.8"
       },
       "system": "x86_64-linux",
       "group": "toplevel",

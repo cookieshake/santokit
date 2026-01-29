@@ -154,7 +154,7 @@ cd packages/cli && go build ./...
 cd packages/hub && go build ./...
 
 # Server
-cd packages/server && npm install && npm run build
+cd packages/bridge && npm install && npm run build
 
 # Client
 cd packages/client && npm install && npm run build

@@ -1,5 +1,5 @@
 {
-  "name": "@santoki/server",
+  "name": "@santoki/bridge",
   "version": "0.1.0",
   "description": "Santoki Edge Server Runtime",
   "type": "module",

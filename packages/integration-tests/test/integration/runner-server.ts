@@ -1,4 +1,4 @@
-import { SantokiServer } from './packages/server/src/index.ts';
+import { SantokiServer } from './packages/bridge/src/index.ts';
 import * as http from 'http';
 import { createClient } from 'redis';
 import pg from 'pg';
