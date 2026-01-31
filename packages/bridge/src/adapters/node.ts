@@ -8,6 +8,7 @@
 import { SantokitServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
 import { createClient } from 'redis';
 import pg from 'pg';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /**
  * Node.js environment configuration
@@ -15,16 +16,16 @@ import pg from 'pg';
 export interface NodeEnv {
   /** Port to listen on (default: 3000) */
   port?: number;
-  
+
   /** PostgreSQL connection string */
   databaseUrl: string;
-  
+
   /** Project ID */
   projectId: string;
-  
+
   /** Encryption key for secrets (32 bytes) */
   encryptionKey: string;
-  
+
   /** Redis URL for KV storage (optional, uses in-memory if not provided) */
   redisUrl?: string;
 }
@@ -50,7 +51,7 @@ class InMemoryKVStore implements KVStore {
 async function createKVStore(redisUrl?: string): Promise<KVStore> {
   if (redisUrl) {
     const client = createClient({ url: redisUrl });
-    client.on('error', (err) => {
+    client.on('error', (err: Error) => {
       console.error('Redis client error:', err);
     });
     await client.connect();
@@ -63,7 +64,7 @@ async function createKVStore(redisUrl?: string): Promise<KVStore> {
       },
     };
   }
-  
+
   return new InMemoryKVStore();
 }
 
@@ -93,7 +94,7 @@ export async function createNodeServer(env: NodeEnv): Promise<{
   start: () => Promise<void>;
 }> {
   const kv = await createKVStore(env.redisUrl);
-  
+
   const config: ServerConfig = {
     projectId: env.projectId,
     kv,
@@ -111,8 +112,9 @@ export async function createNodeServer(env: NodeEnv): Promise<{
     start: async () => {
       // Use Node.js built-in fetch handler (Node 18+)
       const { createServer } = await import('node:http');
-      
-      const httpServer = createServer(async (req, res) => {
+
+
+      const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
         const url = `http://localhost:${port}${req.url}`;
         const headers = new Headers();
         for (const [key, value] of Object.entries(req.headers)) {
@@ -121,21 +123,31 @@ export async function createNodeServer(env: NodeEnv): Promise<{
           }
         }
 
+        // Read body for POST/PUT requests
+        let body: string | undefined;
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) {
+            chunks.push(chunk as Buffer);
+          }
+          body = Buffer.concat(chunks).toString('utf-8');
+        }
+
         const request = new Request(url, {
           method: req.method,
           headers,
-          body: req.method !== 'GET' && req.method !== 'HEAD' ? req : undefined,
+          body,
         });
 
         const response = await server.fetch(request);
-        
+
         res.statusCode = response.status;
-        response.headers.forEach((value, key) => {
+        response.headers.forEach((value: string, key: string) => {
           res.setHeader(key, value);
         });
-        
-        const body = await response.text();
-        res.end(body);
+
+        const responseBody = await response.text();
+        res.end(responseBody);
       });
 
       httpServer.listen(port, () => {

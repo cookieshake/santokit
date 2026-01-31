@@ -7,5 +7,6 @@
  */
 
 export { SantokitServer } from './runtime/server.js';
+export type { ServerConfig, KVStore, DatabasePool } from './runtime/server.js';
 export { createContext, type Context } from './context/index.js';
-export type { LogicHandler, LogicConfig, RequestInfo } from './runtime/types.js';
+export type { LogicHandler, LogicConfig, RequestInfo, Bundle, UserInfo } from './runtime/types.js';
