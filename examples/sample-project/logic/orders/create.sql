@@ -1,6 +1,5 @@
 ---
 # Create Order
-# Endpoint: POST /orders/create
 target: main
 params:
   items:

@@ -1,6 +1,5 @@
 ---
 # List Orders for User
-# Endpoint: GET /orders/list
 target: main
 params:
   limit:
