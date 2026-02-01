@@ -1,6 +1,7 @@
 import { createContext, type Context } from '../context/index.js';
 import type { Bundle, LogicConfig, RequestInfo, UserInfo } from './types.js';
 import { executeBundle } from './logic.js';
+import { Logger, formatErrorResponse, NotFoundError, AuthorizationError } from '../utils/logger.js';
 
 /**
  * KVStore interface for Edge KV operations
@@ -33,9 +34,11 @@ export interface ServerConfig {
 export class SantokitServer {
   private config: ServerConfig;
   private bundleCache: Map<string, Bundle> = new Map();
+  private logger: Logger;
 
   constructor(config: ServerConfig) {
     this.config = config;
+    this.logger = new Logger(undefined, { projectId: config.projectId });
   }
 
   /**
@@ -44,7 +47,7 @@ export class SantokitServer {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/^\/+/, '');
-    
+
     // Health check
     if (path === 'health') {
       return new Response('OK', { status: 200 });
@@ -53,28 +56,74 @@ export class SantokitServer {
     // Parse request
     const requestId = crypto.randomUUID();
     const [namespace, name] = this.parsePath(path);
-    
+
+    // Create request-scoped logger
+    const logger = this.logger.child({ requestId, path, method: request.method });
+
     if (!namespace || !name) {
-      return this.errorResponse(404, 'Not found', requestId);
+      logger.warn('Invalid path format');
+      const { status, body } = formatErrorResponse(new NotFoundError('Invalid path format'), requestId);
+      return new Response(body, {
+        status,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+        },
+      });
     }
+
+    logger.info('Processing request', { namespace, name });
 
     try {
       // Load bundle from KV
       const bundle = await this.loadBundle(namespace, name);
       if (!bundle) {
-        return this.errorResponse(404, 'Logic not found', requestId);
+        logger.warn('Logic bundle not found', { namespace, name });
+        throw new NotFoundError(`Logic ${namespace}/${name}`);
+      }
+
+      // Check if this request can be cached
+      const cacheConfig = bundle.config.cache;
+      const canCache = request.method === 'GET' && cacheConfig && cacheConfig !== '';
+
+      // Try to get from cache (only for GET requests with cache config)
+      if (canCache && typeof caches !== 'undefined') {
+        const cache = (caches as any).default as Cache;
+        const cachedResponse = await cache.match(request);
+
+        if (cachedResponse) {
+          logger.info('Cache HIT', { namespace, name });
+          // Add cache status header
+          const response = new Response(cachedResponse.body, cachedResponse);
+          response.headers.set('X-Cache-Status', 'HIT');
+          response.headers.set('X-Request-ID', requestId);
+          return response;
+        }
+
+        logger.debug('Cache MISS', { namespace, name });
       }
 
       // Parse user from JWT (if authenticated)
       const user = await this.authenticateRequest(request);
 
+      if (user) {
+        logger.debug('User authenticated', { userId: user.id });
+      }
+
       // Check access control
       if (!this.checkAccess(bundle.config, user)) {
-        return this.errorResponse(403, 'Forbidden', requestId);
+        logger.warn('Access denied', {
+          namespace,
+          name,
+          userId: user?.id,
+          requiredAccess: bundle.config.access
+        });
+        throw new AuthorizationError();
       }
 
       // Parse parameters
       const params = await this.parseParams(request, bundle.config);
+      logger.debug('Parameters parsed', { paramCount: Object.keys(params).length });
 
       // Create context
       const requestInfo: RequestInfo = {
@@ -84,7 +133,7 @@ export class SantokitServer {
         user,
         requestId,
       };
-      
+
       const context = createContext({
         db: this.config.db,
         kv: this.config.kv,
@@ -93,22 +142,51 @@ export class SantokitServer {
       });
 
       // Execute logic
+      const startTime = Date.now();
       const result = await this.executeLogic(bundle, params, context);
+      const duration = Date.now() - startTime;
+
+      logger.info('Logic executed successfully', {
+        namespace,
+        name,
+        duration,
+        cached: canCache
+      });
 
       // Check cache configuration
       const cacheHeaders = this.getCacheHeaders(bundle.config);
 
-      return new Response(JSON.stringify(result), {
+      const response = new Response(JSON.stringify(result), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
           'X-Request-ID': requestId,
+          'X-Cache-Status': 'MISS',
+          'X-Execution-Time': `${duration}ms`,
           ...cacheHeaders,
         },
       });
+
+      // Store in cache if configured (only for GET requests)
+      if (canCache && typeof caches !== 'undefined') {
+        const cache = (caches as any).default as Cache;
+        // Clone the response before caching (response can only be read once)
+        await cache.put(request, response.clone());
+        logger.debug('Response cached', { namespace, name });
+      }
+
+      return response;
     } catch (error) {
-      console.error(`Error executing ${namespace}/${name}:`, error);
-      return this.errorResponse(500, 'Internal server error', requestId);
+      logger.error('Request failed', error, { namespace, name });
+
+      const { status, body } = formatErrorResponse(error, requestId);
+      return new Response(body, {
+        status,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+        },
+      });
     }
   }
 
@@ -124,7 +202,7 @@ export class SantokitServer {
 
   private async loadBundle(namespace: string, name: string): Promise<Bundle | null> {
     const key = `${this.config.projectId}:logic:${namespace}:${name}`;
-    
+
     // Check cache
     if (this.bundleCache.has(key)) {
       return this.bundleCache.get(key)!;
@@ -139,7 +217,7 @@ export class SantokitServer {
     // Decrypt and parse bundle
     const bundle = JSON.parse(data) as Bundle;
     this.bundleCache.set(key, bundle);
-    
+
     return bundle;
   }
 
@@ -150,45 +228,86 @@ export class SantokitServer {
     }
 
     const token = authHeader.slice(7);
-    
+
     try {
-      // Decode JWT payload (without signature verification for now)
       // Token format: header.payload.signature
       const parts = token.split('.');
       if (parts.length !== 3) {
         return undefined;
       }
-      
-      const payload = JSON.parse(atob(parts[1]));
-      
+
+      // Verify signature using HMAC-SHA256
+      const signingInput = `${parts[0]}.${parts[1]}`;
+      const expectedSignature = await this.signJWT(signingInput);
+
+      // Constant-time comparison to prevent timing attacks
+      if (expectedSignature !== parts[2]) {
+        console.error('JWT signature verification failed');
+        return undefined;
+      }
+
+      // Decode and verify payload
+      const payloadBytes = Uint8Array.from(atob(parts[1]), c => c.charCodeAt(0));
+      const payload = JSON.parse(new TextDecoder().decode(payloadBytes));
+
+      // Check expiration
+      if (payload.exp && Date.now() / 1000 > payload.exp) {
+        console.error('JWT token expired');
+        return undefined;
+      }
+
       // Map payload to UserInfo
-      // Assuming standard claims: sub (id), email, roles
       return {
         id: payload.sub || payload.id,
         email: payload.email,
         roles: payload.roles || [],
       };
     } catch (e) {
-      console.error('Failed to parse JWT:', e);
+      console.error('Failed to authenticate JWT:', e);
       return undefined;
     }
   }
 
+  private async signJWT(input: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(this.config.encryptionKey);
+
+    const key = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      encoder.encode(input)
+    );
+
+    // Convert to base64url (without padding)
+    return btoa(String.fromCharCode(...new Uint8Array(signature)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
+  }
+
   private checkAccess(config: LogicConfig, user?: UserInfo): boolean {
     const access = config.access || 'public';
-    
+
     if (access === 'public') {
       return true;
     }
-    
+
     if (!user) {
       return false;
     }
-    
+
     if (access === 'authenticated') {
       return true;
     }
-    
+
     // Check role
     return user.roles.includes(access);
   }
@@ -253,16 +372,16 @@ export class SantokitServer {
 
     const value = parseInt(match[1]);
     const unit = match[2];
-    
+
     const multipliers: Record<string, number> = {
       s: 1,
       m: 60,
       h: 3600,
       d: 86400,
     };
-    
+
     const seconds = value * multipliers[unit];
-    
+
     return {
       'Cache-Control': `public, max-age=${seconds}`,
     };

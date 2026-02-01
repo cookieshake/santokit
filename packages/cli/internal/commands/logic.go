@@ -20,7 +20,9 @@ type LogicApplyCmd struct{}
 
 func (c *LogicApplyCmd) Run() error {
 	rootDir, _ := os.Getwd()
-	fmt.Printf("🚀 Starting logic apply from %s...\n", rootDir)
+	title("🚀 Logic Apply")
+	info(fmt.Sprintf("Working directory: %s", rootDir))
+	fmt.Println()
 
 	// 1. Initialize Engines
 	scan := scanner.New(rootDir)
@@ -33,7 +35,7 @@ func (c *LogicApplyCmd) Run() error {
 	}
 
 	// 2. Scan
-	fmt.Println("🔍 Scanning logic files...")
+	info("📂 Scanning logic files...")
 	files, err := scan.ScanLogic()
 	if err != nil {
 		return errorf("❌ Scan failed: %v", err)
@@ -42,11 +44,15 @@ func (c *LogicApplyCmd) Run() error {
 		warn("⚠️  No logic files found.")
 		return nil
 	}
+	success(fmt.Sprintf("✓ Found %d logic file(s)", len(files)))
+	fmt.Println()
 
 	// 3. Parse & Bundle
+	info("⚙️  Processing files...")
 	var bundles []integrator.Bundle
-	for _, file := range files {
-		fmt.Printf("  • Processing %s...\n", filepath.Base(file.Path))
+	for i, file := range files {
+		filename := filepath.Base(file.Path)
+		info(fmt.Sprintf("  [%d/%d] %s", i+1, len(files), filename))
 
 		content, err := os.ReadFile(file.Path)
 		if err != nil {
@@ -60,7 +66,6 @@ func (c *LogicApplyCmd) Run() error {
 		}
 
 		// Fill in namespace/name from path if not manually set
-		// (Assuming standard structure logic/<namespace>/<name>.<ext>)
 		relPath, _ := filepath.Rel(filepath.Join(rootDir, "logic"), file.Path)
 		dir, filename := filepath.Split(relPath)
 		config.Namespace = filepath.Clean(dir)
@@ -79,6 +84,8 @@ func (c *LogicApplyCmd) Run() error {
 		}
 		bundles = append(bundles, *bundle)
 	}
+	success(fmt.Sprintf("✓ Processed %d file(s)", len(bundles)))
+	fmt.Println()
 
 	// 4. Create Manifest
 	projectID := comm.Config().ProjectID
@@ -90,14 +97,21 @@ func (c *LogicApplyCmd) Run() error {
 	}
 
 	manifest := integrate.CreateManifest(projectID, bundles)
+	info(fmt.Sprintf("📦 Created manifest (version: %s)", manifest.Version))
+	fmt.Println()
 
 	// 5. Push to Hub
-	fmt.Println("☁️  Uploading to Hub...")
+	info("☁️  Uploading to Hub...")
 	if err := comm.PushManifest(manifest); err != nil {
-		return errorf("❌ Apply failed: %v", err)
+		return errorf("❌ Upload failed: %v", err)
 	}
 
+	fmt.Println()
 	success("✅ Successfully deployed logic!")
+	success(fmt.Sprintf("   Project: %s", projectID))
+	success(fmt.Sprintf("   Version: %s", manifest.Version))
+	success(fmt.Sprintf("   Bundles: %d", len(bundles)))
+
 	return nil
 }
 

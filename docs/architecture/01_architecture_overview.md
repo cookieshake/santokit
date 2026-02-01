@@ -8,13 +8,11 @@ Santokit (stk)는 백엔드 인프라의 복잡성을 추상화하여 개발자�
 
 ### 1. CLI (`stk`)
 *   **위치**: 개발자의 로컬 머신.
-*   **역할**: "손과 발". 파일을 감시하고, 의도를 파악(파싱)하며, Hub와 통신합니다.
+*   **역할**: "손과 발". 파일을 파싱하고, Hub와 통신합니다.
 *   **주요 책임**:
     *   `schema/`(스키마), `config/`(설정), `logic/` 디렉토리 스캔 및 파싱.
     *   로직 및 스키마 변경 사항을 Hub로 반영.
-    *   "가상 타입(Virtual Types)" (`.d.ts`)을 `node_modules`에 주입.
-    *   **동기화(Sync)**: Hub의 최신 매니페스트를 로컬로 동기화(CLI로만 수행).
-    *   로컬 개발 환경 실행 (`stk dev`).
+    *   **동기화(Sync)**: Hub의 최신 매니페스트를 로컬로 동기화하고 타입 정의 파일 생성.
 
 ### 2. Hub (`Santokit-Hub`)
 *   **위치**: 중앙 관리 서버 (Go 기반).
@@ -70,7 +68,7 @@ Santokit는 관리형의 편리함과 셀프 호스팅의 자유를 모두 제�
 
 ## 상호 작용 흐름 (라이프사이클)
 
-1.  **개발 (Develop)**: 사용자가 `logic/users/get.sql`을 수정합니다. `stk`가 변경 사항을 감지합니다.
+1.  **개발 (Develop)**: 사용자가 `logic/users/get.sql`을 수정합니다.
 2.  **배포 (Deploy `stk logic apply`)**: `stk`가 파일을 파싱하고, YAML을 검증한 뒤 Hub로 업로드합니다.
 3.  **프로비저닝 (Provision)**: Hub가 로직을 검증하고, 필요한 비밀 정보를 암호화하여 패키지를 **Edge KV**로 푸시합니다.
 4.  **동기화 (Sync `stk sync`)**: `stk`가 Hub에서 API 매니페스트를 다운로드하고 자동 완성을 위해 `node_modules/@santokit/client`를 업데이트합니다.

@@ -10,6 +10,7 @@ import (
 
 type CLI struct {
 	Init    InitCmd    `cmd:"" help:"Initialize a new Santokit project."`
+	Login   LoginCmd   `cmd:"" help:"Login to Santokit Hub via browser."`
 	Profile ProfileCmd `cmd:"" help:"Manage Hub profiles."`
 	Project ProjectCmd `cmd:"" help:"Manage project settings."`
 	Schema  SchemaCmd  `cmd:"" help:"Manage database schema definitions."`

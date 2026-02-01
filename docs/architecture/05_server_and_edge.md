@@ -48,12 +48,6 @@
 *   **연결 풀링 (Hyperdrive)**: Edge에 필수적입니다. 데이터베이스의 웜(warm) TCP 연결을 유지하여 핸드셰이크 지연과 연결 고갈을 방지합니다.
 *   **TypeScript 엔진**: 복잡한 컴파일 과정 없이 순수 JS 런타임 위에서 동작하여 가볍고 빠릅니다.
 
-## 로컬 런타임 (stk dev)
-*   이 정확한 동작을 모방하지만 로컬 Node.js/Bun 서버로 실행됩니다.
-*   KV 대신 디스크의 `logic/`을 직접 읽습니다.
-*   Hyperdrive 대신 로컬 Docker DB를 사용합니다.
-*   Hyperdrive 대신 로컬 Docker DB를 사용합니다.
-
 ## 독립형 런타임 (Standalone Runtime)
 *   **개념**: 복잡한 분산 시스템(Hub+Server+DB)을 단일 Docker 컨테이너로 압축한 형태입니다.
 *   **구성**:

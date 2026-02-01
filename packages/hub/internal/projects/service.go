@@ -19,6 +19,7 @@ type Project struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 	TeamID      string    `json:"team_id"`
 	OwnerID     string    `json:"owner_id"`
+	MasterKey   string    `json:"-"` // 32-byte encryption key (never exposed in JSON)
 }
 
 // Team represents a team/organization.
@@ -72,6 +73,12 @@ func (s *Service) CreateProject(ctx context.Context, ownerID, name, description,
 		return Project{}, fmt.Errorf("team not found")
 	}
 
+	// Generate a secure 32-byte master key for this project
+	masterKey, err := generateMasterKey()
+	if err != nil {
+		return Project{}, fmt.Errorf("failed to generate master key: %w", err)
+	}
+
 	now := time.Now()
 	project := Project{
 		ID:          randomID("prj"),
@@ -81,6 +88,7 @@ func (s *Service) CreateProject(ctx context.Context, ownerID, name, description,
 		UpdatedAt:   now,
 		TeamID:      teamID,
 		OwnerID:     ownerID,
+		MasterKey:   masterKey,
 	}
 
 	s.projects[project.ID] = project
@@ -289,4 +297,32 @@ func randomID(prefix string) string {
 		return fmt.Sprintf("%s_%d", prefix, time.Now().UnixNano())
 	}
 	return fmt.Sprintf("%s_%s", prefix, hex.EncodeToString(buf))
+}
+
+// generateMasterKey creates a secure 32-byte encryption key for a project
+func generateMasterKey() (string, error) {
+	key := make([]byte, 32) // 32 bytes for AES-256
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("failed to generate random key: %w", err)
+	}
+	return hex.EncodeToString(key), nil
+}
+
+// GetProjectMasterKey retrieves the master encryption key for a project
+// This should only be called by trusted internal services
+func (s *Service) GetProjectMasterKey(ctx context.Context, projectID string) (string, error) {
+	_ = ctx
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	project, ok := s.projects[projectID]
+	if !ok {
+		return "", fmt.Errorf("project not found")
+	}
+
+	if project.MasterKey == "" {
+		return "", fmt.Errorf("project has no master key")
+	}
+
+	return project.MasterKey, nil
 }
