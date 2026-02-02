@@ -84,6 +84,22 @@ function containerExists(name: string): boolean {
   return dockerOk(['container', 'inspect', name]);
 }
 
+function getImageId(image: string): string | null {
+  try {
+    return runDocker(['image', 'inspect', '-f', '{{.Id}}', image]);
+  } catch {
+    return null;
+  }
+}
+
+function getContainerImageId(name: string): string | null {
+  try {
+    return runDocker(['inspect', '-f', '{{.Image}}', name]);
+  } catch {
+    return null;
+  }
+}
+
 function containerRunning(name: string): boolean {
   if (!containerExists(name)) return false;
   const running = runDocker(['inspect', '-f', '{{.State.Running}}', name]);
@@ -102,7 +118,14 @@ function containerHasAliases(name: string, aliases: string[]): boolean {
   }
 }
 
-function ensureContainer(name: string, runArgs: string[], aliases: string[] = []) {
+function ensureContainer(name: string, runArgs: string[], aliases: string[] = [], imageName?: string) {
+  if (imageName && containerExists(name)) {
+    const expectedImage = getImageId(imageName);
+    const currentImage = getContainerImageId(name);
+    if (expectedImage && currentImage && expectedImage !== currentImage) {
+      runDocker(['rm', '-f', name]);
+    }
+  }
   if (containerExists(name) && aliases.length > 0 && !containerHasAliases(name, aliases)) {
     runDocker(['rm', '-f', name]);
   }
@@ -182,7 +205,7 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     buildImage(images.node, path.join(projectRoot, 'packages/integration-tests/test/integration/Dockerfile.node'));
   }
 
-  ensureContainer(names.redis, ['redis:7-alpine'], ['redis']);
+  ensureContainer(names.redis, ['redis:7-alpine'], ['redis'], 'redis:7-alpine');
   ensureContainer(names.postgres, [
     '-e',
     'POSTGRES_USER=postgres',
@@ -191,7 +214,7 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     '-e',
     'POSTGRES_DB=santokit',
     'postgres:15-alpine'
-  ], ['postgres']);
+  ], ['postgres'], 'postgres:15-alpine');
 
   waitForRedis();
   waitForPostgres();
@@ -208,7 +231,7 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     '-e',
     'STK_DATABASE_URL=postgres://postgres:password@postgres:5432/santokit?sslmode=disable',
     images.hub
-  ], ['hub']);
+  ], ['hub'], images.hub);
 
   ensureContainer(names.bridge, [
     '-p',
@@ -228,9 +251,9 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     '-e',
     'STORAGE_REGION=auto',
     images.bridge
-  ], ['bridge']);
+  ], ['bridge'], images.bridge);
 
-  ensureContainer(names.user, ['nginx:1.27-alpine'], ['user']);
+  ensureContainer(names.user, ['nginx:1.27-alpine'], ['user'], 'nginx:1.27-alpine');
 
   ensureContainer(names.cli, [
     '-v',
@@ -250,7 +273,7 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     images.cli,
     'sleep',
     'infinity'
-  ], ['cli']);
+  ], ['cli'], images.cli);
 
   ensureContainer(names.client, [
     '-v',
@@ -258,7 +281,7 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     images.node,
     'sleep',
     'infinity'
-  ], ['client']);
+  ], ['client'], images.node);
 
   resetState();
 
