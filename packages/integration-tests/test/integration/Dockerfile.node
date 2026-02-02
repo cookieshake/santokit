@@ -1,0 +1,4 @@
+FROM node:20-bookworm
+WORKDIR /workspace
+RUN npm install -g tsx
+CMD ["sleep", "infinity"]

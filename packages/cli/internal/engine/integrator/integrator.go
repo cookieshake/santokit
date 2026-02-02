@@ -5,6 +5,7 @@ package integrator
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/cookieshake/santokit/packages/cli/internal/engine/parser"
@@ -111,7 +112,7 @@ func (i *Integrator) BundleSchema(config *parser.SchemaConfig) (*Bundle, error) 
 // CreateManifest creates a manifest from bundles
 func (i *Integrator) CreateManifest(projectID string, bundles []Bundle) *Manifest {
 	return &Manifest{
-		Version:   "1.0",
+		Version:   fmt.Sprintf("v-%d", time.Now().UnixNano()),
 		ProjectID: projectID,
 		Bundles:   bundles,
 		CreatedAt: time.Now(),

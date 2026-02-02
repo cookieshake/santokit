@@ -1,0 +1,4 @@
+FROM golang:1.23-bookworm
+WORKDIR /workspace
+ENV GOTOOLCHAIN=auto
+CMD ["sleep", "infinity"]

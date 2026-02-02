@@ -34,6 +34,8 @@ export interface ServerConfig {
 export class SantokitServer {
   private config: ServerConfig;
   private bundleCache: Map<string, Bundle> = new Map();
+  private responseCache: Map<string, { body: string; headers: [string, string][]; status: number; expiresAt: number }> =
+    new Map();
   private logger: Logger;
 
   constructor(config: ServerConfig) {
@@ -146,11 +148,7 @@ export class SantokitServer {
       // Check if this request can be cached
       const cacheConfig = bundle.config.cache;
       const access = bundle.config.access || 'public';
-      const canCache =
-        access === 'public' &&
-        cacheConfig &&
-        cacheConfig !== '' &&
-        typeof caches !== 'undefined';
+      const canCache = access === 'public' && cacheConfig && cacheConfig !== '';
 
       let cacheRequest: Request | null = null;
       if (canCache) {
@@ -166,15 +164,29 @@ export class SantokitServer {
       }
 
       if (canCache && cacheRequest) {
-        const cache = (caches as any).default as Cache;
-        const cachedResponse = await cache.match(cacheRequest);
-
-        if (cachedResponse) {
+        const cacheKey = cacheRequest.url;
+        const cached = this.responseCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
           logger.info('Cache HIT', { namespace, name });
-          const response = new Response(cachedResponse.body, cachedResponse);
+          const response = new Response(cached.body, { status: cached.status, headers: cached.headers });
           response.headers.set('X-Cache-Status', 'HIT');
           response.headers.set('X-Request-ID', requestId);
           return response;
+        }
+        if (cached) {
+          this.responseCache.delete(cacheKey);
+        }
+
+        if (typeof caches !== 'undefined') {
+          const cache = (caches as any).default as Cache;
+          const cachedResponse = await cache.match(cacheRequest);
+          if (cachedResponse) {
+            logger.info('Cache HIT', { namespace, name });
+            const response = new Response(cachedResponse.body, cachedResponse);
+            response.headers.set('X-Cache-Status', 'HIT');
+            response.headers.set('X-Request-ID', requestId);
+            return response;
+          }
         }
 
         logger.debug('Cache MISS', { namespace, name });
@@ -224,9 +236,24 @@ export class SantokitServer {
 
       // Store in cache if configured
       if (canCache && cacheRequest) {
-        const cache = (caches as any).default as Cache;
-        // Clone the response before caching (response can only be read once)
-        await cache.put(cacheRequest, response.clone());
+        const cacheKey = cacheRequest.url;
+        const ttl = this.getCacheSeconds(cacheConfig);
+        if (ttl > 0) {
+          const body = await response.clone().text();
+          const headers = Array.from(response.headers.entries());
+          this.responseCache.set(cacheKey, {
+            body,
+            headers,
+            status: response.status,
+            expiresAt: Date.now() + ttl * 1000
+          });
+        }
+
+        if (typeof caches !== 'undefined') {
+          const cache = (caches as any).default as Cache;
+          // Clone the response before caching (response can only be read once)
+          await cache.put(cacheRequest, response.clone());
+        }
         logger.debug('Response cached', { namespace, name });
       }
 
@@ -436,16 +463,10 @@ export class SantokitServer {
     return await executeBundle(bundle, params, { db: this.config.db, context });
   }
 
-  private getCacheHeaders(config: LogicConfig): Record<string, string> {
-    if (!config.cache) {
-      return { 'Cache-Control': 'no-store' };
-    }
-
-    // Parse duration (e.g., "5m", "1h", "1d")
-    const match = config.cache.match(/^(\d+)([smhd])$/);
-    if (!match) {
-      return { 'Cache-Control': 'no-store' };
-    }
+  private getCacheSeconds(cacheValue?: string): number {
+    if (!cacheValue) return 0;
+    const match = cacheValue.match(/^(\d+)([smhd])$/);
+    if (!match) return 0;
 
     const value = parseInt(match[1]);
     const unit = match[2];
@@ -457,7 +478,18 @@ export class SantokitServer {
       d: 86400,
     };
 
-    const seconds = value * multipliers[unit];
+    return value * (multipliers[unit] ?? 0);
+  }
+
+  private getCacheHeaders(config: LogicConfig): Record<string, string> {
+    if (!config.cache) {
+      return { 'Cache-Control': 'no-store' };
+    }
+
+    const seconds = this.getCacheSeconds(config.cache);
+    if (!seconds) {
+      return { 'Cache-Control': 'no-store' };
+    }
 
     return {
       'Cache-Control': `public, max-age=${seconds}`,

@@ -1,0 +1,6 @@
+{
+  "project_id": "default",
+  "codegen": {
+    "output": ".stk/santokit-env.d.ts"
+  }
+}
