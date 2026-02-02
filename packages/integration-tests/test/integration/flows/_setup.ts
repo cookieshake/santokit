@@ -121,7 +121,7 @@ async function startContext(): Promise<FlowContext> {
       { source: homeDir, target: '/data/home' }
     ])
     .withEnvironment({ HOME: '/data/home' })
-    .withCmd(['sleep', 'infinity'])
+    .withCommand(['sleep', 'infinity'])
     .start();
 
   const nodeImage = await GenericContainer.fromDockerfile(
@@ -134,7 +134,7 @@ async function startContext(): Promise<FlowContext> {
     .withNetwork(network)
     .withNetworkAliases('user')
     .withBindMounts([{ source: projectRoot, target: '/workspace' }])
-    .withCmd(['node', '/workspace/packages/integration-tests/test/integration/scripts/user-server.js'])
+    .withCommand(['node', '/workspace/packages/integration-tests/test/integration/scripts/user-server.js'])
     .withExposedPorts(8081)
     .withWaitStrategy(Wait.forLogMessage(/User dev server listening/))
     .start();
@@ -143,7 +143,7 @@ async function startContext(): Promise<FlowContext> {
     .withNetwork(network)
     .withNetworkAliases('client')
     .withBindMounts([{ source: projectRoot, target: '/workspace' }])
-    .withCmd(['sleep', 'infinity'])
+    .withCommand(['sleep', 'infinity'])
     .start();
 
   async function runCli(command: string, cwd = projectDirContainer) {
@@ -157,7 +157,7 @@ async function startContext(): Promise<FlowContext> {
         STK_PROJECT_ID: 'default',
         STK_TOKEN: 'test-token',
         STK_DISABLE_AUTH: 'true',
-        PATH: process.env.PATH
+        PATH: process.env.PATH ?? ''
       }
     });
 
