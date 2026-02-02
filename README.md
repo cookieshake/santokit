@@ -189,6 +189,7 @@ See [docs/architecture/](docs/architecture/) for detailed architecture documenta
 5. [Server and Edge](docs/architecture/05_server_and_edge.md)
 6. [Client SDK](docs/architecture/06_client_sdk.md)
 7. [Security and Secrets](docs/architecture/07_security_and_secrets.md)
+8. [Auto CRUD and Permissions](docs/architecture/08_auto_crud_and_permissions.md)
 
 ## License
 

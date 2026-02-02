@@ -14,21 +14,21 @@
 
 ### `POST /call` (자동 CRUD)
 - **존재 의의**: 스키마 기반 자동 CRUD 제공
-- **행동**: `_crud/{table}/{operation}` 패턴으로 기본 CRUD 실행
+- **행동**: `crud/{database}/{table}/{operation}` 패턴으로 기본 CRUD 실행
 - **동작**:
   1. `config/permissions.yaml` 및 컬럼 prefix에서 권한 확인
   2. 스키마 기반 쿼리 생성
   3. Row-Level Security (RLS) 필터 적용
-  4. SQL 실행 및 결과 반환
+  4. 지정된 데이터베이스에서 SQL 실행 및 결과 반환
 - **오버라이드**: `logic/{table}/{operation}.sql`이 있으면 커스텀 로직 우선
 - **상태**: ❌
 
 ### 지원 Operation
 
-#### `_crud/{table}/select`
+#### `crud/{database}/{table}/select`
 ```yaml
 # 요청 예시
-path: "_crud/users/select"
+path: "crud/main/users/select"
 params:
   where: { status: "active" }
   select: ["id", "name", "s_email"]
@@ -37,30 +37,30 @@ params:
   offset: 0
 ```
 
-#### `_crud/{table}/insert`
+#### `crud/{database}/{table}/insert`
 ```yaml
 # 요청 예시
-path: "_crud/users/insert"
+path: "crud/main/users/insert"
 params:
   data:
     name: "John Doe"
     s_email: "john@example.com"
 ```
 
-#### `_crud/{table}/update`
+#### `crud/{database}/{table}/update`
 ```yaml
 # 요청 예시
-path: "_crud/users/update"
+path: "crud/main/users/update"
 params:
   where: { id: "uuid-123" }
   data:
     name: "Jane Doe"
 ```
 
-#### `_crud/{table}/delete`
+#### `crud/{database}/{table}/delete`
 ```yaml
 # 요청 예시
-path: "_crud/users/delete"
+path: "crud/main/users/delete"
 params:
   where: { id: "uuid-123" }
 ```
@@ -239,7 +239,7 @@ ownerColumn:
 
 ```typescript
 // 일반 유저가 주문 조회
-await stk.call('_crud/orders/select', {
+await stk.call('crud/main/orders/select', {
   where: { status: 'pending' }
 });
 
@@ -247,7 +247,7 @@ await stk.call('_crud/orders/select', {
 // 1. 권한 체크: orders.select = ['owner', 'admin']
 // 2. user.roles = ['user'] → owner 규칙 적용
 // 3. RLS 필터 추가: { user_id: user.id }
-// 4. 최종 쿼리:
+// 4. 최종 쿼리 (main 데이터베이스):
 SELECT * FROM orders 
 WHERE status = 'pending' 
   AND user_id = 'current-user-id'  -- 자동 추가!
@@ -286,7 +286,7 @@ WHERE status = 'pending'
 ### 기본 동작
 ```typescript
 // 요청
-await stk.call('_crud/users/select', {
+await stk.call('crud/main/users/select', {
   where: { id: 1 }
 });
 
@@ -319,7 +319,7 @@ await stk.call('_crud/users/select', {
 ### 명시적 컬럼 선택
 ```typescript
 // c_, p_ 컬럼을 명시적으로 요청
-await stk.call('_crud/users/select', {
+await stk.call('crud/main/users/select', {
   where: { id: 1 },
   select: ['id', 'name', 'c_ssn']  // c_ssn 요청
 });
@@ -334,7 +334,7 @@ await stk.call('_crud/users/select', {
 
 ### 우선순위
 1. **커스텀 로직**: `logic/{table}/{operation}.sql` 또는 `.js`
-2. **자동 CRUD**: `_crud/{table}/{operation}`
+2. **자동 CRUD**: `crud/{database}/{table}/{operation}`
 
 ### 예시
 
@@ -367,8 +367,8 @@ GROUP BY u.id, u.name, u.s_email;
 await stk.call('users/select', { id: 1 });
 // → logic/users/select.sql 실행 (자동 CRUD 무시)
 
-await stk.call('orders/select', { id: 1 });
-// → _crud/orders/select 실행 (커스텀 로직 없음)
+await stk.call('crud/main/orders/select', { id: 1 });
+// → crud/main/orders/select 실행 (커스텀 로직 없음)
 ```
 
 ---

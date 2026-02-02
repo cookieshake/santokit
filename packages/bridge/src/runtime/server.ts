@@ -1,7 +1,9 @@
 import { createContext, type Context } from '../context/index.js';
-import type { Bundle, LogicConfig, RequestInfo, UserInfo } from './types.js';
+import type { Bundle, LogicConfig, RequestInfo, UserInfo, PermissionsConfig, CRUDOperation } from './types.js';
 import { executeBundle } from './logic.js';
 import { Logger, formatErrorResponse, NotFoundError, AuthorizationError } from '../utils/logger.js';
+import { handleCRUD } from './crud.js';
+import { loadPermissionsConfig } from './permissions.js';
 
 /**
  * KVStore interface for Edge KV operations
@@ -37,10 +39,12 @@ export class SantokitServer {
   private responseCache: Map<string, { body: string; headers: [string, string][]; status: number; expiresAt: number }> =
     new Map();
   private logger: Logger;
+  private permissionsConfig: PermissionsConfig;
 
   constructor(config: ServerConfig) {
     this.config = config;
     this.logger = new Logger(undefined, { projectId: config.projectId });
+    this.permissionsConfig = loadPermissionsConfig();
   }
 
   /**
@@ -88,6 +92,34 @@ export class SantokitServer {
         params?: Record<string, unknown>;
       };
       const targetPath = typeof payload.path === 'string' ? payload.path : '';
+
+      // Check if this is a CRUD path: crud/{database}/{table}/{operation}
+      const crudMatch = targetPath.match(/^crud\/([^\/]+)\/([^\/]+)\/([^\/]+)$/);
+      if (crudMatch) {
+        const [, database, table, operation] = crudMatch;
+
+        // Validate operation
+        if (!['select', 'insert', 'update', 'delete'].includes(operation)) {
+          return new Response(JSON.stringify({ error: `Invalid CRUD operation: ${operation}` }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Request-ID': requestId,
+            },
+          });
+        }
+
+        // Handle CRUD request
+        return this.handleCRUDRequest(
+          request,
+          requestId,
+          database,
+          table,
+          operation as CRUDOperation,
+          payload.params ?? {}
+        );
+      }
+
       [namespace, name] = this.parsePath(targetPath);
       providedParams = payload.params && typeof payload.params === 'object' ? payload.params : {};
     } catch {
@@ -159,15 +191,13 @@ export class SantokitServer {
 
       let cacheRequest: Request | null = null;
       if (canCache) {
-        if (request.method === 'GET') {
-          cacheRequest = request;
-        } else {
-          const cacheUrl = new URL(request.url);
-          cacheUrl.pathname = '/__stk_cache';
-          cacheUrl.searchParams.set('path', `${namespace}/${name}`);
-          cacheUrl.searchParams.set('params', stableStringify(params));
-          cacheRequest = new Request(cacheUrl.toString(), { method: 'GET' });
-        }
+        // All requests at this point are POST (filtered at line 79)
+        // Create a synthetic GET request for cache lookup
+        const cacheUrl = new URL(request.url);
+        cacheUrl.pathname = '/__stk_cache';
+        cacheUrl.searchParams.set('path', `${namespace}/${name}`);
+        cacheUrl.searchParams.set('params', stableStringify(params));
+        cacheRequest = new Request(cacheUrl.toString(), { method: 'GET' });
       }
 
       if (canCache && cacheRequest) {
@@ -247,7 +277,10 @@ export class SantokitServer {
         const ttl = this.getCacheSeconds(cacheConfig);
         if (ttl > 0) {
           const body = await response.clone().text();
-          const headers = Array.from(response.headers.entries());
+          const headers: [string, string][] = [];
+          response.headers.forEach((value, key) => {
+            headers.push([key, value]);
+          });
           this.responseCache.set(cacheKey, {
             body,
             headers,
@@ -501,6 +534,68 @@ export class SantokitServer {
     return {
       'Cache-Control': `public, max-age=${seconds}`,
     };
+  }
+
+  private async handleCRUDRequest(
+    request: Request,
+    requestId: string,
+    database: string,
+    table: string,
+    operation: CRUDOperation,
+    params: unknown
+  ): Promise<Response> {
+    const logger = this.logger.child({ requestId, database, table, operation });
+
+    try {
+      // Authenticate user
+      const user = await this.authenticateRequest(request);
+
+      if (user) {
+        logger.debug('User authenticated', { userId: user.id });
+      }
+
+      // Get database pool
+      const db = this.config.db[database];
+      if (!db) {
+        logger.warn('Database not found', { database });
+        throw new NotFoundError(`Database "${database}" not configured`);
+      }
+
+      // Execute CRUD operation
+      logger.info('Executing CRUD operation', { database, table, operation });
+      const startTime = Date.now();
+      const result = await handleCRUD(
+        db,
+        table,
+        operation,
+        params,
+        this.permissionsConfig,
+        user
+      );
+      const duration = Date.now() - startTime;
+
+      logger.info('CRUD operation completed', { duration });
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+          'X-Execution-Time': `${duration}ms`,
+        },
+      });
+    } catch (error) {
+      logger.error('CRUD operation failed', error, { database, table, operation });
+
+      const { status, body } = formatErrorResponse(error, requestId);
+      return new Response(body, {
+        status,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+        },
+      });
+    }
   }
 
   private errorResponse(status: number, message: string, requestId: string): Response {

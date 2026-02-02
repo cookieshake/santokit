@@ -93,7 +93,142 @@ function writeProjectFiles(projectDir: string) {
   fs.mkdirSync(path.join(logicDir, 'cache'), { recursive: true });
   fs.mkdirSync(path.join(logicDir, 'storage'), { recursive: true });
 
-  fs.writeFileSync(path.join(schemaDir, 'main.hcl'), 'table "items" { schema = schema.public }\n');
+  // Test schema with column prefixes
+  const testSchema = `
+table "test_users" {
+  schema = schema.public
+  
+  column "id" {
+    type = uuid
+    default = sql("gen_random_uuid()")
+  }
+  
+  column "name" {
+    type = varchar(255)
+  }
+  
+  column "s_email" {
+    type = varchar(255)
+  }
+  
+  column "c_password_hash" {
+    type = text
+  }
+  
+  column "c_ssn" {
+    type = varchar(11)
+  }
+  
+  column "p_internal_notes" {
+    type = text
+  }
+  
+  column "p_ban_reason" {
+    type = text
+  }
+  
+  column "_created_at" {
+    type = timestamptz
+    default = sql("now()")
+  }
+  
+  column "_updated_at" {
+    type = timestamptz
+    default = sql("now()")
+  }
+  
+  primary_key {
+    columns = [column.id]
+  }
+}
+
+table "test_orders" {
+  schema = schema.public
+  
+  column "id" {
+    type = uuid
+    default = sql("gen_random_uuid()")
+  }
+  
+  column "user_id" {
+    type = uuid
+  }
+  
+  column "status" {
+    type = varchar(50)
+  }
+  
+  column "_created_at" {
+    type = timestamptz
+    default = sql("now()")
+  }
+  
+  primary_key {
+    columns = [column.id]
+  }
+}
+
+table "test_public_posts" {
+  schema = schema.public
+  
+  column "id" {
+    type = uuid
+    default = sql("gen_random_uuid()")
+  }
+  
+  column "title" {
+    type = varchar(255)
+  }
+  
+  column "content" {
+    type = text
+  }
+  
+  primary_key {
+    columns = [column.id]
+  }
+}
+
+table "items" {
+  schema = schema.public
+}
+`;
+
+  fs.writeFileSync(path.join(schemaDir, 'main.hcl'), testSchema);
+
+  // Permissions config
+  const permissionsConfig = `
+ownerColumn:
+  _default: user_id
+  test_users: id
+
+tables:
+  _default:
+    select: [authenticated]
+    insert: [authenticated]
+    update: [owner, admin]
+    delete: [admin]
+  
+  test_users:
+    select: [authenticated]
+    insert: [public]
+    update: [owner, admin]
+    delete: [admin]
+  
+  test_orders:
+    select: [owner, admin]
+    insert: [authenticated]
+    update: [owner, admin]
+    delete: [owner, admin]
+  
+  test_public_posts:
+    select: [public]
+    insert: [authenticated]
+    update: [owner, admin]
+    delete: [admin]
+`;
+
+  fs.writeFileSync(path.join(configDir, 'permissions.yaml'), permissionsConfig);
   fs.writeFileSync(path.join(configDir, 'auth.yaml'), 'providers: []\n');
   fs.writeFileSync(path.join(configDir, 'databases.yaml'), 'default: {}\n');
 
