@@ -1,9 +1,0 @@
-ownerColumn:
-  _default: user_id
-
-tables:
-  _default:
-    select: [authenticated]
-    insert: [authenticated]
-    update: [owner, admin]
-    delete: [admin]

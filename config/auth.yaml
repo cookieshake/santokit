@@ -1,6 +1,0 @@
-providers:
-  - type: email
-    enabled: true
-rules:
-  - role: "*"
-    allow: true
