@@ -11,3 +11,15 @@ tasks:
     command: "pnpm run test"
   lint:
     command: "pnpm run lint"
+  check:weak:
+    deps:
+      - "lint"
+  check:
+    deps:
+      - "lint"
+      - "build"
+  check:strong:
+    deps:
+      - "lint"
+      - "build"
+      - "test"

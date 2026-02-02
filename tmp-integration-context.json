@@ -1,8 +1,0 @@
-{
-  "hubUrl": "http://127.0.0.1:55880",
-  "apiUrl": "http://127.0.0.1:55830",
-  "apiUrlInternal": "http://bridge:3000",
-  "projectDir": "/Users/cookie.shake/workspace/santoki/tmp-integration-project",
-  "projectDirContainer": "/workspace/tmp-integration-project",
-  "scriptsRootContainer": "/workspace/packages/integration-tests/test/integration/scripts"
-}

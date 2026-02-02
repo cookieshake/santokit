@@ -8,10 +8,6 @@ const contextFile = path.join(projectRoot, 'tmp-integration-context.json');
 const lockFile = path.join(projectRoot, '.tmp-integration-lock');
 const projectDirContainer = '/workspace/tmp-integration-project';
 const scriptsRootContainer = '/workspace/packages/integration-tests/test/integration/scripts';
-const names = {
-  cli: 'santokit-it-cli',
-  client: 'santokit-it-client'
-};
 
 let cachedContext: FlowContext | null = null;
 let lockHeld = false;
@@ -52,14 +48,16 @@ function readContextFile() {
     projectDir: string;
     projectDirContainer: string;
     scriptsRootContainer: string;
+    cliContainerId: string;
+    clientContainerId: string;
   };
 }
 
-async function runCli(command: string, cwd = projectDirContainer) {
+async function runCli(containerId: string, command: string, cwd = projectDirContainer) {
   try {
     execFileSync('docker', [
       'exec',
-      names.cli,
+      containerId,
       'bash',
       '-lc',
       `export PATH=\"/usr/local/go/bin:$PATH\"; cd ${cwd} && ${command}`
@@ -72,9 +70,9 @@ async function runCli(command: string, cwd = projectDirContainer) {
   }
 }
 
-async function execInClient(command: string) {
+async function execInClient(containerId: string, command: string) {
   try {
-    const output = execFileSync('docker', ['exec', names.client, 'bash', '-lc', command], { encoding: 'utf8' });
+    const output = execFileSync('docker', ['exec', containerId, 'bash', '-lc', command], { encoding: 'utf8' });
     return { exitCode: 0, output };
   } catch (error: any) {
     const output = error?.stdout?.toString?.() ?? error?.stderr?.toString?.() ?? '';
@@ -252,6 +250,8 @@ export function getFlowContext(): FlowContext {
 
   const base = readContextFile();
   const projectDir = base.projectDir;
+  const runCliBound = (command: string, cwd?: string) => runCli(base.cliContainerId, command, cwd);
+  const execInClientBound = (command: string) => execInClient(base.clientContainerId, command);
 
   let projectPrepared = false;
   let logicApplied = false;
@@ -264,7 +264,7 @@ export function getFlowContext(): FlowContext {
         fs.rmSync(projectDir, { recursive: true, force: true });
       }
       fs.mkdirSync(projectDir, { recursive: true });
-      await runCli(`go run /workspace/packages/cli/cmd/stk/main.go init ${projectDirContainer}`, '/workspace');
+      await runCliBound(`go run /workspace/packages/cli/cmd/stk/main.go init ${projectDirContainer}`, '/workspace');
       const logicDir = path.join(projectDir, 'logic');
       if (fs.existsSync(logicDir)) {
         fs.rmSync(logicDir, { recursive: true, force: true });
@@ -279,7 +279,7 @@ export function getFlowContext(): FlowContext {
     await withProjectLock(async () => {
       if (logicApplied) return;
       await ensureProjectPrepared();
-      await runCli('go run /workspace/packages/cli/cmd/stk/main.go logic apply', projectDirContainer);
+      await runCliBound('go run /workspace/packages/cli/cmd/stk/main.go logic apply', projectDirContainer);
       logicApplied = true;
     });
   }
@@ -291,8 +291,10 @@ export function getFlowContext(): FlowContext {
     projectDir: base.projectDir,
     projectDirContainer: base.projectDirContainer,
     scriptsRootContainer: base.scriptsRootContainer ?? scriptsRootContainer,
-    runCli,
-    execInClient,
+    cliContainerId: base.cliContainerId,
+    clientContainerId: base.clientContainerId,
+    runCli: runCliBound,
+    execInClient: execInClientBound,
     ensureProjectPrepared,
     ensureLogicApplied
   };

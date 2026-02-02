@@ -7,3 +7,20 @@ tasks:
     command: "go build ./..."
   test:
     command: "go test ./..."
+  fmt:
+    command: "bash"
+    args:
+      - "-lc"
+      - "test -z \"$(gofmt -l .)\""
+  check:weak:
+    deps:
+      - "fmt"
+  check:
+    deps:
+      - "fmt"
+      - "build"
+  check:strong:
+    deps:
+      - "fmt"
+      - "build"
+      - "test"
