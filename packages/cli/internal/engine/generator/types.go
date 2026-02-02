@@ -18,50 +18,57 @@ func GenerateTypes(manifest *integrator.Manifest) string {
 	sb.WriteString("declare module '@santokit/client' {\n")
 	sb.WriteString("  interface LogicNamespace {\n")
 
-	// Group bundles by namespace
-	namespaces := make(map[string][]integrator.Bundle)
+	root := &namespaceNode{children: make(map[string]*namespaceNode)}
+
 	for _, bundle := range manifest.Bundles {
 		if bundle.Type != integrator.BundleTypeLogic && bundle.Type != "js" && bundle.Type != "sql" {
 			continue
 		}
-		namespaces[bundle.Namespace] = append(namespaces[bundle.Namespace], bundle)
+		if strings.HasPrefix(bundle.Name, "_") {
+			continue
+		}
+
+		ns := strings.Trim(bundle.Namespace, "/")
+		parts := []string{}
+		if ns != "" && ns != "." {
+			parts = strings.Split(ns, "/")
+		}
+
+		current := root
+		for _, part := range parts {
+			if part == "" || part == "." {
+				continue
+			}
+			child, ok := current.children[part]
+			if !ok {
+				child = &namespaceNode{children: make(map[string]*namespaceNode)}
+				current.children[part] = child
+			}
+			current = child
+		}
+		current.bundles = append(current.bundles, bundle)
 	}
 
-	// Sort namespaces for deterministic output
-	var sortedNamespaces []string
-	for ns := range namespaces {
-		sortedNamespaces = append(sortedNamespaces, ns)
-	}
-	sort.Strings(sortedNamespaces)
+	writeNamespace(&sb, root, 4)
 
-	for _, ns := range sortedNamespaces {
-		bundles := namespaces[ns]
-		// Convert dot notation to nested objects if needed,
-		// but for now let's assume flat namespace property or handle simple grouping.
-		// "users" -> users: { ... }
+	sb.WriteString("  }\n")
+	sb.WriteString("}\n")
 
-		// If namespace has slashes, we might need nested structure,
-		// but `LogicNamespace` structure implies we might want flat or structured.
-		// The client SDK example shows `stk.logic.users.get()`.
-		// So `users` is the namespace.
+	return sb.String()
+}
 
-		parts := strings.Split(ns, "/")
-		indent := 4
+type namespaceNode struct {
+	children map[string]*namespaceNode
+	bundles  []integrator.Bundle
+}
 
-		// TODO: Handle nested namespaces properly.
-		// For now, simple implementation assuming 1-level namespace (e.g. "users")
-		// effectively mapping logic/users/get.js -> stk.logic.users.get
-
-		// Using map to build tree could be better but let's stick to simple first
-
-		sb.WriteString(fmt.Sprintf("%*s%s: {\n", indent, "", parts[len(parts)-1]))
-
-		sort.Slice(bundles, func(i, j int) bool {
-			return bundles[i].Name < bundles[j].Name
+func writeNamespace(sb *strings.Builder, node *namespaceNode, indent int) {
+	if len(node.bundles) > 0 {
+		sort.Slice(node.bundles, func(i, j int) bool {
+			return node.bundles[i].Name < node.bundles[j].Name
 		})
-
-		for _, bundle := range bundles {
-			sb.WriteString(fmt.Sprintf("%*s%s: (params: {\n", indent+2, "", bundle.Name))
+		for _, bundle := range node.bundles {
+			sb.WriteString(fmt.Sprintf("%*s%s: (params: {\n", indent, "", bundle.Name))
 
 			// Params
 			if params, ok := bundle.Config["params"].(map[string]interface{}); ok {
@@ -73,9 +80,12 @@ func GenerateTypes(manifest *integrator.Manifest) string {
 				sort.Strings(paramNames)
 
 				for _, pName := range paramNames {
-					pConfig := params[pName].(map[string]interface{})
-					pType := pConfig["type"].(string)
-					pRequired := pConfig["required"].(bool)
+					pConfig, ok := params[pName].(map[string]interface{})
+					if !ok {
+						continue
+					}
+					pType, _ := pConfig["type"].(string)
+					pRequired, _ := pConfig["required"].(bool)
 
 					tsType := "any"
 					switch pType {
@@ -94,17 +104,28 @@ func GenerateTypes(manifest *integrator.Manifest) string {
 						optional = ""
 					}
 
-					sb.WriteString(fmt.Sprintf("%*s%s%s: %s;\n", indent+4, "", pName, optional, tsType))
+					sb.WriteString(fmt.Sprintf("%*s%s%s: %s;\n", indent+2, "", pName, optional, tsType))
 				}
 			}
 
-			sb.WriteString(fmt.Sprintf("%*s}) => Promise<any>;\n", indent+2, ""))
+			sb.WriteString(fmt.Sprintf("%*s}) => Promise<any>;\n", indent, ""))
 		}
-		sb.WriteString(fmt.Sprintf("%*s};\n", indent, ""))
 	}
 
-	sb.WriteString("  }\n")
-	sb.WriteString("}\n")
+	if len(node.children) == 0 {
+		return
+	}
 
-	return sb.String()
+	var childNames []string
+	for name := range node.children {
+		childNames = append(childNames, name)
+	}
+	sort.Strings(childNames)
+
+	for _, name := range childNames {
+		child := node.children[name]
+		sb.WriteString(fmt.Sprintf("%*s%s: {\n", indent, "", name))
+		writeNamespace(sb, child, indent+2)
+		sb.WriteString(fmt.Sprintf("%*s};\n", indent, ""))
+	}
 }

@@ -119,7 +119,7 @@ function createLogicProxy(
       return new Proxy({}, {
         get(_, method: string) {
           return (params?: Record<string, unknown>, options?: RequestOptions) => {
-            return request(`${namespace}/${method}`, params, options);
+            return request('call', { path: `${namespace}/${method}`, params: params ?? {} }, options);
           };
         },
       });

@@ -13,8 +13,9 @@ type Config struct {
 }
 
 type Service struct {
-	mu      sync.RWMutex
+	mu        sync.RWMutex
 	byProject map[string]Config
+	repo      Repository
 }
 
 func NewService() *Service {
@@ -23,9 +24,21 @@ func NewService() *Service {
 	}
 }
 
+type Repository interface {
+	Set(ctx context.Context, projectID string, cfg Config) error
+	Get(ctx context.Context, projectID string) (Config, error)
+}
+
+func NewServiceWithRepository(repo Repository) *Service {
+	return &Service{repo: repo}
+}
+
 func (s *Service) Set(ctx context.Context, projectID string, cfg Config) error {
 	if projectID == "" {
 		return fmt.Errorf("projectID required")
+	}
+	if s.repo != nil {
+		return s.repo.Set(ctx, projectID, cfg)
 	}
 	_ = ctx
 	s.mu.Lock()
@@ -37,6 +50,9 @@ func (s *Service) Set(ctx context.Context, projectID string, cfg Config) error {
 func (s *Service) Get(ctx context.Context, projectID string) (Config, error) {
 	if projectID == "" {
 		return Config{}, fmt.Errorf("projectID required")
+	}
+	if s.repo != nil {
+		return s.repo.Get(ctx, projectID)
 	}
 	_ = ctx
 	s.mu.RLock()

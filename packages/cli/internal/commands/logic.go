@@ -49,38 +49,16 @@ func (c *LogicApplyCmd) Run() error {
 
 	// 3. Parse & Bundle
 	info("⚙️  Processing files...")
+	configs, err := buildLogicConfigs(rootDir, files, parse)
+	if err != nil {
+		return err
+	}
+
 	var bundles []integrator.Bundle
-	for i, file := range files {
-		filename := filepath.Base(file.Path)
-		info(fmt.Sprintf("  [%d/%d] %s", i+1, len(files), filename))
-
-		content, err := os.ReadFile(file.Path)
-		if err != nil {
-			return errorf("❌ Failed to read file %s: %v", file.Path, err)
-		}
-
-		// Parse
-		config, err := parse.ParseLogicFile(string(content), file.Path)
-		if err != nil {
-			return errorf("❌ Parse failed for %s: %v", file.Path, err)
-		}
-
-		// Fill in namespace/name from path if not manually set
-		relPath, _ := filepath.Rel(filepath.Join(rootDir, "logic"), file.Path)
-		dir, filename := filepath.Split(relPath)
-		config.Namespace = filepath.Clean(dir)
-		// Remove extension for name
-		ext := filepath.Ext(filename)
-		config.Name = filename[:len(filename)-len(ext)]
-
-		if err := parser.ValidateLogicConfig(config); err != nil {
-			return errorf("❌ Validation failed for %s: %v", file.Path, err)
-		}
-
-		// Bundle
+	for _, config := range configs {
 		bundle, err := integrate.BundleLogic(config)
 		if err != nil {
-			return errorf("❌ Bundle failed for %s: %v", file.Path, err)
+			return errorf("❌ Bundle failed for %s/%s: %v", config.Namespace, config.Name, err)
 		}
 		bundles = append(bundles, *bundle)
 	}
@@ -132,38 +110,105 @@ func (c *LogicValidateCmd) Run() error {
 		return nil
 	}
 
-	var failed bool
-	for _, file := range files {
-		content, err := os.ReadFile(file.Path)
-		if err != nil {
-			fmt.Printf("❌ Failed to read file %s: %v\n", file.Path, err)
-			failed = true
-			continue
-		}
-
-		config, err := parse.ParseLogicFile(string(content), file.Path)
-		if err != nil {
-			fmt.Printf("❌ Parse failed for %s: %v\n", file.Path, err)
-			failed = true
-			continue
-		}
-
-		relPath, _ := filepath.Rel(filepath.Join(rootDir, "logic"), file.Path)
-		dir, filename := filepath.Split(relPath)
-		config.Namespace = filepath.Clean(dir)
-		ext := filepath.Ext(filename)
-		config.Name = filename[:len(filename)-len(ext)]
-
-		if err := parser.ValidateLogicConfig(config); err != nil {
-			fmt.Printf("❌ Validation failed for %s: %v\n", file.Path, err)
-			failed = true
-			continue
-		}
-	}
-
-	if failed {
+	if _, err := buildLogicConfigs(rootDir, files, parse); err != nil {
 		return errorf("❌ Logic validation failed.")
 	}
 	success("✅ Logic validation passed.")
 	return nil
+}
+
+type logicEntry struct {
+	namespace string
+	name      string
+	isPublic  bool
+	meta      *parser.LogicConfig
+	content   *parser.LogicConfig
+}
+
+func buildLogicConfigs(rootDir string, files []scanner.ScannedFile, parse *parser.Parser) ([]*parser.LogicConfig, error) {
+	entries := make(map[string]*logicEntry)
+	logicRoot := filepath.Join(rootDir, "logic")
+
+	for _, file := range files {
+		relPath, _ := filepath.Rel(logicRoot, file.Path)
+		dir, filename := filepath.Split(relPath)
+		ext := filepath.Ext(filename)
+		name := filename[:len(filename)-len(ext)]
+		namespace := filepath.Clean(dir)
+		key := filepath.Join(namespace, name)
+
+		entry, ok := entries[key]
+		if !ok {
+			entry = &logicEntry{
+				namespace: namespace,
+				name:      name,
+				isPublic:  true,
+			}
+			entries[key] = entry
+		}
+		if !file.IsPublic {
+			entry.isPublic = false
+		}
+
+		content, err := os.ReadFile(file.Path)
+		if err != nil {
+			return nil, errorf("❌ Failed to read file %s: %v", file.Path, err)
+		}
+
+		switch ext {
+		case ".yaml", ".yml":
+			cfg, err := parse.ParseLogicMetadata(string(content))
+			if err != nil {
+				return nil, errorf("❌ Parse failed for %s: %v", file.Path, err)
+			}
+			entry.meta = cfg
+		case ".sql", ".js":
+			if entry.content != nil {
+				return nil, errorf("❌ Multiple logic sources found for %s/%s", entry.namespace, entry.name)
+			}
+			cfg, err := parse.ParseLogicFile(string(content), file.Path)
+			if err != nil {
+				return nil, errorf("❌ Parse failed for %s: %v", file.Path, err)
+			}
+			entry.content = cfg
+		}
+	}
+
+	var configs []*parser.LogicConfig
+	for _, entry := range entries {
+		if entry.content == nil {
+			return nil, errorf("❌ Missing logic content for %s/%s (expected .sql or .js)", entry.namespace, entry.name)
+		}
+
+		config := entry.content
+		applyLogicMetadata(config, entry.meta)
+		config.Namespace = entry.namespace
+		config.Name = entry.name
+
+		if err := parser.ValidateLogicConfig(config); err != nil {
+			return nil, errorf("❌ Validation failed for %s/%s: %v", entry.namespace, entry.name, err)
+		}
+
+		configs = append(configs, config)
+	}
+
+	return configs, nil
+}
+
+func applyLogicMetadata(target *parser.LogicConfig, meta *parser.LogicConfig) {
+	if meta == nil {
+		return
+	}
+	if meta.Target != "" {
+		target.Target = meta.Target
+	}
+	if meta.Access != "" {
+		target.Access = meta.Access
+	}
+	if meta.Cache != "" {
+		target.Cache = meta.Cache
+	}
+	if meta.Params != nil {
+		target.Params = meta.Params
+	}
 }

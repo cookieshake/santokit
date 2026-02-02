@@ -21,6 +21,7 @@ func (c *InitCmd) Run() error {
 		filepath.Join(projectName, "schema"),
 		filepath.Join(projectName, "config"),
 		filepath.Join(projectName, "logic"),
+		filepath.Join(projectName, ".stk"),
 	}
 
 	for _, dir := range dirs {
@@ -84,10 +85,40 @@ export default async function(context) {
 
 	// 5. Create project config
 	configContent := `{
-  "project_id": ""
+  "project_id": "",
+  "codegen": {
+    "output": ".stk/santokit-env.d.ts"
+  }
 }`
 	if err := os.WriteFile(filepath.Join(projectName, "stk.config.json"), []byte(configContent), 0644); err != nil {
 		return errorf("❌ Failed to create project config: %v", err)
+	}
+
+	// 6. Create minimal types placeholder
+	typesPath := filepath.Join(projectName, ".stk", "types.d.ts")
+	if err := os.WriteFile(typesPath, []byte("import '@santokit/client';\n"), 0644); err != nil {
+		return errorf("❌ Failed to create types placeholder: %v", err)
+	}
+
+	// 7. Create tsconfig.json (if missing)
+	tsconfigPath := filepath.Join(projectName, "tsconfig.json")
+	if _, err := os.Stat(tsconfigPath); os.IsNotExist(err) {
+		tsconfigContent := `{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src",
+    ".stk/**/*.d.ts"
+  ]
+}`
+		if err := os.WriteFile(tsconfigPath, []byte(tsconfigContent), 0644); err != nil {
+			return errorf("❌ Failed to create tsconfig.json: %v", err)
+		}
 	}
 
 	success(fmt.Sprintf("✅ Initialized Santokit project in %s", projectName))

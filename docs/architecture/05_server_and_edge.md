@@ -1,57 +1,65 @@
-# 05. Server & Edge 명세 (브리지)
+# 05. Server & Edge 명세 (Spec)
 
-## 역할
-"데이터 플레인(Data Plane)". 사용자 가까이에서 로직을 실행합니다.
+## 존재 의의
+Server는 실제 사용자 요청을 실행하는 **데이터 플레인**이다. Edge에서 로직을 실행하고 지연을 최소화한다.
 
-## 아키텍처: 런타임 불가지론 (Runtime Agnostic)
-*   **플랫폼**: Cloudflare Workers, Node.js (Docker/K8s), AWS Lambda 등 어디서든 실행 가능합니다.
-*   **핵심 로직**: **Standard Web API**를 준수하는 TypeScript로 작성되어, 특정 벤더(Cloudflare 등)에 종속되지 않습니다.
-    *   이유: Edge의 장점을 취하면서도, 벤더 락인을 방지하고 온프레미스/프라이빗 클라우드 배포를 지원하기 위함입니다.
-*   **구조**: 경량화된 라우터와 실행 엔진이 순수 JavaScript/TypeScript로 구현되어 있습니다.
-*   **정책 (Policy)**: "Zero Dependency". 사용자 로직은 외부 npm 의존성을 가질 수 없으며, 플랫폼이 제공하는 Standard API와 내부 파일 import만 허용됩니다.
+## 핵심 행동
+- 로직 번들 로드
+- 인증/권한 체크
+- SQL/JS 실행
+- 캐시 적용
 
-## 런타임 흐름
+## 상태 표기
+- ✅ 구현됨
+- 🟡 부분 구현
+- ❌ 미구현
 
-1.  **요청**: 클라이언트로부터 `POST /call` 요청이 들어옵니다.
-2.  **컨텍스트 로드 (제로 레이턴시)**:
-    *   서버는 로컬 메모리 캐시에서 프로젝트 설정을 확인합니다.
-    *   없으면 **Edge KV**(`project:{id}:latest`)에서 읽습니다.
-    *   *참고: Hub를 호출하지 않습니다.*
-3.  **비밀 정보 수화(Hydration)**:
-    *   설정에는 암호화된 비밀 정보(DB URL, API 키)가 포함되어 있습니다.
-    *   서버는 환경 변수(마스터 키)를 사용하여 메모리 내에서 이를 복호화합니다.
-4.  **보안 확인**:
-    *   세션 / JWT 검증을 수행합니다 (`config/auth.yaml`의 규칙 사용).
-5.  **실행**:
-    *   라우터가 로직 함수를 찾습니다 (예: `users/get.sql`).
-    *   **SQL 로직**: **연결 프록시** (예: Hyperdrive)를 사용하여 DB에 쿼리를 실행합니다.
-    *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다.
-        *   **Context API**:
-            *   `context.storage.createUploadUrl(bucket, path)`: 서명된 업로드 URL 생성.
-            *   `context.invoke(path, args)`: 다른 로직(Internal 포함) 호출.
-            *   `context.db`: DB 쿼리 실행.
-    *   **JS 로직**: 사용자가 작성한 TS 코드를 실행합니다. (외부 라이브러리 없는 순수 연산/조합 로직)
-6.  **응답 및 캐싱**:
-    *   로직 설정에 캐싱이 명시된 경우, 응답을 Edge Cache API에 저장하여 다음 요청 시 즉시 반환합니다.
+## 런타임 API
 
-## 성능 기능 (Performance Features)
+### `POST /call`
+- **존재 의의**: SDK와 표준 API 호출 경로
+- **행동**: `{ path, params }`로 로직 실행
+- **동작**:
+  1) KV에서 번들 로드
+  2) 인증/권한 검증
+  3) 파라미터 머지/검증
+  4) SQL 또는 JS 실행
+  5) 결과 반환
+- **상태**: ✅
 
-### 1. 스마트 캐싱 (Smart Caching)
-*   **선언적 캐싱**: 로직 파일 상단(Frontmatter)에 `cache: duration`을 명시하면 런타임이 이를 감지합니다.
-    *   예: `cache: "1m"` (1분간 캐시)
-*   **동작**: 쿼리 파라미터와 바디가 동일한 키에 대해 DB 쿼리를 생략하고 Edge KV/Cache에서 결과를 즉시 반환합니다.
+### `GET /{namespace}/{name}` (레거시)
+- **존재 의의**: 단순 HTTP 호출 지원
+- **행동**: 쿼리 파라미터 기반 실행
+- **동작**: `/call`과 동일 경로
+- **상태**: ✅
 
+## 캐시 정책
+- **존재 의의**: Edge 응답 성능 개선
+- **행동**: `cache` 설정이 있는 public 로직만 캐시
+- **동작**: params 안정적 직렬화 → Cache API 저장/조회
+- **상태**: ✅
 
+## 인증/권한
+- **존재 의의**: 공개/보호 API 구분
+- **행동**: JWT 검증 및 access 제어
+- **동작**: `public`은 허용, `authenticated`/role은 토큰 필요
+- **상태**: ✅
 
-## 주요 기술
-*   **Edge KV**: "글로벌 공유 상태". 로직 코드와 설정을 저장합니다.
-*   **연결 풀링 (Hyperdrive)**: Edge에 필수적입니다. 데이터베이스의 웜(warm) TCP 연결을 유지하여 핸드셰이크 지연과 연결 고갈을 방지합니다.
-*   **TypeScript 엔진**: 복잡한 컴파일 과정 없이 순수 JS 런타임 위에서 동작하여 가볍고 빠릅니다.
+## Private 로직
+- **존재 의의**: 내부 전용 로직 분리
+- **행동**: `_` prefix는 외부 호출 거부
+- **동작**: 런타임에서 차단
+- **상태**: ✅
 
-## 독립형 런타임 (Standalone Runtime)
-*   **개념**: 복잡한 분산 시스템(Hub+Server+DB)을 단일 Docker 컨테이너로 압축한 형태입니다.
-*   **구성**:
-    *   **내장 Hub**: API 서버 및 최소화된 관리 콘솔.
-    *   **내장 Server**: Node.js 기반의 로컬 런타임 (Edge Worker 로직과 동일).
-    *   **내장 Postgres**: 데이터 저장소.
-*   **목적**: 인프라 관리 부담 없이 `docker run` 한 번으로 Santokit를 온프레미스나 개인 VPS에서 실행할 수 있게 합니다.
+## DB 연결
+- **존재 의의**: SQL 로직 실행
+- **행동**: DB 프록시를 통해 쿼리 실행
+- **동작**: Cloudflare는 Hyperdrive + Neon Serverless
+- **상태**: 🟡 (다른 런타임은 단순 어댑터)
+
+## 스토리지
+- **존재 의의**: 업/다운로드 URL 생성 및 파일 삭제
+- **행동**: S3/R2 호환 presign, DELETE 호출
+- **동작**: SigV4 presign 사용
+- **상태**: ✅
+

@@ -6,6 +6,7 @@
  */
 
 import { SantokitServer, type ServerConfig, type KVStore, type DatabasePool } from '../index.js';
+import { Client } from '@neondatabase/serverless';
 
 /**
  * Cloudflare environment bindings
@@ -54,16 +55,21 @@ function createKVAdapter(kv: KVNamespace): KVStore {
  * Note: This is a simplified implementation. In production, use a proper
  * PostgreSQL client that works in Workers (e.g., @neondatabase/serverless)
  */
-function createDbAdapter(_hyperdrive: Hyperdrive): DatabasePool {
+function createDbAdapter(hyperdrive: Hyperdrive): DatabasePool {
+  let client: Client | null = null;
+  let connected = false;
+
   return {
-    query: async (_sql: string, _params?: unknown[]) => {
-      // TODO: Implement actual database query using hyperdrive.connectionString
-      // Example with @neondatabase/serverless:
-      // const client = new Client(hyperdrive.connectionString);
-      // await client.connect();
-      // const result = await client.query(sql, params);
-      // return result.rows;
-      throw new Error('Database adapter not implemented');
+    query: async (sql: string, params?: unknown[]) => {
+      if (!client) {
+        client = new Client(hyperdrive.connectionString);
+      }
+      if (!connected) {
+        await client.connect();
+        connected = true;
+      }
+      const result = await client.query(sql, params ?? []);
+      return result.rows as unknown[];
     },
   };
 }

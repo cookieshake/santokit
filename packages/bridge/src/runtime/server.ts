@@ -55,7 +55,41 @@ export class SantokitServer {
 
     // Parse request
     const requestId = crypto.randomUUID();
-    const [namespace, name] = this.parsePath(path);
+    let namespace: string | null = null;
+    let name: string | null = null;
+    let providedParams: Record<string, unknown> | null = null;
+
+    if (path === 'call') {
+      if (request.method !== 'POST') {
+        return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+          status: 405,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Request-ID': requestId,
+          },
+        });
+      }
+
+      try {
+        const payload = (await request.json()) as {
+          path?: string;
+          params?: Record<string, unknown>;
+        };
+        const targetPath = typeof payload.path === 'string' ? payload.path : '';
+        [namespace, name] = this.parsePath(targetPath);
+        providedParams = payload.params && typeof payload.params === 'object' ? payload.params : {};
+      } catch {
+        return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Request-ID': requestId,
+          },
+        });
+      }
+    } else {
+      [namespace, name] = this.parsePath(path);
+    }
 
     // Create request-scoped logger
     const logger = this.logger.child({ requestId, path, method: request.method });
@@ -82,25 +116,9 @@ export class SantokitServer {
         throw new NotFoundError(`Logic ${namespace}/${name}`);
       }
 
-      // Check if this request can be cached
-      const cacheConfig = bundle.config.cache;
-      const canCache = request.method === 'GET' && cacheConfig && cacheConfig !== '';
-
-      // Try to get from cache (only for GET requests with cache config)
-      if (canCache && typeof caches !== 'undefined') {
-        const cache = (caches as any).default as Cache;
-        const cachedResponse = await cache.match(request);
-
-        if (cachedResponse) {
-          logger.info('Cache HIT', { namespace, name });
-          // Add cache status header
-          const response = new Response(cachedResponse.body, cachedResponse);
-          response.headers.set('X-Cache-Status', 'HIT');
-          response.headers.set('X-Request-ID', requestId);
-          return response;
-        }
-
-        logger.debug('Cache MISS', { namespace, name });
+      if (name.startsWith('_')) {
+        logger.warn('Access denied (private logic)', { namespace, name });
+        throw new AuthorizationError();
       }
 
       // Parse user from JWT (if authenticated)
@@ -122,8 +140,45 @@ export class SantokitServer {
       }
 
       // Parse parameters
-      const params = await this.parseParams(request, bundle.config);
+      const params = await this.parseParams(request, bundle.config, providedParams);
       logger.debug('Parameters parsed', { paramCount: Object.keys(params).length });
+
+      // Check if this request can be cached
+      const cacheConfig = bundle.config.cache;
+      const access = bundle.config.access || 'public';
+      const canCache =
+        access === 'public' &&
+        cacheConfig &&
+        cacheConfig !== '' &&
+        typeof caches !== 'undefined';
+
+      let cacheRequest: Request | null = null;
+      if (canCache) {
+        if (request.method === 'GET') {
+          cacheRequest = request;
+        } else {
+          const cacheUrl = new URL(request.url);
+          cacheUrl.pathname = '/__stk_cache';
+          cacheUrl.searchParams.set('path', `${namespace}/${name}`);
+          cacheUrl.searchParams.set('params', stableStringify(params));
+          cacheRequest = new Request(cacheUrl.toString(), { method: 'GET' });
+        }
+      }
+
+      if (canCache && cacheRequest) {
+        const cache = (caches as any).default as Cache;
+        const cachedResponse = await cache.match(cacheRequest);
+
+        if (cachedResponse) {
+          logger.info('Cache HIT', { namespace, name });
+          const response = new Response(cachedResponse.body, cachedResponse);
+          response.headers.set('X-Cache-Status', 'HIT');
+          response.headers.set('X-Request-ID', requestId);
+          return response;
+        }
+
+        logger.debug('Cache MISS', { namespace, name });
+      }
 
       // Create context
       const requestInfo: RequestInfo = {
@@ -167,11 +222,11 @@ export class SantokitServer {
         },
       });
 
-      // Store in cache if configured (only for GET requests)
-      if (canCache && typeof caches !== 'undefined') {
+      // Store in cache if configured
+      if (canCache && cacheRequest) {
         const cache = (caches as any).default as Cache;
         // Clone the response before caching (response can only be read once)
-        await cache.put(request, response.clone());
+        await cache.put(cacheRequest, response.clone());
         logger.debug('Response cached', { namespace, name });
       }
 
@@ -202,6 +257,7 @@ export class SantokitServer {
 
   private async loadBundle(namespace: string, name: string): Promise<Bundle | null> {
     const key = `${this.config.projectId}:logic:${namespace}:${name}`;
+    const latestKey = `project:${this.config.projectId}:latest`;
 
     // Check cache
     if (this.bundleCache.has(key)) {
@@ -210,15 +266,31 @@ export class SantokitServer {
 
     // Load from KV
     const data = await this.config.kv.get(key);
-    if (!data) {
+    if (data) {
+      const bundle = JSON.parse(data) as Bundle;
+      this.bundleCache.set(key, bundle);
+      return bundle;
+    }
+
+    const latest = await this.config.kv.get(latestKey);
+    if (!latest) {
       return null;
     }
 
-    // Decrypt and parse bundle
-    const bundle = JSON.parse(data) as Bundle;
-    this.bundleCache.set(key, bundle);
+    const parsed = JSON.parse(latest) as { bundles?: Record<string, Bundle> };
+    if (!parsed || !parsed.bundles) {
+      return null;
+    }
 
-    return bundle;
+    for (const bundle of Object.values(parsed.bundles)) {
+      if (!bundle || !bundle.namespace || !bundle.name) {
+        continue;
+      }
+      const bundleKey = `${this.config.projectId}:logic:${bundle.namespace}:${bundle.name}`;
+      this.bundleCache.set(bundleKey, bundle);
+    }
+
+    return this.bundleCache.get(key) ?? null;
   }
 
   private async authenticateRequest(request: Request): Promise<UserInfo | undefined> {
@@ -314,23 +386,28 @@ export class SantokitServer {
 
   private async parseParams(
     request: Request,
-    config: LogicConfig
+    config: LogicConfig,
+    providedParams?: Record<string, unknown> | null
   ): Promise<Record<string, unknown>> {
     let params: Record<string, unknown> = {};
 
-    // Parse query params
-    const url = new URL(request.url);
-    for (const [key, value] of url.searchParams) {
-      params[key] = value;
-    }
+    if (providedParams) {
+      params = { ...providedParams };
+    } else {
+      // Parse query params
+      const url = new URL(request.url);
+      for (const [key, value] of url.searchParams) {
+        params[key] = value;
+      }
 
-    // Parse body for POST/PUT
-    if (request.method === 'POST' || request.method === 'PUT') {
-      try {
-        const body = await request.json();
-        params = { ...params, ...body };
-      } catch {
-        // Ignore JSON parse errors
+      // Parse body for POST/PUT
+      if (request.method === 'POST' || request.method === 'PUT') {
+        try {
+          const body = await request.json();
+          params = { ...params, ...body };
+        } catch {
+          // Ignore JSON parse errors
+        }
       }
     }
 
@@ -396,4 +473,17 @@ export class SantokitServer {
       },
     });
   }
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  const entries = keys.map((key) => `"${key}":${stableStringify(obj[key])}`);
+  return `{${entries.join(',')}}`;
 }

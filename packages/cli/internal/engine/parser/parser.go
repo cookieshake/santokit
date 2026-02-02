@@ -64,9 +64,25 @@ func New() *Parser {
 func (p *Parser) ParseLogicFile(content string, filename string) (*LogicConfig, error) {
 	config := &LogicConfig{}
 
+	// Check for YAML frontmatter in block comment (/* --- ... --- */)
+	if trimmed := strings.TrimSpace(content); strings.HasPrefix(trimmed, "/*") {
+		if end := strings.Index(trimmed, "*/"); end != -1 {
+			comment := strings.TrimSpace(trimmed[2:end])
+			if strings.HasPrefix(comment, "---") {
+				parts := strings.SplitN(comment, "---", 3)
+				if len(parts) >= 3 {
+					if err := yaml.Unmarshal([]byte(parts[1]), config); err != nil {
+						return nil, fmt.Errorf("failed to parse YAML frontmatter: %w", err)
+					}
+					content = strings.TrimSpace(trimmed[end+2:])
+				}
+			}
+		}
+	}
+
 	// Check for YAML frontmatter (starts with ---)
-	if strings.HasPrefix(content, "---") {
-		parts := strings.SplitN(content, "---", 3)
+	if strings.HasPrefix(strings.TrimSpace(content), "---") {
+		parts := strings.SplitN(strings.TrimSpace(content), "---", 3)
 		if len(parts) >= 3 {
 			// Parse YAML frontmatter
 			if err := yaml.Unmarshal([]byte(parts[1]), config); err != nil {
@@ -83,6 +99,15 @@ func (p *Parser) ParseLogicFile(content string, filename string) (*LogicConfig, 
 		config.JS = content
 	}
 
+	return config, nil
+}
+
+// ParseLogicMetadata parses a YAML-only logic metadata file
+func (p *Parser) ParseLogicMetadata(content string) (*LogicConfig, error) {
+	config := &LogicConfig{}
+	if err := yaml.Unmarshal([]byte(content), config); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML metadata: %w", err)
+	}
 	return config, nil
 }
 

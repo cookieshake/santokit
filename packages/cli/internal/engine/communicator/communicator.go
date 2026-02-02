@@ -111,6 +111,7 @@ func (c *Communicator) PushManifest(manifest *integrator.Manifest) error {
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, manifest.ProjectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -129,8 +130,7 @@ func (c *Communicator) PushManifest(manifest *integrator.Manifest) error {
 // PlanSchema requests a schema migration plan from Hub
 func (c *Communicator) PlanSchema(projectID string, schemas map[string]string) (*PlanResult, error) {
 	payload := map[string]interface{}{
-		"project_id": projectID,
-		"schemas":    schemas,
+		"schemas": schemas,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -143,6 +143,7 @@ func (c *Communicator) PlanSchema(projectID string, schemas map[string]string) (
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -166,7 +167,6 @@ func (c *Communicator) PlanSchema(projectID string, schemas map[string]string) (
 // ApplySchema applies migrations via Hub
 func (c *Communicator) ApplySchema(projectID string, migrations []Migration) error {
 	payload := map[string]interface{}{
-		"project_id": projectID,
 		"migrations": migrations,
 	}
 	data, err := json.Marshal(payload)
@@ -180,6 +180,7 @@ func (c *Communicator) ApplySchema(projectID string, migrations []Migration) err
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -198,8 +199,7 @@ func (c *Communicator) ApplySchema(projectID string, migrations []Migration) err
 // ApplyConfig uploads project configuration to Hub
 func (c *Communicator) ApplyConfig(projectID string, configs map[string]string) error {
 	payload := map[string]interface{}{
-		"project_id": projectID,
-		"configs":    configs,
+		"configs": configs,
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -212,6 +212,7 @@ func (c *Communicator) ApplyConfig(projectID string, configs map[string]string) 
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -229,12 +230,13 @@ func (c *Communicator) ApplyConfig(projectID string, configs map[string]string) 
 
 // GetConfig retrieves project configuration from Hub
 func (c *Communicator) GetConfig(projectID string) (*ProjectConfig, error) {
-	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/config?project_id="+projectID, nil)
+	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/config", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -257,12 +259,13 @@ func (c *Communicator) GetConfig(projectID string) (*ProjectConfig, error) {
 
 // FetchManifest downloads the current manifest from Hub
 func (c *Communicator) FetchManifest(projectID string) (*integrator.Manifest, error) {
-	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/manifest?project_id="+projectID, nil)
+	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/manifest", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -281,9 +284,8 @@ func (c *Communicator) FetchManifest(projectID string) (*integrator.Manifest, er
 // SetSecret stores a secret in Hub Vault
 func (c *Communicator) SetSecret(projectID, key, value string) error {
 	data, _ := json.Marshal(map[string]string{
-		"project_id": projectID,
-		"key":        key,
-		"value":      value,
+		"key":   key,
+		"value": value,
 	})
 
 	req, err := http.NewRequest("POST", c.config.HubURL+"/api/v1/secrets", bytes.NewReader(data))
@@ -292,6 +294,7 @@ func (c *Communicator) SetSecret(projectID, key, value string) error {
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -309,12 +312,13 @@ func (c *Communicator) SetSecret(projectID, key, value string) error {
 
 // ListSecrets retrieves all secret keys (values are not returned)
 func (c *Communicator) ListSecrets(projectID string) ([]string, error) {
-	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/secrets?project_id="+projectID, nil)
+	req, err := http.NewRequest("GET", c.config.HubURL+"/api/v1/secrets", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -332,12 +336,13 @@ func (c *Communicator) ListSecrets(projectID string) ([]string, error) {
 
 // DeleteSecret removes a secret key from Hub Vault
 func (c *Communicator) DeleteSecret(projectID, key string) error {
-	req, err := http.NewRequest("DELETE", c.config.HubURL+"/api/v1/secrets/"+key+"?project_id="+projectID, nil)
+	req, err := http.NewRequest("DELETE", c.config.HubURL+"/api/v1/secrets/"+key, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
 	c.setHeaders(req)
+	c.setProjectHeader(req, projectID)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -355,6 +360,13 @@ func (c *Communicator) DeleteSecret(projectID, key string) error {
 
 func (c *Communicator) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.config.Token)
-	req.Header.Set("X-Project-ID", c.config.ProjectID)
+	if c.config.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.config.Token)
+	}
+}
+
+func (c *Communicator) setProjectHeader(req *http.Request, projectID string) {
+	if projectID != "" {
+		req.Header.Set("X-Santokit-Project-ID", projectID)
+	}
 }

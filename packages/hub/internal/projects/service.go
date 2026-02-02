@@ -3,11 +3,14 @@ package projects
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cookieshake/santokit/packages/hub/internal/store/sqlstore"
 )
 
 // Project represents a project in the Hub.
@@ -43,6 +46,8 @@ type Service struct {
 	projects           map[string]Project
 	teams              map[string]Team
 	personalTeamByUser map[string]string
+	db                 *sql.DB
+	dialect            string
 }
 
 // NewService creates a new in-memory project service.
@@ -54,12 +59,22 @@ func NewService() *Service {
 	}
 }
 
+func NewServiceWithDB(db *sql.DB, dialect string) *Service {
+	return &Service{
+		db:      db,
+		dialect: dialect,
+	}
+}
+
 func (s *Service) CreateProject(ctx context.Context, ownerID, name, description, teamID string) (Project, error) {
 	if strings.TrimSpace(name) == "" {
 		return Project{}, fmt.Errorf("project name required")
 	}
 	if strings.TrimSpace(ownerID) == "" {
 		return Project{}, fmt.Errorf("owner_id required")
+	}
+	if s.db != nil {
+		return s.createProjectDB(ctx, ownerID, name, description, teamID)
 	}
 	_ = ctx
 
@@ -99,6 +114,9 @@ func (s *Service) GetProject(ctx context.Context, id string) (Project, error) {
 	if strings.TrimSpace(id) == "" {
 		return Project{}, fmt.Errorf("project id required")
 	}
+	if s.db != nil {
+		return s.getProjectDB(ctx, id)
+	}
 	_ = ctx
 
 	s.mu.RLock()
@@ -112,6 +130,9 @@ func (s *Service) GetProject(ctx context.Context, id string) (Project, error) {
 }
 
 func (s *Service) ListProjects(ctx context.Context, userID, teamID string) ([]Project, error) {
+	if s.db != nil {
+		return s.listProjectsDB(ctx, userID, teamID)
+	}
 	_ = ctx
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -136,6 +157,9 @@ func (s *Service) CreateTeam(ctx context.Context, ownerID, name string) (Team, e
 	if strings.TrimSpace(name) == "" {
 		return Team{}, fmt.Errorf("team name required")
 	}
+	if s.db != nil {
+		return s.createTeamDB(ctx, ownerID, name)
+	}
 	_ = ctx
 
 	s.mu.Lock()
@@ -155,6 +179,9 @@ func (s *Service) CreateTeam(ctx context.Context, ownerID, name string) (Team, e
 }
 
 func (s *Service) ListTeams(ctx context.Context, userID string) ([]Team, error) {
+	if s.db != nil {
+		return s.listTeamsDB(ctx, userID)
+	}
 	_ = ctx
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -175,6 +202,9 @@ func (s *Service) InviteMember(ctx context.Context, teamID, userID, email, role 
 	}
 	if strings.TrimSpace(userID) == "" && strings.TrimSpace(email) == "" {
 		return Member{}, fmt.Errorf("user_id or email required")
+	}
+	if s.db != nil {
+		return s.inviteMemberDB(ctx, teamID, userID, email, role)
 	}
 	_ = ctx
 
@@ -216,6 +246,9 @@ func (s *Service) InviteMember(ctx context.Context, teamID, userID, email, role 
 }
 
 func (s *Service) Stats(ctx context.Context, userID string) (totalProjects, totalDeployments, activeUsers int, lastDeployment time.Time) {
+	if s.db != nil {
+		return s.statsDB(ctx, userID)
+	}
 	_ = ctx
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -311,6 +344,9 @@ func generateMasterKey() (string, error) {
 // GetProjectMasterKey retrieves the master encryption key for a project
 // This should only be called by trusted internal services
 func (s *Service) GetProjectMasterKey(ctx context.Context, projectID string) (string, error) {
+	if s.db != nil {
+		return s.getProjectMasterKeyDB(ctx, projectID)
+	}
 	_ = ctx
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -325,4 +361,284 @@ func (s *Service) GetProjectMasterKey(ctx context.Context, projectID string) (st
 	}
 
 	return project.MasterKey, nil
+}
+
+func (s *Service) createProjectDB(ctx context.Context, ownerID, name, description, teamID string) (Project, error) {
+	if teamID == "" {
+		var err error
+		teamID, err = s.ensurePersonalTeamDB(ctx, ownerID)
+		if err != nil {
+			return Project{}, err
+		}
+	}
+
+	masterKey, err := generateMasterKey()
+	if err != nil {
+		return Project{}, fmt.Errorf("failed to generate master key: %w", err)
+	}
+
+	now := time.Now()
+	project := Project{
+		ID:          randomID("prj"),
+		Name:        name,
+		Description: description,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+		TeamID:      teamID,
+		OwnerID:     ownerID,
+		MasterKey:   masterKey,
+	}
+
+	query := sqlstore.Rebind(s.dialect, `INSERT INTO projects
+		(id, name, description, created_at, updated_at, team_id, owner_id, master_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+	_, err = s.db.ExecContext(ctx, query, project.ID, project.Name, project.Description, project.CreatedAt, project.UpdatedAt, project.TeamID, project.OwnerID, project.MasterKey)
+	if err != nil {
+		return Project{}, err
+	}
+
+	return project, nil
+}
+
+func (s *Service) getProjectDB(ctx context.Context, id string) (Project, error) {
+	query := sqlstore.Rebind(s.dialect, `SELECT id, name, description, created_at, updated_at, team_id, owner_id, master_key
+		FROM projects WHERE id = ? LIMIT 1`)
+	var project Project
+	if err := s.db.QueryRowContext(ctx, query, id).Scan(
+		&project.ID,
+		&project.Name,
+		&project.Description,
+		&project.CreatedAt,
+		&project.UpdatedAt,
+		&project.TeamID,
+		&project.OwnerID,
+		&project.MasterKey,
+	); err != nil {
+		return Project{}, err
+	}
+	return project, nil
+}
+
+func (s *Service) listProjectsDB(ctx context.Context, userID, teamID string) ([]Project, error) {
+	var (
+		query string
+		args  []any
+	)
+
+	if userID == "" && teamID == "" {
+		query = sqlstore.Rebind(s.dialect, `SELECT id, name, description, created_at, updated_at, team_id, owner_id, master_key FROM projects`)
+	} else if userID != "" && teamID == "" {
+		query = sqlstore.Rebind(s.dialect, `SELECT DISTINCT p.id, p.name, p.description, p.created_at, p.updated_at, p.team_id, p.owner_id, p.master_key
+			FROM projects p
+			JOIN team_members m ON m.team_id = p.team_id
+			WHERE m.user_id = ?`)
+		args = []any{userID}
+	} else if userID == "" && teamID != "" {
+		query = sqlstore.Rebind(s.dialect, `SELECT id, name, description, created_at, updated_at, team_id, owner_id, master_key FROM projects WHERE team_id = ?`)
+		args = []any{teamID}
+	} else {
+		query = sqlstore.Rebind(s.dialect, `SELECT DISTINCT p.id, p.name, p.description, p.created_at, p.updated_at, p.team_id, p.owner_id, p.master_key
+			FROM projects p
+			JOIN team_members m ON m.team_id = p.team_id
+			WHERE m.user_id = ? AND p.team_id = ?`)
+		args = []any{userID, teamID}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Project
+	for rows.Next() {
+		var project Project
+		if err := rows.Scan(
+			&project.ID,
+			&project.Name,
+			&project.Description,
+			&project.CreatedAt,
+			&project.UpdatedAt,
+			&project.TeamID,
+			&project.OwnerID,
+			&project.MasterKey,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, project)
+	}
+
+	return out, nil
+}
+
+func (s *Service) createTeamDB(ctx context.Context, ownerID, name string) (Team, error) {
+	team := Team{
+		ID:        randomID("team"),
+		Name:      name,
+		CreatedAt: time.Now(),
+		Members: []Member{
+			{UserID: ownerID, Role: "owner"},
+		},
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Team{}, err
+	}
+	defer tx.Rollback()
+
+	teamQuery := sqlstore.Rebind(s.dialect, `INSERT INTO teams (id, name, created_at) VALUES (?, ?, ?)`)
+	if _, err := tx.ExecContext(ctx, teamQuery, team.ID, team.Name, team.CreatedAt); err != nil {
+		return Team{}, err
+	}
+
+	memberQuery := sqlstore.Rebind(s.dialect, `INSERT INTO team_members (team_id, user_id, email, role) VALUES (?, ?, ?, ?)`)
+	if _, err := tx.ExecContext(ctx, memberQuery, team.ID, ownerID, "", "owner"); err != nil {
+		return Team{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Team{}, err
+	}
+
+	return team, nil
+}
+
+func (s *Service) listTeamsDB(ctx context.Context, userID string) ([]Team, error) {
+	var (
+		query string
+		args  []any
+	)
+
+	if userID == "" {
+		query = sqlstore.Rebind(s.dialect, `SELECT id, name, created_at FROM teams`)
+	} else {
+		query = sqlstore.Rebind(s.dialect, `SELECT DISTINCT t.id, t.name, t.created_at
+			FROM teams t
+			JOIN team_members m ON m.team_id = t.id
+			WHERE m.user_id = ?`)
+		args = []any{userID}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Team
+	for rows.Next() {
+		var team Team
+		if err := rows.Scan(&team.ID, &team.Name, &team.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, team)
+	}
+	return out, nil
+}
+
+func (s *Service) inviteMemberDB(ctx context.Context, teamID, userID, email, role string) (Member, error) {
+	role = normalizeRole(role)
+	if role == "" {
+		return Member{}, fmt.Errorf("invalid role")
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Member{}, err
+	}
+	defer tx.Rollback()
+
+	deleteQuery := sqlstore.Rebind(s.dialect, `DELETE FROM team_members WHERE team_id = ? AND user_id = ? AND email = ?`)
+	if _, err := tx.ExecContext(ctx, deleteQuery, teamID, userID, email); err != nil {
+		return Member{}, err
+	}
+
+	insertQuery := sqlstore.Rebind(s.dialect, `INSERT INTO team_members (team_id, user_id, email, role) VALUES (?, ?, ?, ?)`)
+	if _, err := tx.ExecContext(ctx, insertQuery, teamID, userID, email, role); err != nil {
+		return Member{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Member{}, err
+	}
+
+	return Member{
+		UserID: userID,
+		Email:  email,
+		Role:   role,
+	}, nil
+}
+
+func (s *Service) statsDB(ctx context.Context, userID string) (totalProjects, totalDeployments, activeUsers int, lastDeployment time.Time) {
+	if userID == "" {
+		row := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM projects`)
+		_ = row.Scan(&totalProjects)
+		row = s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT COALESCE(NULLIF(user_id, ''), NULLIF(email, ''))) FROM team_members`)
+		_ = row.Scan(&activeUsers)
+		return totalProjects, 0, activeUsers, time.Time{}
+	}
+
+	projectsQuery := sqlstore.Rebind(s.dialect, `SELECT COUNT(DISTINCT p.id)
+		FROM projects p
+		JOIN team_members m ON m.team_id = p.team_id
+		WHERE m.user_id = ?`)
+	_ = s.db.QueryRowContext(ctx, projectsQuery, userID).Scan(&totalProjects)
+
+	usersQuery := sqlstore.Rebind(s.dialect, `SELECT COUNT(DISTINCT COALESCE(NULLIF(m.user_id, ''), NULLIF(m.email, '')))
+		FROM team_members m
+		JOIN teams t ON t.id = m.team_id
+		JOIN team_members me ON me.team_id = t.id
+		WHERE me.user_id = ?`)
+	_ = s.db.QueryRowContext(ctx, usersQuery, userID).Scan(&activeUsers)
+
+	return totalProjects, 0, activeUsers, time.Time{}
+}
+
+func (s *Service) ensurePersonalTeamDB(ctx context.Context, userID string) (string, error) {
+	query := sqlstore.Rebind(s.dialect, `SELECT team_id FROM personal_teams WHERE user_id = ? LIMIT 1`)
+	var teamID string
+	if err := s.db.QueryRowContext(ctx, query, userID).Scan(&teamID); err == nil && teamID != "" {
+		return teamID, nil
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback()
+
+	teamID = randomID("team")
+	teamQuery := sqlstore.Rebind(s.dialect, `INSERT INTO teams (id, name, created_at) VALUES (?, ?, ?)`)
+	if _, err := tx.ExecContext(ctx, teamQuery, teamID, "Personal", time.Now()); err != nil {
+		return "", err
+	}
+
+	memberQuery := sqlstore.Rebind(s.dialect, `INSERT INTO team_members (team_id, user_id, email, role) VALUES (?, ?, ?, ?)`)
+	if _, err := tx.ExecContext(ctx, memberQuery, teamID, userID, "", "owner"); err != nil {
+		return "", err
+	}
+
+	mapQuery := sqlstore.Rebind(s.dialect, `INSERT INTO personal_teams (user_id, team_id) VALUES (?, ?)`)
+	if _, err := tx.ExecContext(ctx, mapQuery, userID, teamID); err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+
+	return teamID, nil
+}
+
+func (s *Service) getProjectMasterKeyDB(ctx context.Context, projectID string) (string, error) {
+	query := sqlstore.Rebind(s.dialect, `SELECT master_key FROM projects WHERE id = ? LIMIT 1`)
+	var key string
+	if err := s.db.QueryRowContext(ctx, query, projectID).Scan(&key); err != nil {
+		return "", err
+	}
+	if key == "" {
+		return "", fmt.Errorf("project has no master key")
+	}
+	return key, nil
 }

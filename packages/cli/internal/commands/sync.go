@@ -50,21 +50,15 @@ func (c *SyncCmd) Run() error {
 	// Generate types
 	typeDef := generator.GenerateTypes(manifest)
 
-	// Create node_modules/@santokit/client if not exists
-	targetDir := filepath.Join(rootDir, "node_modules", "@santokit", "client")
-	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
-		if _, err := os.Stat(filepath.Join(rootDir, "node_modules")); err == nil {
-			if err := os.MkdirAll(targetDir, 0755); err != nil {
-				return errorf("❌ Failed to create type definition directory: %v", err)
-			}
-		} else {
-			warn("⚠️  node_modules not found. Skipping type generation.")
-			success(fmt.Sprintf("✅ Manifest saved to %s", outPath))
-			return nil
-		}
+	typePath, err := resolveCodegenOutput(rootDir)
+	if err != nil {
+		return errorf("❌ Failed to resolve codegen output: %v", err)
 	}
 
-	typePath := filepath.Join(targetDir, "santokit-env.d.ts")
+	if err := os.MkdirAll(filepath.Dir(typePath), 0755); err != nil {
+		return errorf("❌ Failed to create type definition directory: %v", err)
+	}
+
 	if err := os.WriteFile(typePath, []byte(typeDef), 0644); err != nil {
 		return errorf("❌ Failed to write type definition: %v", err)
 	}
@@ -72,4 +66,31 @@ func (c *SyncCmd) Run() error {
 	success(fmt.Sprintf("✅ Manifest saved to %s", outPath))
 	success(fmt.Sprintf("✅ Type definitions generated at %s", typePath))
 	return nil
+}
+
+type stkConfig struct {
+	ProjectID string `json:"project_id"`
+	Codegen   struct {
+		Output string `json:"output"`
+	} `json:"codegen"`
+}
+
+func resolveCodegenOutput(rootDir string) (string, error) {
+	path := "santokit-env.d.ts"
+
+	cfgPath := filepath.Join(rootDir, "stk.config.json")
+	if data, err := os.ReadFile(cfgPath); err == nil {
+		var cfg stkConfig
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return "", err
+		}
+		if cfg.Codegen.Output != "" {
+			path = cfg.Codegen.Output
+		}
+	}
+
+	if filepath.IsAbs(path) {
+		return path, nil
+	}
+	return filepath.Join(rootDir, path), nil
 }

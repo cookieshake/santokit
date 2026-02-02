@@ -15,7 +15,7 @@ import (
 	"github.com/cookieshake/santokit/packages/hub/internal/projects"
 	"github.com/cookieshake/santokit/packages/hub/internal/registry"
 	"github.com/cookieshake/santokit/packages/hub/internal/schema"
-	"github.com/cookieshake/santokit/packages/hub/internal/store/memory"
+	"github.com/cookieshake/santokit/packages/hub/internal/store/sqlstore"
 	"github.com/cookieshake/santokit/packages/hub/internal/vault"
 )
 
@@ -25,15 +25,21 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize repositories (In-Memory for now)
-	regRepo := memory.NewRegistryRepository()
-	vaultRepo := memory.NewVaultRepository()
+	// Initialize repositories (SQL-backed)
+	db, dialect, err := sqlstore.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	regRepo := sqlstore.NewRegistryRepository(db, dialect)
+	vaultRepo := sqlstore.NewVaultRepository(db, dialect)
+	projectConfigRepo := sqlstore.NewProjectConfigRepository(db, dialect)
 
 	// Initialize services
-	// Initialize services
 	regService := registry.NewService(regRepo)
-	projectConfigService := projectconfig.NewService()
-	projectService := projects.NewService()
+	projectConfigService := projectconfig.NewServiceWithRepository(projectConfigRepo)
+	projectService := projects.NewServiceWithDB(db, dialect)
 	vaultService, err := vault.NewService(vaultRepo, cfg.EncryptionKey)
 	if err != nil {
 		log.Fatalf("Failed to initialize vault service: %v", err)

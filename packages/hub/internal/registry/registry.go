@@ -31,7 +31,7 @@ type Bundle struct {
 	Hash      string `json:"hash"`      // Content hash for deduplication
 	Content   []byte `json:"content"`   // Encrypted content
 	// We add Config for the server
-	Config    map[string]interface{} `json:"config,omitempty"`
+	Config map[string]interface{} `json:"config,omitempty"`
 }
 
 // Repository defines the manifest storage interface
@@ -74,7 +74,7 @@ func (s *Service) Push(ctx context.Context, projectID string, bundles []Bundle, 
 	}
 
 	// MVP HACK: Simulate Edge Propagation
-	
+
 	// Option 1: Redis
 	if redisURL := os.Getenv("STK_KV_REDIS"); redisURL != "" {
 		opts, err := redis.ParseURL(redisURL)
@@ -82,11 +82,20 @@ func (s *Service) Push(ctx context.Context, projectID string, bundles []Bundle, 
 			fmt.Printf("Warning: Invalid Redis URL: %v\n", err)
 		} else {
 			rdb := redis.NewClient(opts)
+			latestKey := fmt.Sprintf("project:%s:latest", projectID)
+			latestBundle := s.createEdgeLatest(projectID, manifest.Version, bundles)
+			latestData, _ := json.Marshal(latestBundle)
+			if err := rdb.Set(ctx, latestKey, string(latestData), 0).Err(); err != nil {
+				fmt.Printf("Error propagating latest bundle to Redis %s: %v\n", latestKey, err)
+			} else {
+				fmt.Printf("Edge KV (Redis): Propagated %s\n", latestKey)
+			}
+
 			for _, b := range bundles {
 				key := fmt.Sprintf("%s:logic:%s:%s", projectID, b.Namespace, b.Name)
 				serverBundle := s.createServerBundle(b)
 				data, _ := json.Marshal(serverBundle)
-				
+
 				if err := rdb.Set(ctx, key, string(data), 0).Err(); err != nil {
 					fmt.Printf("Error propagating to Redis %s: %v\n", key, err)
 				} else {
@@ -103,6 +112,15 @@ func (s *Service) Push(ctx context.Context, projectID string, bundles []Bundle, 
 	if err := os.MkdirAll(kvDir, 0755); err != nil {
 		fmt.Printf("Warning: Failed to create KV dir: %v\n", err)
 	} else {
+		latestKey := fmt.Sprintf("project:%s:latest", projectID)
+		latestBundle := s.createEdgeLatest(projectID, manifest.Version, bundles)
+		latestData, _ := json.Marshal(latestBundle)
+		if err := os.WriteFile(filepath.Join(kvDir, latestKey), latestData, 0644); err != nil {
+			fmt.Printf("Warning: Failed to write KV key %s: %v\n", latestKey, err)
+		} else {
+			fmt.Printf("Edge KV (File): Propagated %s\n", latestKey)
+		}
+
 		for _, b := range bundles {
 			key := fmt.Sprintf("%s:logic:%s:%s", projectID, b.Namespace, b.Name)
 			serverBundle := s.createServerBundle(b)
@@ -134,6 +152,20 @@ func (s *Service) createServerBundle(b Bundle) map[string]interface{} {
 		"config":    cfg,
 		"content":   string(b.Content),
 		"hash":      b.Hash,
+	}
+}
+
+func (s *Service) createEdgeLatest(projectID, version string, bundles []Bundle) map[string]interface{} {
+	edgeBundles := map[string]interface{}{}
+	for _, b := range bundles {
+		key := fmt.Sprintf("%s/%s", b.Namespace, b.Name)
+		edgeBundles[key] = s.createServerBundle(b)
+	}
+
+	return map[string]interface{}{
+		"project_id": projectID,
+		"version":    version,
+		"bundles":    edgeBundles,
 	}
 }
 

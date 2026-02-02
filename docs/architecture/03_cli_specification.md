@@ -1,82 +1,75 @@
-# 03. CLI 명세 (`stk`)
+# 03. CLI 명세 (`stk`) (Spec)
 
-## 역할
-지능형 에이전트. 단순한 업로더가 아니라 파서, 컴파일러, 동기화 도구(Synchronizer)입니다.
+## 존재 의의
+- 로컬 프로젝트를 Hub와 연결하는 **단일 실행점**
+- 파일 스캔/파싱/배포/타입 생성의 자동화
 
-## 3가지 핵심 엔진
-1.  **파서 (Parser)**: 파일에서 메타데이터(YAML)를 추출합니다. "단일 파일"(주석 파싱) 전략을 처리합니다.
-2.  **통합기 (Integrator)**: 가상 타이핑(Virtual Typing)을 위해 타입 정의 파일을 생성합니다.
-3.  **커뮤니케이터 (Communicator)**: Hub API 인증 클라이언트입니다.
+## 공통 동작
+1) `schema/`, `config/`, `logic/` 스캔
+2) 형식 파싱 및 유효성 검사
+3) Hub API 호출
 
-## 주요 명령어
+## 상태 표기
+- ✅ 구현됨
+- 🟡 부분 구현
+- ❌ 미구현
+
+## 명령어별 목적/행동/동작
 
 ### `stk init`
-*   santokit 프로젝트 디렉토리의 스캐폴딩을 생성합니다.
-*   `stk.config.json`을 통해 프로젝트를 Hub에 연결합니다 (비밀 정보가 아닌 프로젝트 ID 저장).
-*   **환경 설정**: `tsconfig.json`과 `.stk/types.d.ts`를 생성하여 VS Code IntelliSense를 활성화합니다.
+- **존재 의의**: Santokit 프로젝트 구조를 빠르게 시작
+- **행동**: 디렉토리 및 기본 파일 생성
+- **동작**: `.stk/`, `schema/`, `config/`, `logic/`, `stk.config.json`, `tsconfig.json` 생성
+- **상태**: ✅
 
 ### `stk profile`
-*   Hub 연결 정보를 프로파일로 관리합니다 (`~/.santokit/config.json`).
-    *   `stk profile list`
-    *   `stk profile current`
-    *   `stk profile use <name>`
-    *   `stk profile set <name> --hub-url ... --project-id ... --token ...`
+- **존재 의의**: 여러 Hub 연결 정보를 관리
+- **행동**: 프로파일 조회/설정/변경
+- **동작**: `~/.santokit/config.json` 갱신
+- **상태**: ✅
 
 ### `stk project`
-*   현재 프로파일의 프로젝트 설정을 관리합니다.
-    *   `stk project info`
-    *   `stk project set <project-id>`
-    *   `stk project auth set <token>`
-    *   `stk project auth show`
+- **존재 의의**: 현재 프로젝트 컨텍스트 지정
+- **행동**: 프로젝트 ID, 토큰 설정
+- **동작**: profile 저장 후 CLI 호출 시 사용
+- **상태**: ✅
 
-### `stk schema [plan | apply]`
-*   **대상**: `base/*.hcl` 스키마 정의.
-*   **안전성**: 항상 `plan`(드라이 런)을 먼저 실행합니다. 차이점(diff)을 보여주고 확인을 요구합니다.
+### `stk schema plan`
+- **존재 의의**: 스키마 변경을 실제 적용 전 미리 검증
+- **행동**: `schema/*.hcl` 읽어 Hub에 plan 요청
+- **동작**: Hub가 Atlas 기반 diff 계산
+- **상태**: ✅
+
+### `stk schema apply`
+- **존재 의의**: 스키마 변경 적용
+- **행동**: plan 결과를 적용
+- **동작**: Hub가 Atlas로 migration 실행
+- **상태**: ✅
 
 ### `stk config apply`
-*   **대상**: 프로젝트 설정 (`config/databases.yaml`, `config/auth.yaml`).
-*   **동작**: 파일 내용을 Hub 프로젝트 설정으로 반영합니다.
+- **존재 의의**: 프로젝트 설정을 Hub에 반영
+- **행동**: `config/*.yaml` 업로드
+- **동작**: Hub 저장소에 저장
+- **상태**: ✅
 
 ### `stk logic apply`
-*   `logic/`을 스캔합니다.
-*   로컬에서 YAML 스키마를 검증(린팅)합니다.
-*   로직 파일을 Hub로 업로드합니다.
+- **존재 의의**: 로직 배포의 단일 진입점
+- **행동**: 로직 파일 스캔/파싱/번들 생성 후 업로드
+- **동작**:
+  - SQL/JS 프론트매터 파싱
+  - Twin File 모드 지원
+  - 매니페스트 생성 후 Hub에 POST
+- **상태**: ✅
 
 ### `stk sync`
-*   Hub에서 최신 "매니페스트"를 다운로드합니다.
-*   **타입 정의 생성 (Type Definition Generation)**:
-    *   프로젝트 루트(기본값) 또는 `stk.config.json`의 `codegen.output` 경로에 `santokit-env.d.ts`를 생성합니다.
-    *   "Module Augmentation" 방식을 사용하여 `@santokit/client`의 타입을 확장합니다.
-    *   `stk.logic` 네임스페이스에 대한 완벽한 IntelliSense를 제공합니다.
+- **존재 의의**: 최신 타입 정의와 매니페스트 동기화
+- **행동**: Hub에서 매니페스트 다운로드
+- **동작**: `codegen.output` 경로에 `santokit-env.d.ts` 생성
+- **상태**: ✅
 
-### `stk secret set [KEY] [VALUE]`
-*   비밀 정보를 Hub Vault(TLS)로 직접 전송합니다.
-*   절대 디스크에 쓰지 않습니다.
-*   관련 명령:
-    *   `stk secret list`
-    *   `stk secret delete <key>`
+### `stk login`
+- **존재 의의**: 로컬 개발자 로그인
+- **행동**: 브라우저 OAuth 흐름 시작
+- **동작**: 로컬 콜백 서버 실행 후 토큰 저장
+- **상태**: 🟡 (Hub OAuth 미구현)
 
-## 파싱 로직 (하이브리드 접근 방식)
-1.  **스캔 (Scan)**: `glue/` 또는 `logic/`을 탐색합니다.
-2.  **매칭 (Match)**:
-    *   `.sql` 파일이 발견되면: 파일 내의 첫 번째 블록 주석 `/* --- ... --- */`을 YAML로 읽습니다.
-3.  **검증 (Validate)**: JSON Schema에 대해 확인합니다. 유효하지 않은 경우 줄 번호와 함께 강제로 실패 처리합니다.
-
-## 인증 및 보안 (Authentication)
-개발자 경험(DX)과 CI/CD 자동화를 모두 만족시키기 위해 **이원화된 인증 방식**을 사용합니다.
-
-### 1. 로컬 개발: 브라우저 기반 OAuth (Browser-based flow)
-*   **대상**: 로컬 머신에서 `stk logic apply` 등을 실행하는 개발자.
-*   **동작**:
-    1.  `stk login` 실행 시 로컬호스트 웹 서버 시작 (랜덤 포트).
-    2.  브라우저를 열어 Hub 로그인 페이지로 리다이렉트.
-    3.  로그인 성공 시 인증 코드(Auth Code)를 로컬 CLI로 콜백.
-    4.  CLI가 이를 Access/Refresh Token으로 교환하여 로컬 보안 저장소에 저장.
-*   **저장소**: OS 시스템 키체인 또는 `~/.santokit/credentials` (프로젝트 내부 아님).
-
-### 2. CI/CD 및 서버: Personal Access Token (PAT)
-*   **대상**: GitHub Actions, Docker 컨테이너, 헤드리스 환경.
-*   **동작**:
-    1.  `stk project auth set`으로 토큰 설정.
-    2.  환경 변수 `STK_TOKEN`으로 오버라이드 가능.
-*   **특징**: 유효 기간 설정 가능, 특정 권한 스코프 제한 가능.

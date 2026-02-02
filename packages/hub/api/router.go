@@ -56,12 +56,26 @@ func NewRouter(cfg *config.Config, reg *registry.Service, schemaSvc *schema.Serv
 		w.Write([]byte("OK"))
 	})
 
+	// SDK-friendly auth routes (non-versioned)
+	r.Route("/auth", func(r chi.Router) {
+		r.Post("/login", api.handleAuthLogin)
+		r.Post("/register", api.handleAuthRegister)
+		r.Post("/refresh", api.handleAuthRefresh)
+		r.Post("/logout", api.handleAuthLogout)
+		r.Get("/me", api.handleAuthMe)
+		r.Get("/oauth", api.handleAuthOAuth)
+	})
+
 	// API v1
 	r.Route("/api/v1", func(r chi.Router) {
 		// Auth routes
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", api.handleLogin)
 			r.Post("/token", api.handleCreateToken)
+			r.Get("/me", api.handleAuthMe)
+			r.Post("/refresh", api.handleAuthRefresh)
+			r.Post("/logout", api.handleAuthLogout)
+			r.Post("/register", api.handleAuthRegister)
 		})
 
 		// Protected routes
@@ -191,10 +205,191 @@ func (a *API) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
+type authSessionResponse struct {
+	User         authUserResponse `json:"user"`
+	AccessToken  string           `json:"accessToken"`
+	RefreshToken string           `json:"refreshToken,omitempty"`
+	ExpiresAt    time.Time        `json:"expiresAt"`
+}
+
+type authUserResponse struct {
+	ID    string   `json:"id"`
+	Email string   `json:"email,omitempty"`
+	Roles []string `json:"roles"`
+}
+
+func (a *API) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := strings.TrimSpace(req.Email)
+	if userID == "" {
+		userID = "local"
+	}
+
+	token, exp, err := a.issueToken(userID, req.Email, "login", 24*time.Hour)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := authSessionResponse{
+		User: authUserResponse{
+			ID:    userID,
+			Email: req.Email,
+			Roles: []string{},
+		},
+		AccessToken: token,
+		ExpiresAt:   exp,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (a *API) handleAuthRegister(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string                 `json:"email"`
+		Password string                 `json:"password"`
+		Name     string                 `json:"name"`
+		Metadata map[string]interface{} `json:"metadata"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	userID := strings.TrimSpace(req.Email)
+	if userID == "" {
+		http.Error(w, "email required", http.StatusBadRequest)
+		return
+	}
+
+	token, exp, err := a.issueToken(userID, req.Email, "register", 24*time.Hour)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := authSessionResponse{
+		User: authUserResponse{
+			ID:    userID,
+			Email: req.Email,
+			Roles: []string{},
+		},
+		AccessToken: token,
+		ExpiresAt:   exp,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (a *API) handleAuthMe(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "missing bearer token", http.StatusUnauthorized)
+		return
+	}
+
+	token := authHeader[7:]
+	if !a.verifyToken(token) {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	payload, ok := parseTokenPayload(token)
+	if !ok {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	userID, _ := payload["sub"].(string)
+	email, _ := payload["email"].(string)
+	if userID == "" {
+		if id, ok := payload["id"].(string); ok {
+			userID = id
+		}
+	}
+
+	resp := authUserResponse{
+		ID:    userID,
+		Email: email,
+		Roles: []string{},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (a *API) handleAuthRefresh(w http.ResponseWriter, r *http.Request) {
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "missing bearer token", http.StatusUnauthorized)
+		return
+	}
+
+	token := authHeader[7:]
+	if !a.verifyToken(token) {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	payload, ok := parseTokenPayload(token)
+	if !ok {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	userID, _ := payload["sub"].(string)
+	email, _ := payload["email"].(string)
+	if userID == "" {
+		if id, ok := payload["id"].(string); ok {
+			userID = id
+		}
+	}
+
+	newToken, exp, err := a.issueToken(userID, email, "refresh", 24*time.Hour)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := authSessionResponse{
+		User: authUserResponse{
+			ID:    userID,
+			Email: email,
+			Roles: []string{},
+		},
+		AccessToken: newToken,
+		ExpiresAt:   exp,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (a *API) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func (a *API) handleAuthOAuth(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "oauth not implemented", http.StatusBadRequest)
+}
+
 func (a *API) handleGetManifest(w http.ResponseWriter, r *http.Request) {
-	projectID := r.URL.Query().Get("project_id")
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
 	if projectID == "" {
-		http.Error(w, "project_id required", http.StatusBadRequest)
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
 		return
 	}
 
@@ -224,7 +419,13 @@ func (a *API) handlePushManifest(w http.ResponseWriter, r *http.Request) {
 		userID = "local"
 	}
 
-	manifest, err := a.registry.Push(r.Context(), req.ProjectID, req.Bundles, userID)
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
+	if projectID == "" {
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
+		return
+	}
+
+	manifest, err := a.registry.Push(r.Context(), projectID, req.Bundles, userID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -235,9 +436,9 @@ func (a *API) handlePushManifest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleListSecrets(w http.ResponseWriter, r *http.Request) {
-	projectID := r.URL.Query().Get("project_id")
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
 	if projectID == "" {
-		http.Error(w, "project_id required", http.StatusBadRequest)
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
 		return
 	}
 
@@ -263,7 +464,17 @@ func (a *API) handleSetSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.vault.Set(r.Context(), req.ProjectID, req.Key, req.Value); err != nil {
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
+	if projectID == "" {
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Key) == "" || strings.TrimSpace(req.Value) == "" {
+		http.Error(w, "key and value required", http.StatusBadRequest)
+		return
+	}
+
+	if err := a.vault.Set(r.Context(), projectID, req.Key, req.Value); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -272,7 +483,11 @@ func (a *API) handleSetSecret(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
-	projectID := r.URL.Query().Get("project_id")
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
+	if projectID == "" {
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
+		return
+	}
 	key := chi.URLParam(r, "key")
 
 	if err := a.vault.Delete(r.Context(), projectID, key); err != nil {
@@ -294,12 +509,9 @@ func (a *API) handleSchemaPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID := req.ProjectID
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
 	if projectID == "" {
-		projectID = r.Header.Get("X-Project-ID")
-	}
-	if projectID == "" {
-		http.Error(w, "project_id required", http.StatusBadRequest)
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
 		return
 	}
 
@@ -340,12 +552,9 @@ func (a *API) handleSchemaApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID := req.ProjectID
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
 	if projectID == "" {
-		projectID = r.Header.Get("X-Project-ID")
-	}
-	if projectID == "" {
-		http.Error(w, "project_id required", http.StatusBadRequest)
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
 		return
 	}
 
@@ -372,12 +581,9 @@ func (a *API) handleConfigApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID := req.ProjectID
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
 	if projectID == "" {
-		projectID = r.Header.Get("X-Project-ID")
-	}
-	if projectID == "" {
-		http.Error(w, "project_id required", http.StatusBadRequest)
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
 		return
 	}
 
@@ -401,12 +607,9 @@ func (a *API) handleConfigApply(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleConfigGet(w http.ResponseWriter, r *http.Request) {
-	projectID := r.URL.Query().Get("project_id")
+	projectID := strings.TrimSpace(r.Header.Get("X-Santokit-Project-ID"))
 	if projectID == "" {
-		projectID = r.Header.Get("X-Project-ID")
-	}
-	if projectID == "" {
-		http.Error(w, "project_id required", http.StatusBadRequest)
+		http.Error(w, "X-Santokit-Project-ID header required", http.StatusBadRequest)
 		return
 	}
 
@@ -546,13 +749,8 @@ func parseUserIDFromToken(token string) (string, bool) {
 		return "", false
 	}
 
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return "", false
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+	payload, ok := parseTokenPayload(token)
+	if !ok {
 		return "", false
 	}
 
@@ -564,6 +762,25 @@ func parseUserIDFromToken(token string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func parseTokenPayload(token string) (map[string]interface{}, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return nil, false
+	}
+
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, false
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		return nil, false
+	}
+
+	return payload, true
 }
 
 func (a *API) parseUserIDFromToken(token string) (string, bool) {

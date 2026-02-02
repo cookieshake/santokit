@@ -90,6 +90,8 @@ async function getStorageConfig(projectId: string, kv: KVStore): Promise<Storage
       // Return default configuration for development
       return {
         endpoint: process.env.STORAGE_ENDPOINT || 'https://storage.santokit.dev',
+        accessKeyId: process.env.STORAGE_ACCESS_KEY_ID,
+        secretAccessKey: process.env.STORAGE_SECRET_ACCESS_KEY,
         region: process.env.STORAGE_REGION || 'auto',
       };
     }
@@ -126,13 +128,7 @@ export function createContext(config: ContextConfig): Context {
 
     storage: {
       createUploadUrl: async (bucket: string, path: string, options?: UploadOptions) => {
-        // Generate presigned URL for S3/R2 upload
-        // This uses AWS S3 compatible API (works with R2, MinIO, etc.)
-
         const expiresIn = options?.expiresIn || 3600; // Default 1 hour
-
-        // For now, we'll create a simple presigned URL structure
-        // In production, this should use AWS SDK or R2 API
         try {
           // Get storage configuration from environment or KV
           const storageConfig = await getStorageConfig(config.projectId, config.kv);
@@ -141,19 +137,7 @@ export function createContext(config: ContextConfig): Context {
             throw new Error('Storage not configured for this project');
           }
 
-          // Generate presigned URL using Web Crypto API for signing
-          const timestamp = Math.floor(Date.now() / 1000);
-          const expiration = timestamp + expiresIn;
-
-          // Create canonical request
-          const method = 'PUT';
-          const canonicalUri = `/${bucket}/${path}`;
-          const canonicalQueryString = `X-Amz-Expires=${expiresIn}&X-Amz-Date=${timestamp}`;
-
-          // For MVP, return a structured URL that can be validated on upload
-          // In production, this should use proper AWS Signature V4
-          const uploadUrl = `${storageConfig.endpoint}${canonicalUri}?${canonicalQueryString}`;
-
+          const uploadUrl = await createPresignedUrl('PUT', storageConfig, bucket, path, expiresIn);
           console.log(`Generated upload URL for ${bucket}/${path}, expires in ${expiresIn}s`);
           return uploadUrl;
         } catch (error) {
@@ -173,15 +157,7 @@ export function createContext(config: ContextConfig): Context {
             throw new Error('Storage not configured for this project');
           }
 
-          const timestamp = Math.floor(Date.now() / 1000);
-          const expiration = timestamp + expiresIn;
-
-          const method = 'GET';
-          const canonicalUri = `/${bucket}/${path}`;
-          const canonicalQueryString = `X-Amz-Expires=${expiresIn}&X-Amz-Date=${timestamp}`;
-
-          const downloadUrl = `${storageConfig.endpoint}${canonicalUri}?${canonicalQueryString}`;
-
+          const downloadUrl = await createPresignedUrl('GET', storageConfig, bucket, path, expiresIn);
           console.log(`Generated download URL for ${bucket}/${path}, expires in ${expiresIn}s`);
           return downloadUrl;
         } catch (error) {
@@ -197,17 +173,11 @@ export function createContext(config: ContextConfig): Context {
           if (!storageConfig) {
             throw new Error('Storage not configured for this project');
           }
-
-          // In production, this should make an actual DELETE request to S3/R2
-          // For now, we'll log the operation
-          console.log(`Deleting ${bucket}/${path} from storage`);
-
-          // TODO: Implement actual S3/R2 DELETE request
-          // const response = await fetch(`${storageConfig.endpoint}/${bucket}/${path}`, {
-          //   method: 'DELETE',
-          //   headers: { /* AWS Signature V4 headers */ }
-          // });
-
+          const deleteUrl = await createPresignedUrl('DELETE', storageConfig, bucket, path, 900);
+          const response = await fetch(deleteUrl, { method: 'DELETE' });
+          if (!response.ok) {
+            throw new Error(`Delete failed with status ${response.status}`);
+          }
           console.log(`Successfully deleted ${bucket}/${path}`);
         } catch (error) {
           console.error(`Failed to delete ${bucket}/${path}:`, error);
@@ -276,4 +246,116 @@ export function createContext(config: ContextConfig): Context {
   };
 
   return ctx;
+}
+
+function encodePath(path: string): string {
+  return path
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+}
+
+function toAmzDate(date: Date): { amzDate: string; dateStamp: string } {
+  const yyyy = date.getUTCFullYear().toString().padStart(4, '0');
+  const mm = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+  const dd = date.getUTCDate().toString().padStart(2, '0');
+  const hh = date.getUTCHours().toString().padStart(2, '0');
+  const min = date.getUTCMinutes().toString().padStart(2, '0');
+  const ss = date.getUTCSeconds().toString().padStart(2, '0');
+  const dateStamp = `${yyyy}${mm}${dd}`;
+  const amzDate = `${dateStamp}T${hh}${min}${ss}Z`;
+  return { amzDate, dateStamp };
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function hmacSHA256(key: ArrayBuffer | string, value: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const keyBytes = typeof key === 'string' ? encoder.encode(key) : new Uint8Array(key);
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(value));
+}
+
+async function getSigningKey(secret: string, dateStamp: string, region: string): Promise<ArrayBuffer> {
+  const kDate = await hmacSHA256(`AWS4${secret}`, dateStamp);
+  const kRegion = await hmacSHA256(kDate, region);
+  const kService = await hmacSHA256(kRegion, 's3');
+  return hmacSHA256(kService, 'aws4_request');
+}
+
+function buildCanonicalQuery(params: Record<string, string>): string {
+  const keys = Object.keys(params).sort();
+  return keys
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&');
+}
+
+async function createPresignedUrl(
+  method: string,
+  storage: StorageConfig,
+  bucket: string,
+  path: string,
+  expiresIn: number
+): Promise<string> {
+  if (!storage.accessKeyId || !storage.secretAccessKey) {
+    throw new Error('Storage credentials not configured');
+  }
+
+  const endpoint = new URL(storage.endpoint);
+  const host = endpoint.host;
+  const { amzDate, dateStamp } = toAmzDate(new Date());
+  const region = storage.region || 'auto';
+  const credentialScope = `${dateStamp}/${region}/s3/aws4_request`;
+
+  const canonicalUri = `/${bucket}/${encodePath(path)}`;
+  const queryParams: Record<string, string> = {
+    'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+    'X-Amz-Credential': `${storage.accessKeyId}/${credentialScope}`,
+    'X-Amz-Date': amzDate,
+    'X-Amz-Expires': `${expiresIn}`,
+    'X-Amz-SignedHeaders': 'host',
+  };
+
+  const canonicalQueryString = buildCanonicalQuery(queryParams);
+  const canonicalHeaders = `host:${host}\n`;
+  const signedHeaders = 'host';
+  const payloadHash = 'UNSIGNED-PAYLOAD';
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQueryString,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n');
+
+  const stringToSign = [
+    'AWS4-HMAC-SHA256',
+    amzDate,
+    credentialScope,
+    await sha256Hex(canonicalRequest),
+  ].join('\n');
+
+  const signingKey = await getSigningKey(storage.secretAccessKey, dateStamp, region);
+  const signatureBytes = await hmacSHA256(signingKey, stringToSign);
+  const signature = Array.from(new Uint8Array(signatureBytes))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  const finalQuery = `${canonicalQueryString}&X-Amz-Signature=${signature}`;
+  return `${endpoint.origin}${canonicalUri}?${finalQuery}`;
 }
