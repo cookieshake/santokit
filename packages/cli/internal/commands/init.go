@@ -21,6 +21,7 @@ func (c *InitCmd) Run() error {
 		filepath.Join(projectName, "schema"),
 		filepath.Join(projectName, "config"),
 		filepath.Join(projectName, "logic"),
+		filepath.Join(projectName, "logic", "hello"),
 		filepath.Join(projectName, ".stk"),
 	}
 
@@ -79,7 +80,7 @@ export default async function(context) {
     message: "Hello, " + name + "!"
   };
 }`
-	if err := os.WriteFile(filepath.Join(projectName, "logic", "hello.js"), []byte(logicContent), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectName, "logic", "hello", "ping.js"), []byte(logicContent), 0644); err != nil {
 		return errorf("❌ Failed to create sample logic: %v", err)
 	}
 

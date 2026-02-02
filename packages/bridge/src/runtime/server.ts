@@ -61,36 +61,43 @@ export class SantokitServer {
     let name: string | null = null;
     let providedParams: Record<string, unknown> | null = null;
 
-    if (path === 'call') {
-      if (request.method !== 'POST') {
-        return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
-          status: 405,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': requestId,
-          },
-        });
-      }
+    if (path !== 'call') {
+      const { status, body } = formatErrorResponse(new NotFoundError('Invalid path format'), requestId);
+      return new Response(body, {
+        status,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+        },
+      });
+    }
 
-      try {
-        const payload = (await request.json()) as {
-          path?: string;
-          params?: Record<string, unknown>;
-        };
-        const targetPath = typeof payload.path === 'string' ? payload.path : '';
-        [namespace, name] = this.parsePath(targetPath);
-        providedParams = payload.params && typeof payload.params === 'object' ? payload.params : {};
-      } catch {
-        return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': requestId,
-          },
-        });
-      }
-    } else {
-      [namespace, name] = this.parsePath(path);
+    if (request.method !== 'POST') {
+      return new Response(JSON.stringify({ error: 'Method Not Allowed' }), {
+        status: 405,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+        },
+      });
+    }
+
+    try {
+      const payload = (await request.json()) as {
+        path?: string;
+        params?: Record<string, unknown>;
+      };
+      const targetPath = typeof payload.path === 'string' ? payload.path : '';
+      [namespace, name] = this.parsePath(targetPath);
+      providedParams = payload.params && typeof payload.params === 'object' ? payload.params : {};
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Request-ID': requestId,
+        },
+      });
     }
 
     // Create request-scoped logger
