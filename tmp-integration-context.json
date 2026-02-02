@@ -1,0 +1,10 @@
+{
+  "hubUrl": "http://localhost:55880",
+  "apiUrl": "http://localhost:55830",
+  "apiUrlInternal": "http://bridge:3000",
+  "projectDir": "/var/folders/s2/qjysgbrj00sbdc9pb92f_0lm0000gn/T/santokit-integration-DYhNUk",
+  "projectDirContainer": "/workspace/tmp-integration-project",
+  "scriptsRootContainer": "/workspace/tmp-integration-project/scripts",
+  "cliContainerId": "d3c4054ace3e",
+  "clientContainerId": "76e8483c41fd"
+}

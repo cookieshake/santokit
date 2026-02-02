@@ -1,10 +1,11 @@
 import { execFileSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { DockerComposeEnvironment, Wait } from 'testcontainers';
 
 const projectRoot = path.resolve(__dirname, '../../../../../');
-const scriptsRootContainer = '/workspace/packages/integration-tests/test/integration/scripts';
+const scriptsRootContainer = '/workspace/tmp-integration-project/scripts';
 const composeFilePath = projectRoot;
 const composeFile = 'docker-compose.yml';
 const services = {
@@ -56,11 +57,56 @@ function containerRunning(id: string): boolean {
 }
 
 function getServiceContainer(environment: Awaited<ReturnType<DockerComposeEnvironment['up']>>, service: string) {
-  try {
-    return environment.getContainer(`${service}-1`);
-  } catch {
-    return environment.getContainer(`${service}_1`);
+  const patterns = [
+    service,
+    `${service}-1`,
+    `${service}_1`,
+    `santokit-it-${service}-1`,
+    `santokit-it-${service}_1`
+  ];
+
+  // Try standard testcontainers lookup first
+  for (const pattern of patterns) {
+    try {
+      return environment.getContainer(pattern);
+    } catch {
+      // ignore
+    }
   }
+
+  // Fallback: Manual docker lookup
+  try {
+    const containerName = `santokit-it-${service}-1`;
+    const id = execFileSync('docker', ['ps', '-q', '-f', `name=${containerName}`], { encoding: 'utf8' }).trim();
+    if (id) {
+      return {
+        getId: () => id,
+        getHost: () => 'localhost',
+        getMappedPort: (port: number) => {
+          try {
+            const output = execFileSync('docker', ['port', id, `${port}/tcp`], { encoding: 'utf8' }).trim();
+            // Output format: 0.0.0.0:55000 or [::]:55000. We want the port at the end.
+            const parts = output.split(':');
+            const mappedPort = parts[parts.length - 1];
+            return parseInt(mappedPort, 10);
+          } catch {
+            // If port is not mapped or command fails, this might not be needed for all containers.
+            // But for hub/bridge/redis it is likely needed if used.
+            throw new Error(`Could not get mapped port ${port} for ${containerName}`);
+          }
+        },
+        // We might need Exec method if used?
+        // The codebase uses `runDocker(['exec', ...])` or `containerIds.cli`.
+        // `exec` method of container object is NOT used in the visible code.
+        // `execInClient` uses `execFileSync('docker', ['exec', ...])`.
+        // So this mock object is sufficient for getId/getHost/getMappedPort.
+      } as any;
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  throw new Error(`Could not find container for service "${service}". Checked patterns and manual lookup.`);
 }
 
 function withServiceWaitStrategy(
@@ -121,12 +167,17 @@ function waitForPostgres(containerId: string, attempts = 30, delayMs = 500) {
 }
 
 async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Promise<void> }> {
-  const projectDir = path.join(projectRoot, 'tmp-integration-project');
+  // Use a temporary directory outside the workspace
+  const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'santokit-integration-'));
   const projectDirContainer = '/workspace/tmp-integration-project';
 
-  if (fs.existsSync(projectDir)) fs.rmSync(projectDir, { recursive: true, force: true });
+  // Cleaning up the local temp dir is handled by logic below/cleanup, 
+  // but we also need to clean the CONTAINER volume since it persists given we use a named volume now.
+  // We will do that after containers are up.
 
-  let environment = new DockerComposeEnvironment(composeFilePath, composeFile).withBuild();
+  let environment = new DockerComposeEnvironment(composeFilePath, composeFile)
+    .withBuild()
+    .withEnvironment({ COMPOSE_PROJECT_NAME: 'santokit-it' });
   environment = withServiceWaitStrategy(environment, services.hub, Wait.forHttp('/health', 8080));
   environment = withServiceWaitStrategy(environment, services.bridge, Wait.forHttp('/health', 3000));
   environment = await environment.up();
@@ -151,6 +202,11 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
 
   waitForRedis(containerIds.redis);
   waitForPostgres(containerIds.postgres);
+
+  // Clean up the shared volume in the container to ensure a fresh start
+  // We use bash -c to rely on shell expansion for * to delete contents, avoiding "Device or resource busy" on the mount point
+  runDocker(['exec', containerIds.cli, 'bash', '-c', 'rm -rf /workspace/tmp-integration-project/* /workspace/tmp-integration-project/.[!.]*']);
+  // No need to mkdir because the mount point exists
 
   resetState(containerIds);
 
@@ -239,6 +295,14 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     if (projectPrepared) return;
     await runCli(`go run /workspace/packages/cli/cmd/stk/main.go init ${projectDirContainer}`, '/workspace');
     writeProjectFiles();
+    // Copy the locally generated files into the container volume
+    // Since writeProjectFiles creates the structure in the temp dir, we copy the contents
+    runDocker(['cp', `${projectDir}/.`, `${containerIds.cli}:${projectDirContainer}`]);
+
+    // Also copy the scripts directory
+    const localScriptsDir = path.resolve(__dirname, '../scripts');
+    runDocker(['cp', localScriptsDir, `${containerIds.cli}:${projectDirContainer}`]);
+
     projectPrepared = true;
   }
 

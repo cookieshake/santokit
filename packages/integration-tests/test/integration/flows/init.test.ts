@@ -7,7 +7,9 @@ describe('flow: init', () => {
   it('initializes project structure', async () => {
     const ctx = getFlowContext();
     await ctx.ensureProjectPrepared();
-    expect(fs.existsSync(path.join(ctx.projectDir, '.stk'))).toBe(true);
-    expect(fs.existsSync(path.join(ctx.projectDir, 'stk.config.json'))).toBe(true);
+    await ctx.ensureProjectPrepared();
+    await ctx.runCli(`test -d ${path.join(ctx.projectDirContainer, '.stk')}`, ctx.projectDirContainer);
+    await ctx.runCli(`test -f ${path.join(ctx.projectDirContainer, 'stk.config.json')}`, ctx.projectDirContainer);
+
   }, 60000);
 });

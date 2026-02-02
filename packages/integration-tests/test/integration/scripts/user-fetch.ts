@@ -10,7 +10,8 @@ async function main() {
   });
 
   if (!res.ok) {
-    throw new Error(`Request failed: ${res.status}`);
+    const text = await res.text();
+    throw new Error(`Request failed: ${res.status} ${text}`);
   }
 
   const json = await res.json();

@@ -7,7 +7,8 @@ const projectRoot = path.resolve(__dirname, '../../../../../');
 const contextFile = path.join(projectRoot, 'tmp-integration-context.json');
 const lockFile = path.join(projectRoot, '.tmp-integration-lock');
 const projectDirContainer = '/workspace/tmp-integration-project';
-const scriptsRootContainer = '/workspace/packages/integration-tests/test/integration/scripts';
+const scriptsRootContainer = '/workspace/tmp-integration-project/scripts';
+const localScriptsDir = path.resolve(__dirname, '../scripts');
 
 let cachedContext: FlowContext | null = null;
 let lockHeld = false;
@@ -270,6 +271,16 @@ export function getFlowContext(): FlowContext {
         fs.rmSync(logicDir, { recursive: true, force: true });
       }
       writeProjectFiles(projectDir);
+
+      // Copy the locally generated files into the container volume
+      try {
+        execFileSync('docker', ['cp', `${projectDir}/.`, `${base.cliContainerId}:${projectDirContainer}`]);
+        // Also copy the scripts directory
+        execFileSync('docker', ['cp', localScriptsDir, `${base.cliContainerId}:${projectDirContainer}`]);
+      } catch (e) {
+        console.error('Failed to copy files to container:', e);
+        throw e;
+      }
       projectPrepared = true;
     });
   }

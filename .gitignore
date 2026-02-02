@@ -406,3 +406,5 @@ $RECYCLE.BIN/
 .nx/cache
 .nx/workspace-data
 vitest.config.*.timestamp*
+.moon/cache
+.moon/docker

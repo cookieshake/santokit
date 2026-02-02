@@ -9,6 +9,9 @@ describe('flow: user fetch call', () => {
     const execResult = await ctx.execInClient(
       `cd /workspace && API_URL=${ctx.apiUrlInternal} tsx ${path.join(ctx.scriptsRootContainer, 'user-fetch.ts')}`
     );
+    if (execResult.exitCode !== 0) {
+      console.error('user-fetch failed:', execResult.output);
+    }
     expect(execResult.exitCode).toBe(0);
     expect(execResult.output.trim()).toContain('"echo":"hello"');
   }, 60000);

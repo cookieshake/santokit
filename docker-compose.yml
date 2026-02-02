@@ -3,28 +3,25 @@ version: "3.9"
 services:
   redis:
     image: redis:7-alpine
-    container_name: santokit-it-redis
     networks:
       santokit-it:
-        aliases: [redis]
+        aliases: [ redis ]
 
   postgres:
     image: postgres:15-alpine
-    container_name: santokit-it-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: santokit
     networks:
       santokit-it:
-        aliases: [postgres]
+        aliases: [ postgres ]
 
   hub:
     build:
       context: .
       dockerfile: packages/integration-tests/test/integration/Dockerfile.hub
     image: santokit-hub-test:latest
-    container_name: santokit-it-hub
     environment:
       STK_HUB_ADDR: ":8080"
       STK_DISABLE_AUTH: "true"
@@ -38,14 +35,13 @@ services:
       - "55880:8080"
     networks:
       santokit-it:
-        aliases: [hub]
+        aliases: [ hub ]
 
   bridge:
     build:
       context: .
       dockerfile: packages/integration-tests/test/integration/Dockerfile.server
     image: santokit-server-test:latest
-    container_name: santokit-it-bridge
     environment:
       REDIS_URL: "redis://redis:6379"
       DATABASE_URL: "postgres://postgres:password@postgres:5432/santokit?sslmode=disable"
@@ -63,49 +59,49 @@ services:
       - "55830:3000"
     networks:
       santokit-it:
-        aliases: [bridge]
+        aliases: [ bridge ]
 
   cli:
     build:
       context: .
       dockerfile: packages/integration-tests/test/integration/Dockerfile.cli
     image: santokit-cli-test:latest
-    container_name: santokit-it-cli
     environment:
       HOME: /data/home
       STK_HUB_URL: "http://hub:8080"
       STK_PROJECT_ID: "default"
       STK_TOKEN: "test-token"
       STK_DISABLE_AUTH: "true"
-    volumes:
-      - .:/workspace
-      - santokit-cli-home:/data/home
+
     networks:
       santokit-it:
-        aliases: [cli]
+        aliases: [ cli ]
+    volumes:
+      - integration-data:/workspace/tmp-integration-project
 
   client:
     build:
       context: .
       dockerfile: packages/integration-tests/test/integration/Dockerfile.node
     image: santokit-node-test:latest
-    container_name: santokit-it-client
-    volumes:
-      - .:/workspace
+
     networks:
       santokit-it:
-        aliases: [client]
+        aliases: [ client ]
+    volumes:
+      - integration-data:/workspace/tmp-integration-project
 
   user:
     image: nginx:1.27-alpine
-    container_name: santokit-it-user
     networks:
       santokit-it:
-        aliases: [user]
+        aliases: [ user ]
 
 networks:
   santokit-it:
     name: santokit-it
 
 volumes:
-  santokit-cli-home:
+  integration-data:
+
+
