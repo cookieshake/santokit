@@ -3,8 +3,12 @@ $schema: "https://moonrepo.dev/schemas/project.json"
 language: "go"
 
 tasks:
+  install:
+    command: "go mod download"
   build:
     command: "go build ./..."
+    deps:
+      - "install"
   test:
     command: "go test ./..."
   fmt:
@@ -12,14 +16,14 @@ tasks:
     args:
       - "-lc"
       - "test -z \"$(gofmt -l .)\""
-  check:weak:
+  check-weak:
     deps:
       - "fmt"
   check:
     deps:
       - "fmt"
       - "build"
-  check:strong:
+  check-strong:
     deps:
       - "fmt"
       - "build"

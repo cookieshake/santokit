@@ -10,6 +10,53 @@ Santokit Edge Server Runtime - A runtime-agnostic execution environment for Sant
 - **AWS Lambda** (coming soon)
 - Any **Standard Web API** compatible runtime
 
+## API Reference
+
+The Bridge Server exposes a simple, functional HTTP API.
+
+### Health Check
+- `GET /health`
+- **Response**: `200 OK`
+
+### Logic Execution
+Execute a deployed serverless function (JavaScript or SQL).
+
+- **Endpoint**: `POST /call`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `Authorization: Bearer <token>` (if logic is private)
+- **Body**:
+  ```json
+  {
+    "path": "namespace/name",
+    "params": {
+      "key": "value"
+    }
+  }
+  ```
+- **Response**: The result of the logic execution.
+
+### CRUD Operations
+Execute direct database operations via the Bridge (subject to permissions).
+
+- **Endpoint**: `POST /call`
+- **Body**:
+  ```json
+  {
+    "path": "crud/{database}/{table}/{operation}",
+    "params": {
+      "where": { ... },
+      "data": { ... }
+    }
+  }
+  ```
+- **Operations**: `select`, `insert`, `update`, `delete`.
+
+### Caching
+The Bridge automatically handles response caching based on logic configuration.
+- Public `POST` requests can be cached via synthetic `GET` keys if the logic defines a TTL.
+- Headers: `Cache-Control` will differ based on the logic's `cache` setting (e.g., `5m`, `1h`).
+
 ## Features
 
 - 🚀 **Edge-first**: Optimized for edge runtimes with minimal cold start
@@ -18,13 +65,6 @@ Santokit Edge Server Runtime - A runtime-agnostic execution environment for Sant
 - 💾 **Flexible storage**: KV store abstraction (Cloudflare KV, Redis, or in-memory)
 - 🗄️ **Database support**: PostgreSQL with connection pooling
 - 📦 **Bundle execution**: Execute SQL and JavaScript logic bundles
-- ⚡ **Caching**: Configurable response caching
-
-## Installation
-
-```bash
-npm install @santokit/bridge
-```
 
 ## Usage
 
@@ -39,24 +79,6 @@ export default {
     return server.fetch(request);
   },
 };
-```
-
-**wrangler.toml:**
-```toml
-name = "my-santokit-server"
-main = "src/index.ts"
-
-[[kv_namespaces]]
-binding = "SANTOKIT_KV"
-id = "your-kv-namespace-id"
-
-[[hyperdrive]]
-binding = "SANTOKIT_DB"
-id = "your-hyperdrive-config-id"
-
-[vars]
-SANTOKIT_PROJECT_ID = "your-project-id"
-SANTOKIT_ENCRYPTION_KEY = "your-32-byte-encryption-key"
 ```
 
 ### Node.js / Docker
@@ -75,96 +97,3 @@ const env = {
 const { start } = await createNodeServer(env);
 await start();
 ```
-
-## Architecture
-
-### Core Components
-
-1. **SantokitServer**: Main server class handling request routing and execution
-2. **Context**: Runtime API provided to logic handlers (db, storage, invoke, etc.)
-3. **Adapters**: Platform-specific implementations (Cloudflare, Node.js)
-4. **Logic Execution**: Supports both SQL and JavaScript bundles
-
-### Request Flow
-
-```
-Request → Server.fetch() → Load Bundle → Auth Check → Execute Logic → Response
-```
-
-### Bundle Format
-
-Bundles are stored in KV with the following structure:
-
-```typescript
-interface Bundle {
-  type: 'sql' | 'js';
-  namespace: string;
-  name: string;
-  config: LogicConfig;
-  content: string;
-  hash: string;
-}
-```
-
-## API
-
-### Context API (Available in Logic Handlers)
-
-```typescript
-interface Context {
-  // Database operations
-  db: {
-    query(target: string, sql: string, params?: unknown[]): Promise<unknown[]>;
-    queryDefault(sql: string, params?: unknown[]): Promise<unknown[]>;
-  };
-  
-  // Storage operations
-  storage: {
-    createUploadUrl(bucket: string, path: string, options?: UploadOptions): Promise<string>;
-    createDownloadUrl(bucket: string, path: string, options?: DownloadOptions): Promise<string>;
-    delete(bucket: string, path: string): Promise<void>;
-  };
-  
-  // Invoke other logic endpoints
-  invoke(path: string, params?: Record<string, unknown>): Promise<unknown>;
-  
-  // Current request information
-  request: RequestInfo;
-  
-  // Get secret values
-  getSecret(key: string): Promise<string | undefined>;
-}
-```
-
-### Logic Configuration
-
-```typescript
-interface LogicConfig {
-  target?: string;                    // Database alias (default: "main")
-  params?: Record<string, ParamConfig>; // Parameter definitions
-  access?: string;                     // "public", "authenticated", or role name
-  cache?: string;                      // Cache duration (e.g., "5m", "1h", "1d")
-  sql?: string;                        // SQL query (for SQL-based logic)
-  handler?: LogicHandler;              // Handler function (for JS-based logic)
-}
-```
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Watch mode
-npm run dev
-
-# Run tests
-npm test
-```
-
-## License
-
-MIT
