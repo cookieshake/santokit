@@ -9,112 +9,127 @@ import (
 	"github.com/cookieshake/santokit/packages/cli/internal/engine/integrator"
 	"github.com/cookieshake/santokit/packages/cli/internal/engine/parser"
 	"github.com/cookieshake/santokit/packages/cli/internal/engine/scanner"
+	"github.com/spf13/cobra"
 )
 
-type LogicCmd struct {
-	Apply    LogicApplyCmd    `cmd:"" help:"Deploy logic changes to Hub." aliases:"push"`
-	Validate LogicValidateCmd `cmd:"" help:"Validate logic files without deploying."`
+func NewLogicCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "logic",
+		Short: "Deploy and validate logic.",
+	}
+	cmd.AddCommand(newLogicApplyCmd())
+	cmd.AddCommand(newLogicValidateCmd())
+	return cmd
 }
 
-type LogicApplyCmd struct{}
+func newLogicApplyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "apply",
+		Short:   "Deploy logic changes to Hub.",
+		Aliases: []string{"push"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rootDir, _ := os.Getwd()
+			title("🚀 Logic Apply")
+			info(fmt.Sprintf("Working directory: %s", rootDir))
+			fmt.Println()
 
-func (c *LogicApplyCmd) Run() error {
-	rootDir, _ := os.Getwd()
-	title("🚀 Logic Apply")
-	info(fmt.Sprintf("Working directory: %s", rootDir))
-	fmt.Println()
+			// 1. Initialize Engines
+			scan := scanner.New(rootDir)
+			parse := parser.New()
+			integrate := integrator.New()
 
-	// 1. Initialize Engines
-	scan := scanner.New(rootDir)
-	parse := parser.New()
-	integrate := integrator.New()
+			comm, err := communicator.NewFromEnv()
+			if err != nil {
+				return errorf("❌ Failed to initialize communicator: %v", err)
+			}
 
-	comm, err := communicator.NewFromEnv()
-	if err != nil {
-		return errorf("❌ Failed to initialize communicator: %v", err)
+			// 2. Scan
+			info("📂 Scanning logic files...")
+			files, err := scan.ScanLogic()
+			if err != nil {
+				return errorf("❌ Scan failed: %v", err)
+			}
+			if len(files) == 0 {
+				warn("⚠️  No logic files found.")
+				return nil
+			}
+			success(fmt.Sprintf("✓ Found %d logic file(s)", len(files)))
+			fmt.Println()
+
+			// 3. Parse & Bundle
+			info("⚙️  Processing files...")
+			configs, err := buildLogicConfigs(rootDir, files, parse)
+			if err != nil {
+				return err
+			}
+
+			var bundles []integrator.Bundle
+			for _, config := range configs {
+				bundle, err := integrate.BundleLogic(config)
+				if err != nil {
+					return errorf("❌ Bundle failed for %s/%s: %v", config.Namespace, config.Name, err)
+				}
+				bundles = append(bundles, *bundle)
+			}
+			success(fmt.Sprintf("✓ Processed %d file(s)", len(bundles)))
+			fmt.Println()
+
+			// 4. Create Manifest
+			projectID := comm.Config().ProjectID
+			if projectID == "" {
+				projectID = os.Getenv("STK_PROJECT_ID")
+			}
+			if projectID == "" {
+				return errorf("❌ STK_PROJECT_ID is required")
+			}
+
+			manifest := integrate.CreateManifest(projectID, bundles)
+			info(fmt.Sprintf("📦 Created manifest (version: %s)", manifest.Version))
+			fmt.Println()
+
+			// 5. Push to Hub
+			info("☁️  Uploading to Hub...")
+			if err := comm.PushManifest(manifest); err != nil {
+				return errorf("❌ Upload failed: %v", err)
+			}
+
+			fmt.Println()
+			success("✅ Successfully deployed logic!")
+			success(fmt.Sprintf("   Project: %s", projectID))
+			success(fmt.Sprintf("   Version: %s", manifest.Version))
+			success(fmt.Sprintf("   Bundles: %d", len(bundles)))
+
+			return nil
+		},
 	}
-
-	// 2. Scan
-	info("📂 Scanning logic files...")
-	files, err := scan.ScanLogic()
-	if err != nil {
-		return errorf("❌ Scan failed: %v", err)
-	}
-	if len(files) == 0 {
-		warn("⚠️  No logic files found.")
-		return nil
-	}
-	success(fmt.Sprintf("✓ Found %d logic file(s)", len(files)))
-	fmt.Println()
-
-	// 3. Parse & Bundle
-	info("⚙️  Processing files...")
-	configs, err := buildLogicConfigs(rootDir, files, parse)
-	if err != nil {
-		return err
-	}
-
-	var bundles []integrator.Bundle
-	for _, config := range configs {
-		bundle, err := integrate.BundleLogic(config)
-		if err != nil {
-			return errorf("❌ Bundle failed for %s/%s: %v", config.Namespace, config.Name, err)
-		}
-		bundles = append(bundles, *bundle)
-	}
-	success(fmt.Sprintf("✓ Processed %d file(s)", len(bundles)))
-	fmt.Println()
-
-	// 4. Create Manifest
-	projectID := comm.Config().ProjectID
-	if projectID == "" {
-		projectID = os.Getenv("STK_PROJECT_ID")
-	}
-	if projectID == "" {
-		return errorf("❌ STK_PROJECT_ID is required")
-	}
-
-	manifest := integrate.CreateManifest(projectID, bundles)
-	info(fmt.Sprintf("📦 Created manifest (version: %s)", manifest.Version))
-	fmt.Println()
-
-	// 5. Push to Hub
-	info("☁️  Uploading to Hub...")
-	if err := comm.PushManifest(manifest); err != nil {
-		return errorf("❌ Upload failed: %v", err)
-	}
-
-	fmt.Println()
-	success("✅ Successfully deployed logic!")
-	success(fmt.Sprintf("   Project: %s", projectID))
-	success(fmt.Sprintf("   Version: %s", manifest.Version))
-	success(fmt.Sprintf("   Bundles: %d", len(bundles)))
-
-	return nil
 }
 
-type LogicValidateCmd struct{}
+func newLogicValidateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "validate",
+		Short: "Validate logic files without deploying.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println("Validating logic files...")
+			rootDir, _ := os.Getwd()
+			scan := scanner.New(rootDir)
+			parse := parser.New()
 
-func (c *LogicValidateCmd) Run() error {
-	fmt.Println("Validating logic files...")
-	rootDir, _ := os.Getwd()
-	scan := scanner.New(rootDir)
-	parse := parser.New()
+			files, err := scan.ScanLogic()
+			if err != nil {
+				return errorf("❌ Scan failed: %v", err)
+			}
+			if len(files) == 0 {
+				warn("⚠️  No logic files found.")
+				return nil
+			}
 
-	files, err := scan.ScanLogic()
-	if err != nil {
-		return errorf("❌ Scan failed: %v", err)
+			if _, err := buildLogicConfigs(rootDir, files, parse); err != nil {
+				return errorf("❌ Logic validation failed.")
+			}
+			success("✅ Logic validation passed.")
+			return nil
+		},
 	}
-	if len(files) == 0 {
-		warn("⚠️  No logic files found.")
-		return nil
-	}
-
-	if _, err := buildLogicConfigs(rootDir, files, parse); err != nil {
-		return errorf("❌ Logic validation failed.")
-	}
-	success("✅ Logic validation passed.")
-	return nil
 }
 
 type logicEntry struct {

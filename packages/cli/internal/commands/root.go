@@ -4,38 +4,36 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/alecthomas/kong"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
 )
 
-type CLI struct {
-	Init    InitCmd    `cmd:"" help:"Initialize a new Santokit project."`
-	Login   LoginCmd   `cmd:"" help:"Login to Santokit Hub via browser."`
-	Profile ProfileCmd `cmd:"" help:"Manage Hub profiles."`
-	Project ProjectCmd `cmd:"" help:"Manage project settings."`
-	Schema  SchemaCmd  `cmd:"" help:"Manage database schema definitions."`
-	Config  ConfigCmd  `cmd:"" help:"Manage project configuration."`
-	Logic   LogicCmd   `cmd:"" help:"Deploy and validate logic."`
-	Sync    SyncCmd    `cmd:"" help:"Download manifest and generate type definitions."`
-	Secret  SecretCmd  `cmd:"" help:"Manage secrets in Hub Vault."`
+// RootCmd represents the base command when called without any subcommands
+var RootCmd = &cobra.Command{
+	Use:   "stk",
+	Short: "Santokit CLI - Backend infrastructure made simple",
+	// Uncomment the following line if your bare application
+	// has an action associated with it:
+	// Run: func(cmd *cobra.Command, args []string) { },
 }
 
-// Execute runs the root command
+// Execute adds all child commands to the root command and sets flags appropriately.
+// This is called by main.main(). It only needs to happen once to the RootCmd.
 func Execute() error {
-	var cli CLI
-	parser, err := kong.New(&cli,
-		kong.Name("stk"),
-		kong.Description("Santokit CLI - Backend infrastructure made simple"),
-		kong.UsageOnError(),
-	)
-	if err != nil {
-		return err
-	}
-	ctx, err := parser.Parse(os.Args[1:])
-	if err != nil {
-		return err
-	}
-	return ctx.Run()
+	return RootCmd.Execute()
+}
+
+func init() {
+	RootCmd.AddCommand(NewConfigCmd())
+	// TODO: Add other commands here as they are migrated
+	RootCmd.AddCommand(NewInitCmd())
+	RootCmd.AddCommand(NewLoginCmd())
+	RootCmd.AddCommand(NewProfileCmd())
+	RootCmd.AddCommand(NewProjectCmd())
+	RootCmd.AddCommand(NewSchemaCmd())
+	RootCmd.AddCommand(NewLogicCmd())
+	RootCmd.AddCommand(NewSyncCmd())
+	RootCmd.AddCommand(NewSecretCmd())
 }
 
 var (

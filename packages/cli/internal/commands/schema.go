@@ -9,104 +9,120 @@ import (
 
 	"github.com/cookieshake/santokit/packages/cli/internal/engine/communicator"
 	"github.com/cookieshake/santokit/packages/cli/internal/engine/scanner"
+	"github.com/spf13/cobra"
 )
 
-type SchemaCmd struct {
-	Apply SchemaApplyCmd `cmd:"" help:"Apply schema changes to Hub." aliases:"push"`
-	Plan  SchemaPlanCmd  `cmd:"" help:"Preview schema changes without applying."`
+func NewSchemaCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "schema",
+		Short: "Manage database schema definitions.",
+	}
+	cmd.AddCommand(newSchemaApplyCmd())
+	cmd.AddCommand(newSchemaPlanCmd())
+	return cmd
 }
 
-type SchemaApplyCmd struct {
-	Yes bool `help:"Skip confirmation prompt" short:"y"`
-}
+func newSchemaApplyCmd() *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:     "apply",
+		Short:   "Apply schema changes to Hub.",
+		Aliases: []string{"push"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			title("Schema Apply")
+			rootDir, _ := os.Getwd()
+			comm, err := communicator.NewFromEnv()
+			if err != nil {
+				return errorf("❌ Failed to initialize communicator: %v", err)
+			}
+			schemas, err := loadSchemaFiles(rootDir)
+			if err != nil {
+				return errorf("❌ Failed to load schema files: %v", err)
+			}
+			if len(schemas) == 0 {
+				warn("⚠️  No schema files found.")
+				return nil
+			}
 
-func (c *SchemaApplyCmd) Run() error {
-	title("Schema Apply")
-	rootDir, _ := os.Getwd()
-	comm, err := communicator.NewFromEnv()
-	if err != nil {
-		return errorf("❌ Failed to initialize communicator: %v", err)
-	}
-	schemas, err := loadSchemaFiles(rootDir)
-	if err != nil {
-		return errorf("❌ Failed to load schema files: %v", err)
-	}
-	if len(schemas) == 0 {
-		warn("⚠️  No schema files found.")
-		return nil
-	}
+			projectID := comm.Config().ProjectID
+			if projectID == "" {
+				projectID = os.Getenv("STK_PROJECT_ID")
+			}
+			if projectID == "" {
+				return errorf("❌ STK_PROJECT_ID is required")
+			}
 
-	projectID := comm.Config().ProjectID
-	if projectID == "" {
-		projectID = os.Getenv("STK_PROJECT_ID")
-	}
-	if projectID == "" {
-		return errorf("❌ STK_PROJECT_ID is required")
-	}
+			plan, err := comm.PlanSchema(projectID, schemas)
+			if err != nil {
+				return errorf("❌ Schema plan failed: %v", err)
+			}
 
-	plan, err := comm.PlanSchema(projectID, schemas)
-	if err != nil {
-		return errorf("❌ Schema plan failed: %v", err)
-	}
+			if !plan.HasChanges || len(plan.Migrations) == 0 {
+				success("✅ No schema changes to apply.")
+				return nil
+			}
 
-	if !plan.HasChanges || len(plan.Migrations) == 0 {
-		success("✅ No schema changes to apply.")
-		return nil
-	}
+			fmt.Printf("Plan: %s\n", plan.Summary)
+			fmt.Printf("Migrations: %d\n", len(plan.Migrations))
+			if !yes {
+				if !confirmPrompt("Apply migrations now? (y/N): ") {
+					warn("❎ Aborted.")
+					return nil
+				}
+			}
 
-	fmt.Printf("Plan: %s\n", plan.Summary)
-	fmt.Printf("Migrations: %d\n", len(plan.Migrations))
-	if !c.Yes {
-		if !confirmPrompt("Apply migrations now? (y/N): ") {
-			warn("❎ Aborted.")
+			if err := comm.ApplySchema(projectID, plan.Migrations); err != nil {
+				return errorf("❌ Schema apply failed: %v", err)
+			}
+
+			success(fmt.Sprintf("✅ Applied %d migrations.", len(plan.Migrations)))
 			return nil
-		}
+		},
 	}
-
-	if err := comm.ApplySchema(projectID, plan.Migrations); err != nil {
-		return errorf("❌ Schema apply failed: %v", err)
-	}
-
-	success(fmt.Sprintf("✅ Applied %d migrations.", len(plan.Migrations)))
-	return nil
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
+	return cmd
 }
 
-type SchemaPlanCmd struct{}
+func newSchemaPlanCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "plan",
+		Short: "Preview schema changes without applying.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			title("Schema Plan")
+			rootDir, _ := os.Getwd()
+			comm, err := communicator.NewFromEnv()
+			if err != nil {
+				return errorf("❌ Failed to initialize communicator: %v", err)
+			}
+			schemas, err := loadSchemaFiles(rootDir)
+			if err != nil {
+				return errorf("❌ Failed to load schema files: %v", err)
+			}
+			if len(schemas) == 0 {
+				warn("⚠️  No schema files found.")
+				return nil
+			}
 
-func (c *SchemaPlanCmd) Run() error {
-	title("Schema Plan")
-	rootDir, _ := os.Getwd()
-	comm, err := communicator.NewFromEnv()
-	if err != nil {
-		return errorf("❌ Failed to initialize communicator: %v", err)
-	}
-	schemas, err := loadSchemaFiles(rootDir)
-	if err != nil {
-		return errorf("❌ Failed to load schema files: %v", err)
-	}
-	if len(schemas) == 0 {
-		warn("⚠️  No schema files found.")
-		return nil
-	}
+			projectID := comm.Config().ProjectID
+			if projectID == "" {
+				projectID = os.Getenv("STK_PROJECT_ID")
+			}
+			if projectID == "" {
+				return errorf("❌ STK_PROJECT_ID is required")
+			}
 
-	projectID := comm.Config().ProjectID
-	if projectID == "" {
-		projectID = os.Getenv("STK_PROJECT_ID")
-	}
-	if projectID == "" {
-		return errorf("❌ STK_PROJECT_ID is required")
-	}
+			plan, err := comm.PlanSchema(projectID, schemas)
+			if err != nil {
+				return errorf("❌ Schema plan failed: %v", err)
+			}
 
-	plan, err := comm.PlanSchema(projectID, schemas)
-	if err != nil {
-		return errorf("❌ Schema plan failed: %v", err)
+			success(fmt.Sprintf("✅ %s", plan.Summary))
+			if len(plan.Migrations) > 0 {
+				fmt.Printf("Migrations: %d\n", len(plan.Migrations))
+			}
+			return nil
+		},
 	}
-
-	success(fmt.Sprintf("✅ %s", plan.Summary))
-	if len(plan.Migrations) > 0 {
-		fmt.Printf("Migrations: %d\n", len(plan.Migrations))
-	}
-	return nil
 }
 
 func loadSchemaFiles(rootDir string) (map[string]string, error) {

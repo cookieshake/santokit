@@ -6,107 +6,123 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/cookieshake/santokit/packages/cli/internal/engine/communicator"
 )
 
-type ConfigCmd struct {
-	Apply ConfigApplyCmd `cmd:"" help:"Apply project configuration to Hub."`
-	Show  ConfigShowCmd  `cmd:"" help:"Show project configuration from Hub."`
+func NewConfigCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage project configuration.",
+	}
+	cmd.AddCommand(newConfigApplyCmd())
+	cmd.AddCommand(newConfigShowCmd())
+	return cmd
 }
 
-type ConfigApplyCmd struct {
-	Only string `help:"Apply only specific config(s): databases,auth,storage"`
+func newConfigApplyCmd() *cobra.Command {
+	var only string
+	cmd := &cobra.Command{
+		Use:   "apply",
+		Short: "Apply project configuration to Hub.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			title("Config Apply")
+			rootDir, _ := os.Getwd()
+			comm, err := communicator.NewFromEnv()
+			if err != nil {
+				return errorf("❌ Failed to initialize communicator: %v", err)
+			}
+
+			projectID := comm.Config().ProjectID
+			if projectID == "" {
+				projectID = os.Getenv("STK_PROJECT_ID")
+			}
+			if projectID == "" {
+				return errorf("❌ STK_PROJECT_ID is required")
+			}
+
+			configDir := filepath.Join(rootDir, "config")
+			configs := map[string]string{}
+			onlyMap, err := parseConfigOnly(only)
+			if err != nil {
+				return errorf("❌ %v", err)
+			}
+
+			if onlyMap["databases"] {
+				if data, err := readOptionalFile(filepath.Join(configDir, "databases.yaml")); err != nil {
+					return errorf("❌ Failed to read databases.yaml: %v", err)
+				} else if data != "" {
+					configs["databases"] = data
+				}
+			}
+
+			if onlyMap["auth"] {
+				if data, err := readOptionalFile(filepath.Join(configDir, "auth.yaml")); err != nil {
+					return errorf("❌ Failed to read auth.yaml: %v", err)
+				} else if data != "" {
+					configs["auth"] = data
+				}
+			}
+
+			if onlyMap["storage"] {
+				if data, err := readOptionalFile(filepath.Join(configDir, "storage.yaml")); err != nil {
+					return errorf("❌ Failed to read storage.yaml: %v", err)
+				} else if data != "" {
+					configs["storage"] = data
+				}
+			}
+
+			if len(configs) == 0 {
+				warn("⚠️  No config files found.")
+				return nil
+			}
+
+			if err := comm.ApplyConfig(projectID, configs); err != nil {
+				return errorf("❌ Config apply failed: %v", err)
+			}
+
+			success("✅ Project configuration applied.")
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&only, "only", "", "Apply only specific config(s): databases,auth,storage")
+	return cmd
 }
 
-func (c *ConfigApplyCmd) Run() error {
-	title("Config Apply")
-	rootDir, _ := os.Getwd()
-	comm, err := communicator.NewFromEnv()
-	if err != nil {
-		return errorf("❌ Failed to initialize communicator: %v", err)
-	}
+func newConfigShowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "Show project configuration from Hub.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			comm, err := communicator.NewFromEnv()
+			if err != nil {
+				return errorf("❌ Failed to initialize communicator: %v", err)
+			}
 
-	projectID := comm.Config().ProjectID
-	if projectID == "" {
-		projectID = os.Getenv("STK_PROJECT_ID")
-	}
-	if projectID == "" {
-		return errorf("❌ STK_PROJECT_ID is required")
-	}
+			projectID := comm.Config().ProjectID
+			if projectID == "" {
+				projectID = os.Getenv("STK_PROJECT_ID")
+			}
+			if projectID == "" {
+				return errorf("❌ STK_PROJECT_ID is required")
+			}
 
-	configDir := filepath.Join(rootDir, "config")
-	configs := map[string]string{}
-	only, err := parseConfigOnly(c.Only)
-	if err != nil {
-		return errorf("❌ %v", err)
+			cfg, err := comm.GetConfig(projectID)
+			if err != nil {
+				return errorf("❌ Failed to fetch config: %v", err)
+			}
+
+			title("Config Show")
+			fmt.Println("databases.yaml")
+			fmt.Println(cfg.Databases)
+			fmt.Println("auth.yaml")
+			fmt.Println(cfg.Auth)
+			fmt.Println("storage.yaml")
+			fmt.Println(cfg.Storage)
+			return nil
+		},
 	}
-
-	if only["databases"] {
-		if data, err := readOptionalFile(filepath.Join(configDir, "databases.yaml")); err != nil {
-			return errorf("❌ Failed to read databases.yaml: %v", err)
-		} else if data != "" {
-			configs["databases"] = data
-		}
-	}
-
-	if only["auth"] {
-		if data, err := readOptionalFile(filepath.Join(configDir, "auth.yaml")); err != nil {
-			return errorf("❌ Failed to read auth.yaml: %v", err)
-		} else if data != "" {
-			configs["auth"] = data
-		}
-	}
-
-	if only["storage"] {
-		if data, err := readOptionalFile(filepath.Join(configDir, "storage.yaml")); err != nil {
-			return errorf("❌ Failed to read storage.yaml: %v", err)
-		} else if data != "" {
-			configs["storage"] = data
-		}
-	}
-
-	if len(configs) == 0 {
-	warn("⚠️  No config files found.")
-		return nil
-	}
-
-	if err := comm.ApplyConfig(projectID, configs); err != nil {
-		return errorf("❌ Config apply failed: %v", err)
-	}
-
-	success("✅ Project configuration applied.")
-	return nil
-}
-
-type ConfigShowCmd struct{}
-
-func (c *ConfigShowCmd) Run() error {
-	comm, err := communicator.NewFromEnv()
-	if err != nil {
-		return errorf("❌ Failed to initialize communicator: %v", err)
-	}
-
-	projectID := comm.Config().ProjectID
-	if projectID == "" {
-		projectID = os.Getenv("STK_PROJECT_ID")
-	}
-	if projectID == "" {
-		return errorf("❌ STK_PROJECT_ID is required")
-	}
-
-	cfg, err := comm.GetConfig(projectID)
-	if err != nil {
-		return errorf("❌ Failed to fetch config: %v", err)
-	}
-
-	title("Config Show")
-	fmt.Println("databases.yaml")
-	fmt.Println(cfg.Databases)
-	fmt.Println("auth.yaml")
-	fmt.Println(cfg.Auth)
-	fmt.Println("storage.yaml")
-	fmt.Println(cfg.Storage)
-	return nil
 }
 
 func readOptionalFile(path string) (string, error) {
