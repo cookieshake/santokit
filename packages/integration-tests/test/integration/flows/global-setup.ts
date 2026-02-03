@@ -180,15 +180,15 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     .withEnvironment({ COMPOSE_PROJECT_NAME: 'santokit-it' });
   environment = withServiceWaitStrategy(environment, services.hub, Wait.forHttp('/health', 8080));
   environment = withServiceWaitStrategy(environment, services.bridge, Wait.forHttp('/health', 3000));
-  environment = await environment.up();
+  const startedEnvironment = await environment.up();
 
-  const redisContainer = getServiceContainer(environment, services.redis);
-  const postgresContainer = getServiceContainer(environment, services.postgres);
-  const hubContainer = getServiceContainer(environment, services.hub);
-  const bridgeContainer = getServiceContainer(environment, services.bridge);
-  const cliContainer = getServiceContainer(environment, services.cli);
-  const clientContainer = getServiceContainer(environment, services.client);
-  const userContainer = getServiceContainer(environment, services.user);
+  const redisContainer = getServiceContainer(startedEnvironment, services.redis);
+  const postgresContainer = getServiceContainer(startedEnvironment, services.postgres);
+  const hubContainer = getServiceContainer(startedEnvironment, services.hub);
+  const bridgeContainer = getServiceContainer(startedEnvironment, services.bridge);
+  const cliContainer = getServiceContainer(startedEnvironment, services.cli);
+  const clientContainer = getServiceContainer(startedEnvironment, services.client);
+  const userContainer = getServiceContainer(startedEnvironment, services.user);
 
   const containerIds = {
     redis: redisContainer.getId(),
