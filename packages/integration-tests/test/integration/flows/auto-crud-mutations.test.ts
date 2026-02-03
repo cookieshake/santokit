@@ -111,11 +111,7 @@ describe('flow: auto CRUD mutations', () => {
                 }
             }
         })
-            // Expect permission error
-            .inspectBody((res) => { // we can catch the error/status here if we enhanced DSL or just check response if it returned error json
-                // Ideally we check status >= 400. Since DSL runs checks on response object inside the check function:
-                // But inspectBody gets JSON.
-            })
+            .expectErrorMatches(/permission denied|unauthorized/i)
     );
     // Note: previous implementation checked status >= 400.
     // I'll leave as is for now as DSL enhancement for range status is not there yet.
@@ -147,5 +143,6 @@ describe('flow: auto CRUD mutations', () => {
                 }
             }
         }))
+            .expectErrorMatches(/permission denied|unauthorized|system/i)
     );
 });

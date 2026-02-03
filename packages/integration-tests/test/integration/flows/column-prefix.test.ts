@@ -44,13 +44,16 @@ describe('flow: column prefix handling', () => {
             path: 'crud/main/test_users/select',
             params: {}
         })
-            // TODO: Add JWT token for owner in original test implies this might fail or return partial
-            // Original: expect([200, 401, 403]).toContain(response.status);
-            .inspectBody(() => {
-                // Just verifying it runs without throwing unexpected error types
-                // DSL doesn't easily support "expect 200 OR 403".
-                // We'll leave it as is, or use inspectBody to check nothing?
-                // As this is an integration test suite potentially running in different verify modes.
+            .inspectBody((result) => {
+                if (Array.isArray(result)) {
+                    if (result.length > 0) {
+                        const firstRow = result[0];
+                        expect(firstRow).toHaveProperty('s_email');
+                    }
+                    return;
+                }
+                expect(result).toHaveProperty('error');
+                expect(result.error?.message ?? result.error ?? result).toMatch(/permission denied|unauthorized/i);
             })
     );
 
@@ -80,13 +83,7 @@ describe('flow: column prefix handling', () => {
                 select: ['id', 'c_password_hash']
             }
         })
-            .inspectBody((result) => {
-                // Expect permission denied
-                // Check if result has error or status was bad (fetch throws? no)
-                if (result.error) {
-                    expect(result.error).toContain('Permission denied');
-                }
-            })
+            .expectErrorMatches(/permission denied|unauthorized/i)
     );
 
     testFlow('denies update of _ system columns',
@@ -115,9 +112,7 @@ describe('flow: column prefix handling', () => {
                 }
             }
         }))
-            .inspectBody((result) => {
-                if (result.error) expect(result.error).toContain('Permission denied');
-            })
+            .expectErrorMatches(/permission denied|unauthorized|system/i)
     );
 
     testFlow('denies insert of _ system columns',
@@ -133,8 +128,6 @@ describe('flow: column prefix handling', () => {
                 }
             }
         })
-            .inspectBody((result) => {
-                if (result.error) expect(result.error).toContain('Permission denied');
-            })
+            .expectErrorMatches(/permission denied|unauthorized|system/i)
     );
 });

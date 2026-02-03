@@ -1,6 +1,7 @@
-import { execFileSync } from 'child_process';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getContainerRuntimeClient } from 'testcontainers';
 import type { FlowContext } from './global-setup.ts';
 
 const projectRoot = path.resolve(__dirname, '../../../../../');
@@ -51,34 +52,71 @@ function readContextFile() {
     scriptsRootContainer: string;
     cliContainerId: string;
     clientContainerId: string;
+    postgresContainerId: string;
   };
 }
 
-async function runCli(containerId: string, command: string, cwd = projectDirContainer) {
-  try {
-    execFileSync('docker', [
-      'exec',
-      containerId,
-      'bash',
-      '-lc',
-      `export PATH=\"/usr/local/go/bin:$PATH\"; cd ${cwd} && ${command}`
-    ], { encoding: 'utf8' });
-  } catch (error: any) {
-    const stdout = error?.stdout?.toString?.() ?? '';
-    const stderr = error?.stderr?.toString?.() ?? '';
-    const message = (stdout || stderr || String(error)).trim();
-    throw new Error(message);
+function normalizeExecOutput(output: { output?: string; stdout?: string; stderr?: string }) {
+  return (output.stdout || output.stderr || output.output || '').trim();
+}
+
+async function execInContainer(containerId: string, command: string) {
+  const client = await getContainerRuntimeClient();
+  const container = client.container.getById(containerId);
+  const result = await client.container.exec(container, ['bash', '-lc', command]);
+  if (result.exitCode !== 0) {
+    throw new Error(normalizeExecOutput(result));
   }
+  return result;
+}
+
+async function execInContainerAllowFailure(containerId: string, command: string) {
+  const client = await getContainerRuntimeClient();
+  const container = client.container.getById(containerId);
+  return client.container.exec(container, ['bash', '-lc', command]);
+}
+
+async function execInPostgres(containerId: string, sql: string) {
+  const escaped = sql.replace(/"/g, '\\"');
+  await execInContainer(containerId, `psql -U postgres -d santokit -c "${escaped}"`);
+}
+
+function createTarStream(source: string) {
+  const tar = spawn('tar', ['--no-xattrs', '--no-mac-metadata', '-C', source, '-cf', '-', '.']);
+  return tar;
+}
+
+async function copyDirectoryToContainer(containerId: string, source: string, target: string) {
+  const client = await getContainerRuntimeClient();
+  const container = client.container.getById(containerId);
+  await client.container.exec(container, ['mkdir', '-p', target]);
+  const tar = createTarStream(source);
+  const stderrChunks: string[] = [];
+
+  tar.stderr.on('data', (chunk) => stderrChunks.push(chunk.toString()));
+
+  const exitPromise = new Promise<void>((resolve, reject) => {
+    tar.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderrChunks.join('') || `tar exited with code ${code}`));
+      }
+    });
+    tar.on('error', reject);
+  });
+
+  await client.container.putArchive(container, tar.stdout, target);
+  await exitPromise;
+}
+
+async function runCli(containerId: string, command: string, cwd = projectDirContainer) {
+  await execInContainer(containerId, `export PATH=\"/usr/local/go/bin:$PATH\"; cd ${cwd} && ${command}`);
 }
 
 async function execInClient(containerId: string, command: string) {
-  try {
-    const output = execFileSync('docker', ['exec', containerId, 'bash', '-lc', command], { encoding: 'utf8' });
-    return { exitCode: 0, output };
-  } catch (error: any) {
-    const output = error?.stdout?.toString?.() ?? error?.stderr?.toString?.() ?? '';
-    return { exitCode: error?.status ?? 1, output };
-  }
+  const result = await execInContainerAllowFailure(containerId, command);
+  return { exitCode: result.exitCode ?? 1, output: result.output ?? '' };
 }
 
 function writeProjectFiles(projectDir: string) {
@@ -209,13 +247,28 @@ tables:
     delete: [admin]
   
   test_users:
-    select: [authenticated]
+    select: [public]
     insert: [public]
-    update: [owner, admin]
-    delete: [admin]
+    update: [public]
+    delete: [public]
+    columns:
+      id:
+        select: [public]
+      name:
+        select: [public]
+      s_email:
+        select: [public]
+      _created_at:
+        select: [public]
+        insert: []
+        update: []
+      _updated_at:
+        select: [public]
+        insert: []
+        update: []
   
   test_orders:
-    select: [owner, admin]
+    select: [authenticated]
     insert: [authenticated]
     update: [owner, admin]
     delete: [owner, admin]
@@ -229,7 +282,10 @@ tables:
 
   fs.writeFileSync(path.join(configDir, 'permissions.yaml'), permissionsConfig);
   fs.writeFileSync(path.join(configDir, 'auth.yaml'), 'providers: []\n');
-  fs.writeFileSync(path.join(configDir, 'databases.yaml'), 'default: {}\n');
+  fs.writeFileSync(
+    path.join(configDir, 'databases.yaml'),
+    'default:\n  url: postgres://postgres:password@postgres:5432/santokit?sslmode=disable\n'
+  );
 
   const stkConfig = {
     project_id: 'default',
@@ -253,6 +309,7 @@ export function getFlowContext(): FlowContext {
   const projectDir = base.projectDir;
   const runCliBound = (command: string, cwd?: string) => runCli(base.cliContainerId, command, cwd);
   const execInClientBound = (command: string) => execInClient(base.clientContainerId, command);
+  const postgresContainerId = base.postgresContainerId;
 
   let projectPrepared = false;
   let logicApplied = false;
@@ -274,9 +331,9 @@ export function getFlowContext(): FlowContext {
 
       // Copy the locally generated files into the container volume
       try {
-        execFileSync('docker', ['cp', `${projectDir}/.`, `${base.cliContainerId}:${projectDirContainer}`]);
+        await copyDirectoryToContainer(base.cliContainerId, projectDir, projectDirContainer);
         // Also copy the scripts directory
-        execFileSync('docker', ['cp', localScriptsDir, `${base.cliContainerId}:${projectDirContainer}`]);
+        await copyDirectoryToContainer(base.cliContainerId, localScriptsDir, `${projectDirContainer}/scripts`);
       } catch (e) {
         console.error('Failed to copy files to container:', e);
         throw e;
@@ -290,6 +347,13 @@ export function getFlowContext(): FlowContext {
     await withProjectLock(async () => {
       if (logicApplied) return;
       await ensureProjectPrepared();
+      await execInPostgres(postgresContainerId, 'CREATE EXTENSION IF NOT EXISTS pgcrypto;');
+      await execInPostgres(postgresContainerId, 'CREATE TABLE IF NOT EXISTS test_users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), name varchar(255), s_email varchar(255), c_password_hash text, c_ssn varchar(11), p_internal_notes text, p_ban_reason text, _created_at timestamptz DEFAULT now(), _updated_at timestamptz DEFAULT now());');
+      await execInPostgres(postgresContainerId, 'CREATE TABLE IF NOT EXISTS test_orders (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, status varchar(50), _created_at timestamptz DEFAULT now());');
+      await execInPostgres(postgresContainerId, 'CREATE TABLE IF NOT EXISTS test_public_posts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), title varchar(255), content text);');
+      await execInPostgres(postgresContainerId, 'CREATE TABLE IF NOT EXISTS items (id uuid PRIMARY KEY DEFAULT gen_random_uuid());');
+      await runCliBound('stk schema apply -y', projectDirContainer);
+      await runCliBound('stk config apply', projectDirContainer);
       await runCliBound('go run /workspace/packages/cli/cmd/stk/main.go logic apply', projectDirContainer);
       logicApplied = true;
     });

@@ -32,7 +32,7 @@ services:
       - redis
       - postgres
     ports:
-      - "55880:8080"
+      - "8080"
     networks:
       santokit-it:
         aliases: [ hub ]
@@ -50,13 +50,14 @@ services:
       STORAGE_ACCESS_KEY_ID: "test-access"
       STORAGE_SECRET_ACCESS_KEY: "test-secret"
       STORAGE_REGION: "auto"
+      STK_PERMISSIONS_CONFIG_PATH: "/app/permissions.json"
     depends_on:
       - redis
       - postgres
       - hub
       - user
     ports:
-      - "55830:3000"
+      - "3000"
     networks:
       santokit-it:
         aliases: [ bridge ]
@@ -103,5 +104,3 @@ networks:
 
 volumes:
   integration-data:
-
-

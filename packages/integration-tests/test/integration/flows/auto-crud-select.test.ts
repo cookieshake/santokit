@@ -68,18 +68,7 @@ describe('flow: auto CRUD select', () => {
                 select: ['id', 'name', 'c_password_hash']
             }
         })
-            // Expect permission error
-            // The previous test checked status >= 400.
-            // We can inspect body to see error message.
-            .inspectBody((result) => {
-                // Logic to check error. If result has error field.
-                if (result.error) {
-                    expect(result.error).toContain('Permission denied');
-                } else {
-                    // Fail or assume 400 if it hasn't thrown yet.
-                    // Ideally we should check status code but inspectBody only gets body.
-                }
-            })
+            .expectErrorMatches(/permission denied|unauthorized/i)
     );
 
     testFlow('selects with ORDER BY and LIMIT',
@@ -88,7 +77,7 @@ describe('flow: auto CRUD select', () => {
         requestApi('POST', '/call', {
             path: 'crud/main/test_users/select',
             params: {
-                orderBy: { created_at: 'desc' },
+                orderBy: { _created_at: 'desc' },
                 limit: 5
             }
         })
@@ -103,14 +92,9 @@ describe('flow: auto CRUD select', () => {
         ensureProject(),
         ensureLogic(),
         requestApi('POST', '/call', {
-            path: 'crud/main/test_users/select',
+            path: 'crud/main/test_orders/select',
             params: {}
         })
-            // Without auth header
-            // Expect 200, 401, or 403
-            .inspectBody((result) => {
-                // Check implicit status via fetch not throwing?
-                // Actually testFlow waits for step.
-            })
+            .expectErrorMatches(/permission denied|unauthorized/i)
     );
 });

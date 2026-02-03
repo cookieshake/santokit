@@ -1,8 +1,8 @@
-import { execFileSync } from 'child_process';
 import * as path from 'path';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
-import { DockerComposeEnvironment, Wait } from 'testcontainers';
+import { DockerComposeEnvironment, Wait, getContainerRuntimeClient, GenericContainer } from 'testcontainers';
 
 const projectRoot = path.resolve(__dirname, '../../../../../');
 const scriptsRootContainer = '/workspace/tmp-integration-project/scripts';
@@ -27,6 +27,7 @@ type FlowContext = {
   scriptsRootContainer: string;
   cliContainerId: string;
   clientContainerId: string;
+  postgresContainerId: string;
   runCli: (command: string, cwd?: string) => Promise<void>;
   execInClient: (command: string) => Promise<{ exitCode: number; output: string }>;
   ensureProjectPrepared: () => Promise<void>;
@@ -35,78 +36,143 @@ type FlowContext = {
 
 export type { FlowContext };
 
+type ContainerHandle = {
+  getId: () => string;
+  getHost: () => string;
+  getMappedPort: (port: number) => number;
+  exec: (command: string[]) => Promise<{ output: string; stdout: string; stderr: string; exitCode: number }>;
+  restart: () => Promise<void>;
+};
+
 const contextFile = path.join(projectRoot, 'tmp-integration-context.json');
 
-function runDocker(args: string[]): string {
-  return execFileSync('docker', args, { encoding: 'utf8' }).trim();
-}
-
-function dockerOk(args: string[]): boolean {
+async function cleanupSantokitContainers() {
   try {
-    execFileSync('docker', args, { stdio: 'ignore' });
-    return true;
+    const client = await getContainerRuntimeClient();
+    const containers = await client.container.list();
+    const targets = containers.filter((container) => container.Labels?.['com.docker.compose.project'] === 'santokit-it');
+    for (const target of targets) {
+      try {
+        const container = client.container.getById(target.Id);
+        await client.container.stop(container, { timeout: 5 });
+      } catch {
+        // ignore
+      }
+      try {
+        const container = client.container.getById(target.Id);
+        await container.remove({ force: true, v: true });
+      } catch {
+        // ignore
+      }
+    }
   } catch {
-    return false;
+    // ignore
   }
 }
 
-function containerRunning(id: string): boolean {
-  if (!dockerOk(['container', 'inspect', id])) return false;
-  const running = runDocker(['inspect', '-f', '{{.State.Running}}', id]);
-  return running === 'true';
-}
-
-function getServiceContainer(environment: Awaited<ReturnType<DockerComposeEnvironment['up']>>, service: string) {
-  const patterns = [
-    service,
-    `${service}-1`,
-    `${service}_1`,
-    `santokit-it-${service}-1`,
-    `santokit-it-${service}_1`
-  ];
-
-  // Try standard testcontainers lookup first
+async function getServiceContainer(environment: Awaited<ReturnType<DockerComposeEnvironment['up']>>, service: string): Promise<ContainerHandle> {
+  const patterns = [service, `${service}-1`, `${service}_1`];
   for (const pattern of patterns) {
     try {
-      return environment.getContainer(pattern);
+      return environment.getContainer(pattern) as unknown as ContainerHandle;
     } catch {
       // ignore
     }
   }
 
-  // Fallback: Manual docker lookup
-  try {
-    const containerName = `santokit-it-${service}-1`;
-    const id = execFileSync('docker', ['ps', '-q', '-f', `name=${containerName}`], { encoding: 'utf8' }).trim();
-    if (id) {
-      return {
-        getId: () => id,
-        getHost: () => 'localhost',
-        getMappedPort: (port: number) => {
-          try {
-            const output = execFileSync('docker', ['port', id, `${port}/tcp`], { encoding: 'utf8' }).trim();
-            // Output format: 0.0.0.0:55000 or [::]:55000. We want the port at the end.
-            const parts = output.split(':');
-            const mappedPort = parts[parts.length - 1];
-            return parseInt(mappedPort, 10);
-          } catch {
-            // If port is not mapped or command fails, this might not be needed for all containers.
-            // But for hub/bridge/redis it is likely needed if used.
-            throw new Error(`Could not get mapped port ${port} for ${containerName}`);
-          }
-        },
-        // We might need Exec method if used?
-        // The codebase uses `runDocker(['exec', ...])` or `containerIds.cli`.
-        // `exec` method of container object is NOT used in the visible code.
-        // `execInClient` uses `execFileSync('docker', ['exec', ...])`.
-        // So this mock object is sufficient for getId/getHost/getMappedPort.
-      } as any;
+  const client = await getContainerRuntimeClient();
+  const containers = await client.container.list();
+  const match =
+    containers.find((container) =>
+      container.Labels?.['com.docker.compose.project'] === 'santokit-it' &&
+      container.Labels?.['com.docker.compose.service'] === service
+    ) ??
+    containers.find((container) =>
+      container.Labels?.['com.docker.compose.service'] === service
+    ) ??
+    containers.find((container) =>
+      service === 'hub' && typeof container.Image === 'string' && container.Image.includes('santokit-hub-test')
+    ) ??
+    containers.find((container) =>
+      service === 'bridge' && typeof container.Image === 'string' && container.Image.includes('santokit-server-test')
+    ) ??
+    containers.find((container) =>
+      container.Names?.some((name) => name.includes('santokit-it') && name.includes(service))
+    ) ??
+    containers.find((container) =>
+      container.Names?.some((name) => name.includes(service))
+    );
+
+  if (!match) {
+    const dockerode = (client.container as any).dockerode;
+    const allContainers = dockerode ? await dockerode.listContainers({ all: true }) : [];
+    const allMatch =
+      allContainers.find((container: any) =>
+        container.Labels?.['com.docker.compose.project'] === 'santokit-it' &&
+        container.Labels?.['com.docker.compose.service'] === service
+      ) ??
+      allContainers.find((container: any) =>
+        container.Labels?.['com.docker.compose.service'] === service
+      ) ??
+      allContainers.find((container: any) =>
+        service === 'hub' && typeof container.Image === 'string' && container.Image.includes('santokit-hub-test')
+      ) ??
+      allContainers.find((container: any) =>
+        service === 'bridge' && typeof container.Image === 'string' && container.Image.includes('santokit-server-test')
+      ) ??
+      allContainers.find((container: any) =>
+        container.Names?.some((name: string) => name.includes('santokit-it') && name.includes(service))
+      ) ??
+      allContainers.find((container: any) =>
+        container.Names?.some((name: string) => name.includes(service))
+      );
+
+    if (allMatch && dockerode) {
+      const container = dockerode.getContainer(allMatch.Id);
+      try {
+        await client.container.start(container);
+      } catch {
+        // ignore
+      }
+      const inspect = await client.container.inspect(container);
+      if (!inspect.State?.Running) {
+        const logStream = await client.container.logs(container, { tail: 200 });
+        const logs = await new Promise<string>((resolve) => {
+          let data = '';
+          logStream.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+          logStream.on('end', () => resolve(data));
+          logStream.on('error', () => resolve(''));
+        });
+        throw new Error(`Container "${service}" exists but is not running (state=${inspect.State?.Status}). Logs:\n${logs}`);
+      }
     }
-  } catch (e) {
-    // ignore
+
+    throw new Error(`Could not find container for service "${service}".`);
   }
 
-  throw new Error(`Could not find container for service "${service}". Checked patterns and manual lookup.`);
+  const container = client.container.getById(match.Id);
+  let inspect = await client.container.inspect(container);
+  const host = client.info.containerRuntime.host;
+
+  const getMappedPort = (port: number) => {
+    const binding = inspect.NetworkSettings?.Ports?.[`${port}/tcp`]?.[0];
+    const mappedPort = binding?.HostPort;
+    if (!mappedPort) {
+      throw new Error(`Could not get mapped port ${port} for ${service}`);
+    }
+    return Number(mappedPort);
+  };
+
+  return {
+    getId: () => container.id,
+    getHost: () => host,
+    getMappedPort,
+    exec: (command: string[]) => client.container.exec(container, command),
+    restart: async () => {
+      await client.container.restart(container);
+      inspect = await client.container.inspect(container);
+    }
+  };
 }
 
 function withServiceWaitStrategy(
@@ -119,32 +185,71 @@ function withServiceWaitStrategy(
     .withWaitStrategy(`${service}_1`, strategy);
 }
 
-function resetState(containerIds: { redis: string; postgres: string; hub: string; bridge: string }) {
-  if (containerRunning(containerIds.redis)) {
-    runDocker(['exec', containerIds.redis, 'redis-cli', 'FLUSHALL']);
-  }
-  if (containerRunning(containerIds.postgres)) {
-    runDocker([
-      'exec',
-      containerIds.postgres,
-      'psql',
-      '-U',
-      'postgres',
-      '-d',
-      'santokit',
-      '-c',
-      'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
-    ]);
-  }
-  if (containerRunning(containerIds.hub)) runDocker(['restart', containerIds.hub]);
-  if (containerRunning(containerIds.bridge)) runDocker(['restart', containerIds.bridge]);
+function normalizeExecOutput(output: { output?: string; stdout?: string; stderr?: string }) {
+  return (output.stdout || output.stderr || output.output || '').trim();
 }
 
-function waitForRedis(containerId: string, attempts = 30, delayMs = 500) {
+function createTarStream(source: string) {
+  const tar = spawn('tar', ['--no-xattrs', '--no-mac-metadata', '-C', source, '-cf', '-', '.']);
+  return tar;
+}
+
+async function copyDirectoryToContainer(containerId: string, source: string, target: string) {
+  const client = await getContainerRuntimeClient();
+  const container = client.container.getById(containerId);
+  await client.container.exec(container, ['mkdir', '-p', target]);
+  const tar = createTarStream(source);
+  const stderrChunks: string[] = [];
+
+  tar.stderr.on('data', (chunk) => stderrChunks.push(chunk.toString()));
+
+  const exitPromise = new Promise<void>((resolve, reject) => {
+    tar.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(stderrChunks.join('') || `tar exited with code ${code}`));
+      }
+    });
+    tar.on('error', reject);
+  });
+
+  await client.container.putArchive(container, tar.stdout, target);
+  await exitPromise;
+}
+
+async function execInContainer(container: any, command: string) {
+  const result = await container.exec(['bash', '-lc', command]);
+  if (result.exitCode !== 0) {
+    throw new Error(normalizeExecOutput(result));
+  }
+  return result;
+}
+
+async function execInContainerAllowFailure(container: any, command: string) {
+  return container.exec(['bash', '-lc', command]);
+}
+
+async function resetState(containerIds: { redis: any; postgres: any; hub: any; bridge: any }) {
+  await containerIds.redis.exec(['redis-cli', 'FLUSHALL']);
+  await containerIds.postgres.exec([
+    'psql',
+    '-U',
+    'postgres',
+    '-d',
+    'santokit',
+    '-c',
+    'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+  ]);
+  await containerIds.hub.restart();
+  await containerIds.bridge.restart();
+}
+
+async function waitForRedis(containerId: any, attempts = 30, delayMs = 500) {
   for (let i = 0; i < attempts; i += 1) {
     try {
-      const output = runDocker(['exec', containerId, 'redis-cli', 'PING']);
-      if (output.trim() === 'PONG') return;
+      const output = await containerId.exec(['redis-cli', 'PING']);
+      if ((output.output || '').trim() === 'PONG') return;
     } catch {
       // ignore and retry
     }
@@ -153,11 +258,11 @@ function waitForRedis(containerId: string, attempts = 30, delayMs = 500) {
   throw new Error('Redis not ready');
 }
 
-function waitForPostgres(containerId: string, attempts = 30, delayMs = 500) {
+async function waitForPostgres(containerId: any, attempts = 30, delayMs = 500) {
   for (let i = 0; i < attempts; i += 1) {
     try {
-      runDocker(['exec', containerId, 'pg_isready', '-U', 'postgres']);
-      return;
+      const result = await containerId.exec(['pg_isready', '-U', 'postgres']);
+      if (result.exitCode === 0) return;
     } catch {
       // ignore and retry
     }
@@ -171,44 +276,66 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
   const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'santokit-integration-'));
   const projectDirContainer = '/workspace/tmp-integration-project';
 
+  await cleanupSantokitContainers();
+
   // Cleaning up the local temp dir is handled by logic below/cleanup, 
   // but we also need to clean the CONTAINER volume since it persists given we use a named volume now.
   // We will do that after containers are up.
 
   let environment = new DockerComposeEnvironment(composeFilePath, composeFile)
     .withBuild()
-    .withEnvironment({ COMPOSE_PROJECT_NAME: 'santokit-it' });
+    .withProjectName('santokit-it');
   environment = withServiceWaitStrategy(environment, services.hub, Wait.forHttp('/health', 8080));
   environment = withServiceWaitStrategy(environment, services.bridge, Wait.forHttp('/health', 3000));
   const startedEnvironment = await environment.up();
 
-  const redisContainer = getServiceContainer(startedEnvironment, services.redis);
-  const postgresContainer = getServiceContainer(startedEnvironment, services.postgres);
-  const hubContainer = getServiceContainer(startedEnvironment, services.hub);
-  const bridgeContainer = getServiceContainer(startedEnvironment, services.bridge);
-  const cliContainer = getServiceContainer(startedEnvironment, services.cli);
-  const clientContainer = getServiceContainer(startedEnvironment, services.client);
-  const userContainer = getServiceContainer(startedEnvironment, services.user);
+  const redisContainer = await getServiceContainer(startedEnvironment, services.redis);
+  const postgresContainer = await getServiceContainer(startedEnvironment, services.postgres);
+  let hubContainer: ContainerHandle;
+  try {
+    hubContainer = await getServiceContainer(startedEnvironment, services.hub);
+  } catch {
+    const hubImage = await GenericContainer
+      .fromDockerfile(projectRoot, 'packages/integration-tests/test/integration/Dockerfile.hub')
+      .build('santokit-hub-test:latest');
+    hubContainer = await hubImage
+      .withEnvironment({
+        STK_HUB_ADDR: ':8080',
+        STK_DISABLE_AUTH: 'true',
+        STK_KV_REDIS: 'redis://redis:6379',
+        STK_DATABASE_URL: 'postgres://postgres:password@postgres:5432/santokit?sslmode=disable',
+        STK_ENCRYPTION_KEY: '32-byte-key-for-aes-256-gcm!!!!!'
+      })
+      .withNetworkMode('santokit-it')
+      .withNetworkAliases('hub')
+      .withExposedPorts(8080)
+      .withWaitStrategy(Wait.forHttp('/health', 8080))
+      .start() as unknown as ContainerHandle;
+  }
+  const bridgeContainer = await getServiceContainer(startedEnvironment, services.bridge);
+  const cliContainer = await getServiceContainer(startedEnvironment, services.cli);
+  const clientContainer = await getServiceContainer(startedEnvironment, services.client);
+  const userContainer = await getServiceContainer(startedEnvironment, services.user);
 
   const containerIds = {
-    redis: redisContainer.getId(),
-    postgres: postgresContainer.getId(),
-    hub: hubContainer.getId(),
-    bridge: bridgeContainer.getId(),
-    cli: cliContainer.getId(),
-    client: clientContainer.getId(),
-    user: userContainer.getId()
+    redis: redisContainer,
+    postgres: postgresContainer,
+    hub: hubContainer,
+    bridge: bridgeContainer,
+    cli: cliContainer,
+    client: clientContainer,
+    user: userContainer
   };
 
-  waitForRedis(containerIds.redis);
-  waitForPostgres(containerIds.postgres);
+  await waitForRedis(containerIds.redis);
+  await waitForPostgres(containerIds.postgres);
 
   // Clean up the shared volume in the container to ensure a fresh start
   // We use bash -c to rely on shell expansion for * to delete contents, avoiding "Device or resource busy" on the mount point
-  runDocker(['exec', containerIds.cli, 'bash', '-c', 'rm -rf /workspace/tmp-integration-project/* /workspace/tmp-integration-project/.[!.]*']);
+  await execInContainerAllowFailure(containerIds.cli, 'rm -rf /workspace/tmp-integration-project/* /workspace/tmp-integration-project/.[!.]*');
   // No need to mkdir because the mount point exists
 
-  resetState(containerIds);
+  await resetState(containerIds);
 
   const hubUrl = `http://${hubContainer.getHost()}:${hubContainer.getMappedPort(8080)}`;
   const apiUrl = `http://${bridgeContainer.getHost()}:${bridgeContainer.getMappedPort(3000)}`;
@@ -230,30 +357,12 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
   await waitForHttp(`${apiUrl}/health`);
 
   async function runCli(command: string, cwd = projectDirContainer) {
-    try {
-      execFileSync('docker', [
-        'exec',
-        containerIds.cli,
-        'bash',
-        '-lc',
-        `export PATH=\"/usr/local/go/bin:$PATH\"; cd ${cwd} && ${command}`
-      ], { encoding: 'utf8' });
-    } catch (error: any) {
-      const stdout = error?.stdout?.toString?.() ?? '';
-      const stderr = error?.stderr?.toString?.() ?? '';
-      const message = (stdout || stderr || String(error)).trim();
-      throw new Error(message);
-    }
+    await execInContainer(containerIds.cli, `export PATH=\"/usr/local/go/bin:$PATH\"; cd ${cwd} && ${command}`);
   }
 
   async function execInClient(command: string) {
-    try {
-      const output = execFileSync('docker', ['exec', containerIds.client, 'bash', '-lc', command], { encoding: 'utf8' });
-      return { exitCode: 0, output };
-    } catch (error: any) {
-      const output = error?.stdout?.toString?.() ?? error?.stderr?.toString?.() ?? '';
-      return { exitCode: error?.status ?? 1, output };
-    }
+    const result = await execInContainerAllowFailure(containerIds.client, command);
+    return { exitCode: result.exitCode ?? 1, output: result.output ?? '' };
   }
 
   let projectPrepared = false;
@@ -274,7 +383,10 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
 
     fs.writeFileSync(path.join(schemaDir, 'main.hcl'), 'table "items" { schema = schema.public }\n');
     fs.writeFileSync(path.join(configDir, 'auth.yaml'), 'providers: []\n');
-    fs.writeFileSync(path.join(configDir, 'databases.yaml'), 'default: {}\n');
+    fs.writeFileSync(
+      path.join(configDir, 'databases.yaml'),
+      'default:\n  url: postgres://postgres:password@postgres:5432/santokit?sslmode=disable\n'
+    );
 
     const stkConfig = {
       project_id: 'default',
@@ -302,11 +414,11 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     writeProjectFiles();
     // Copy the locally generated files into the container volume
     // Since writeProjectFiles creates the structure in the temp dir, we copy the contents
-    runDocker(['cp', `${projectDir}/.`, `${containerIds.cli}:${projectDirContainer}`]);
+    await copyDirectoryToContainer(containerIds.cli.getId(), projectDir, projectDirContainer);
 
     // Also copy the scripts directory
     const localScriptsDir = path.resolve(__dirname, '../scripts');
-    runDocker(['cp', localScriptsDir, `${containerIds.cli}:${projectDirContainer}`]);
+    await copyDirectoryToContainer(containerIds.cli.getId(), localScriptsDir, `${projectDirContainer}/scripts`);
 
     projectPrepared = true;
   }
@@ -325,8 +437,9 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
     projectDir,
     projectDirContainer,
     scriptsRootContainer,
-    cliContainerId: containerIds.cli,
-    clientContainerId: containerIds.client,
+    cliContainerId: containerIds.cli.getId(),
+    clientContainerId: containerIds.client.getId(),
+    postgresContainerId: containerIds.postgres.getId(),
     runCli,
     execInClient,
     ensureProjectPrepared,
@@ -352,7 +465,8 @@ export default async function globalSetup() {
     projectDirContainer: ctx.projectDirContainer,
     scriptsRootContainer: ctx.scriptsRootContainer,
     cliContainerId: ctx.cliContainerId,
-    clientContainerId: ctx.clientContainerId
+    clientContainerId: ctx.clientContainerId,
+    postgresContainerId: ctx.postgresContainerId
   };
   fs.writeFileSync(contextFile, JSON.stringify(serialized, null, 2));
   return async () => {

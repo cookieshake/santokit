@@ -1,4 +1,4 @@
-import { createClient } from '../../../../client/src/index.ts';
+import { createClient } from '/workspace/packages/client/src/index.ts';
 
 async function main() {
   const baseUrl = process.env.API_URL;

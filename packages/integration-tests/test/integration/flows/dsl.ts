@@ -16,7 +16,13 @@ class RequestStepBuilder implements FlowStep {
     constructor(private method: string, private urlPath: string, private baseUrlProvider: BaseUrlProvider, private body?: any | ((store: any) => any)) { }
 
     expectStatus(status: number) {
-        this.checks.push((res) => {
+        this.checks.push(async (res) => {
+            if (res.status !== status) {
+                const bodyText = await res.clone().text().catch(() => '');
+                const details = bodyText ? ` Response: ${bodyText}` : '';
+                expect(res.status, `Expected status ${status} but got ${res.status}.${details}`).toBe(status);
+                return;
+            }
             expect(res.status, `Expected status ${status} but got ${res.status}`).toBe(status);
         });
         return this;
@@ -62,6 +68,29 @@ class RequestStepBuilder implements FlowStep {
             const clone = res.clone();
             const json = await clone.json();
             await inspector(json);
+        });
+        return this;
+    }
+
+    expectErrorMatches(matcher: string | RegExp) {
+        this.checks.push(async (res) => {
+            expect(res.status).toBeGreaterThanOrEqual(400);
+            const clone = res.clone();
+            const json = await clone.json();
+            const errorVal = json?.error;
+            let message = '';
+            if (typeof errorVal === 'string') {
+                message = errorVal;
+            } else if (errorVal?.message) {
+                message = String(errorVal.message);
+            } else {
+                message = JSON.stringify(errorVal ?? json);
+            }
+            if (typeof matcher === 'string') {
+                expect(message).toContain(matcher);
+            } else {
+                expect(message).toMatch(matcher);
+            }
         });
         return this;
     }

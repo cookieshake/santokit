@@ -125,13 +125,13 @@ export function checkCRUDPermission(
     }
 
     // If columns are specified, check column-level permissions
-    if (columns && (operation === 'select' || operation === 'update')) {
+    if (columns && (operation === 'select' || operation === 'update' || operation === 'insert')) {
         for (const column of columns) {
             const colCheck = checkColumnPermission(
                 config,
                 tableName,
                 column,
-                operation as 'select' | 'update',
+                operation as 'select' | 'update' | 'insert',
                 user
             );
             if (!colCheck.allowed) {

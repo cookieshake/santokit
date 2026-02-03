@@ -1,4 +1,5 @@
 import type { PermissionsConfig, ColumnPrefix, PermissionRole, TablePermissions, ColumnPermissions } from './types.js';
+import * as fs from 'fs';
 
 /**
  * Default permissions based on column prefix
@@ -121,6 +122,25 @@ export function shouldAuditColumn(columnName: string): boolean {
  * Load permissions config from YAML (placeholder - actual implementation will load from KV/config)
  */
 export function loadPermissionsConfig(): PermissionsConfig {
+    const jsonConfig = process.env.STK_PERMISSIONS_CONFIG;
+    if (jsonConfig) {
+        try {
+            return JSON.parse(jsonConfig) as PermissionsConfig;
+        } catch {
+            // fall through to defaults
+        }
+    }
+
+    const configPath = process.env.STK_PERMISSIONS_CONFIG_PATH;
+    if (configPath && fs.existsSync(configPath)) {
+        try {
+            const raw = fs.readFileSync(configPath, 'utf8');
+            return JSON.parse(raw) as PermissionsConfig;
+        } catch {
+            // fall through to defaults
+        }
+    }
+
     // TODO: Load from KV or config file
     // For now, return default config
     return {
