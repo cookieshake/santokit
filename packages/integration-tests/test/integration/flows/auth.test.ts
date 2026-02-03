@@ -1,30 +1,22 @@
-import { describe, it, expect } from 'vitest';
-import { getFlowContext } from './context.ts';
+import { describe, expect } from 'vitest';
+import { testFlow, requestHub } from './dsl.ts';
 
 describe('flow: auth login/me/refresh/logout', () => {
-  it('performs auth flow', async () => {
-    const ctx = getFlowContext();
-    const login = await fetch(`${ctx.hubUrl}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: 'test@example.com', password: 'pass' })
-    });
-    const loginJson = await login.json();
-    expect(loginJson.accessToken).toBeDefined();
+  testFlow('performs auth flow',
+    requestHub('POST', '/auth/login', { email: 'test@example.com', password: 'pass' })
+      .as('login')
+      .expectBodyPartial({ accessToken: expect.any(String) }),
 
-    const me = await fetch(`${ctx.hubUrl}/auth/me`, {
-      headers: { Authorization: `Bearer ${loginJson.accessToken}` }
-    });
-    expect(me.status).toBe(200);
+    requestHub('GET', '/auth/me')
+      .withBearerToken(store => store.login.accessToken)
+      .expectStatus(200),
 
-    const refresh = await fetch(`${ctx.hubUrl}/auth/refresh`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${loginJson.accessToken}` }
-    });
-    const refreshJson = await refresh.json();
-    expect(refreshJson.accessToken).toBeDefined();
+    requestHub('POST', '/auth/refresh')
+      .withBearerToken(store => store.login.accessToken)
+      .as('refresh')
+      .expectBodyPartial({ accessToken: expect.any(String) }),
 
-    const logout = await fetch(`${ctx.hubUrl}/auth/logout`, { method: 'POST' });
-    expect(logout.status).toBe(200);
-  }, 60000);
+    requestHub('POST', '/auth/logout')
+      .expectStatus(200)
+  );
 });

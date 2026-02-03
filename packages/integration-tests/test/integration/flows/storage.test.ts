@@ -1,26 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { getFlowContext } from './context.ts';
+import { describe, expect } from 'vitest';
+import { testFlow, ensureLogic, requestApi } from './dsl.ts';
 
 describe('flow: storage presign + delete', () => {
-  it('returns presigned urls and deletes', async () => {
-    const ctx = getFlowContext();
-    await ctx.ensureLogicApplied();
+  testFlow('returns presigned urls and deletes',
+    ensureLogic(),
+    requestApi('POST', '/call', { path: 'storage/presign', params: {} })
+      .expectStatus(200)
+      .inspectBody((json) => {
+        expect(json.uploadUrl).toContain('X-Amz-Algorithm');
+        expect(json.downloadUrl).toContain('X-Amz-Algorithm');
+      }),
 
-    const presign = await fetch(`${ctx.apiUrl}/call`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: 'storage/presign', params: {} })
-    });
-    const presignJson = await presign.json();
-    expect(presignJson.uploadUrl).toContain('X-Amz-Algorithm');
-    expect(presignJson.downloadUrl).toContain('X-Amz-Algorithm');
-
-    const deleted = await fetch(`${ctx.apiUrl}/call`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: 'storage/delete', params: {} })
-    });
-    const deletedJson = await deleted.json();
-    expect(deletedJson.deleted).toBe(true);
-  }, 60000);
+    requestApi('POST', '/call', { path: 'storage/delete', params: {} })
+      .expectStatus(200)
+      .expectBodyPartial({ deleted: true })
+  );
 });

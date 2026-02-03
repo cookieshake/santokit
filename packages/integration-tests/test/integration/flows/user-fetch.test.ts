@@ -1,18 +1,11 @@
-import { describe, it, expect } from 'vitest';
+import { describe } from 'vitest';
 import * as path from 'path';
-import { getFlowContext } from './context.ts';
+import { testFlow, ensureLogic, execInClient } from './dsl.ts';
 
 describe('flow: user fetch call', () => {
-  it('calls logic via raw fetch script', async () => {
-    const ctx = getFlowContext();
-    await ctx.ensureLogicApplied();
-    const execResult = await ctx.execInClient(
-      `cd /workspace && API_URL=${ctx.apiUrlInternal} tsx ${path.join(ctx.scriptsRootContainer, 'user-fetch.ts')}`
-    );
-    if (execResult.exitCode !== 0) {
-      console.error('user-fetch failed:', execResult.output);
-    }
-    expect(execResult.exitCode).toBe(0);
-    expect(execResult.output.trim()).toContain('"echo":"hello"');
-  }, 60000);
+  testFlow('calls logic via raw fetch script',
+    ensureLogic(),
+    execInClient(ctx => `cd /workspace && API_URL=${ctx.apiUrlInternal} tsx ${path.join(ctx.scriptsRootContainer, 'user-fetch.ts')}`)
+      .expectOutput('"echo":"hello"')
+  );
 });

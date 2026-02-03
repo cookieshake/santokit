@@ -1,17 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { getFlowContext } from './context.ts';
+import { describe } from 'vitest';
+import { testFlow, ensureLogic, requestApi } from './dsl.ts';
 
 describe('flow: runtime call (/call)', () => {
-  it('executes logic via /call', async () => {
-    const ctx = getFlowContext();
-    await ctx.ensureLogicApplied();
-    const response = await fetch(`${ctx.apiUrl}/call`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: 'echo/ping', params: { message: 'hello' } })
-    });
-    expect(response.status).toBe(200);
-    const json = await response.json();
-    expect(json.echo).toBe('hello');
-  }, 60000);
+  testFlow('executes logic via /call',
+    ensureLogic(),
+    requestApi('POST', '/call', { path: 'echo/ping', params: { message: 'hello' } })
+      .expectStatus(200)
+      .expectBodyPartial({ echo: 'hello' })
+  );
 });
