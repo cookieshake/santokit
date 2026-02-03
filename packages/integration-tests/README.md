@@ -1,36 +1,49 @@
 # Santokit Integration Tests
 
-End-to-end integration testing suite for the Santokit ecosystem. These tests verify the correct interaction between the CLI, Client, Bridge, and Hub components.
+End-to-end integration testing suite for the Santokit ecosystem. These tests validate how the CLI, Hub, Bridge, and Client work together in realistic environments.
 
-## Overview
+## What Is Covered
 
-This package uses **Vitest** and **Testcontainers** to spin up ephemeral environments (PostgreSQL, Redis, etc.) and validate the full stack flows, including:
-- Database migrations and schema management.
-- Logic bundle execution via the Bridge.
-- Client SDK interaction with the backend.
+- Schema planning and migrations
+- Logic bundle execution through the Bridge
+- Client SDK calls against a live runtime
+- Auth and secret handling in the Hub
 
 ## Prerequisites
 
-- Docker (for Testcontainers)
+- Docker (required by Testcontainers)
 - Node.js 18+
 
 ## Running Tests
 
-To run the full suite of integration tests:
-
 ```bash
-# Install dependencies
-npm install
+cd packages/integration-tests
 
-# Run tests
+npm install
 npm test
 ```
 
+Run a single test file:
+
+```bash
+npx vitest run test/integration/flows/logic-apply-sync.test.ts --sequence.concurrent=false
+```
+
+## Environment Overrides (Optional)
+
+- `DATABASE_URL`: Postgres URL used by the Bridge test runtime
+- `REDIS_URL`: Redis URL used by the Bridge test runtime
+- `STK_HUB_URL`: Hub base URL used by CLI tests
+- `STK_PROJECT_ID`: Project ID used by CLI tests
+- `STK_TOKEN`: Auth token used by CLI tests
+- `STK_DISABLE_AUTH`: Disable auth for local integration runs
+
 ## Test Structure
 
-- `test/`: Contains the test specifications.
-- `vitest.config.ts`: Configuration for the Vitest runner.
+- `test/`: Test specifications
+- `vitest.config.ts`: Runner configuration
 
-## Adding Tests
+## Tips
 
-New tests should focus on user-facing scenarios, ensuring that `stk` commands, `client` calls, and `bridge` execution behave as expected in a real-world-like environment.
+- Make sure Docker is running before you start the tests.
+- If tests hang, check container pull logs and network access.

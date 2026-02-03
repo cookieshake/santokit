@@ -1,21 +1,36 @@
 # Santokit CLI (`stk`)
 
-The official command-line interface for managing Santokit projects. The CLI simplifies backend infrastructure management, schema definition, and deployment workflows.
+The official command-line interface for managing Santokit projects. Use it to initialize projects, manage schemas, deploy logic, and sync types to your frontend.
 
-## Features
+## What The CLI Does
 
-- **Project Management**: Initialize (`init`) and configure projects easily.
-- **Authentication**: Login (`login`) and manage profiles (`profile`) for secure access.
-- **Schema Management**: Define and push database schemas (`schema`) declaratively.
-- **Logic Deployment**: Deploy and validate serverless logic (`logic`).
-- **Type Generation**: Automatically generate type-safe client SDKs (`sync`).
-- **Secret Management**: Securely manage environment secrets (`secret`) via the Hub Vault.
-- **Configuration**: Manage granular project settings (`config`).
+- Initializes a Santokit project layout.
+- Authenticates to the Hub and manages profiles.
+- Applies schema changes through Atlas.
+- Publishes logic bundles to the Hub.
+- Syncs type-safe client definitions.
+- Manages secrets and configuration.
 
 ## Installation
 
 ```bash
 go install github.com/cookieshake/santokit/packages/cli/cmd/stk@latest
+```
+
+## Quick Start
+
+```bash
+stk init my-app
+cd my-app
+
+stk login
+stk project create --name my-app
+
+stk schema plan
+stk schema apply
+
+stk logic apply
+stk sync
 ```
 
 ## Usage
@@ -24,75 +39,75 @@ go install github.com/cookieshake/santokit/packages/cli/cmd/stk@latest
 stk <command> [flags]
 ```
 
-## Command Reference
+For details on any command:
 
-### `init`
-Initialize a new Santokit project in the current directory.
-- Creates a `moon.yml` or `stk.config.json` configuration.
-- Scaffolds initial directory structure.
-- **Flags**:
-  - `--name`: Specify project name.
+```bash
+stk help
+stk <command> --help
+```
 
-### `login`
-Authenticate with the Santokit Hub via browser-based OAuth flow.
-- Opens your default browser to the Hub login page.
-- Stores session credentials locally.
+## Command Overview
 
-### `project`
-Manage projects in the Hub.
-- `project list`: View all projects you have access to.
-- `project create`: Create a new project.
-  - `--name`: Project name.
-  - `--team`: (Optional) Team ID to associate with.
+- `init`: Create a new project structure.
+- `login`: Authenticate to the Hub.
+- `project`: Manage projects in the Hub.
+- `schema`: Plan and apply database schema changes.
+- `logic`: Validate and deploy logic bundles.
+- `secret`: Store and manage environment secrets.
+- `sync`: Generate type-safe client definitions.
+- `config`: Push and pull project configuration.
+- `profile`: Manage named profiles for multiple Hub targets.
 
-### `logic`
-Manage serverless logic bundles.
-- `logic apply` (alias: `push`): Deploy local logic files to the Hub.
-  - Scans `logic/` directory.
-  - Bundles JS/SQL logic into a manifest.
-  - Publishes to the Bridge runtime.
-- `logic validate`: Dry-run validation of logic files without deploying.
+## Configuration Files
 
-### `schema`
-Manage database schema definitions.
-- `schema plan`: Compare local schema (Atlas/HCL) with the target database state.
-- `schema apply`: Execute the planned migrations against the database.
-  - Requires `STK_DATABASE_URL` or configuration in Hub.
+The CLI reads project configuration from:
 
-### `secret`
-Manage secure environment variables in the Hub Vault.
-- `secret list`: List all keys for the current project.
-- `secret set <key> <value>`: Store or update a secret.
-- `secret delete <key>`: Remove a secret.
-
-### `sync`
-Download project manifest and generate type-safe Client SDK definitions.
-- Fetches the latest deployment manifest.
-- Generates `santokit-env.d.ts` (or configured output).
-- **Configuration**: Reads `stk.config.json` for codegen targets.
-
-### `config`
-Manage local and remote project configuration.
-- `config push`: Push local config to Hub.
-- `config pull`: Fetch config from Hub.
+- `stk.config.json`
+- `moon.yml`
 
 ## Environment Variables
 
-- `STK_PROJECT_ID`: Target Project ID (overrides config).
-- `STK_AUTH_TOKEN`: Manual authentication token (CI/CD).
-- `STK_HUB_URL`: Custom Hub URL (for self-hosted).
+- `STK_PROJECT_ID`: Target project ID (overrides config)
+- `STK_TOKEN`: Manual authentication token (CI/CD)
+- `STK_HUB_URL`: Custom Hub URL (for self-hosted)
+
+## Common Workflows
+
+Create and use a named profile:
+
+```bash
+stk profile set local --hub-url http://localhost:8080 --project-id default --token test-token
+stk profile use local
+```
+
+CI usage without interactive login:
+
+```bash
+export STK_HUB_URL=http://localhost:8080
+export STK_PROJECT_ID=default
+export STK_TOKEN=test-token
+
+stk schema plan
+stk schema apply
+stk logic apply
+stk sync
+```
 
 ## Development
 
-To build the CLI from source:
-
 ```bash
-# Clone the repository
-git clone https://github.com/cookieshake/santokit.git
+# Build the CLI binary
+cd packages/cli
 
-# Navigate to the CLI package
-cd santokit/packages/cli
-
-# Build the binary
 go build -o stk ./cmd/stk
+
+# Run unit tests
+
+go test ./...
 ```
+
+## Related Components
+
+- Santokit Hub: Central control plane service
+- `@santokit/bridge`: Edge runtime server
+- `@santokit/client`: Frontend SDK
