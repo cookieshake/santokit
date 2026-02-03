@@ -131,11 +131,7 @@ export function commandCli(command: string | ((ctx: FlowContext) => string)): Fl
     return {
         async run(ctx: FlowContext, store: Record<string, any>) {
             const cmdStr = typeof command === 'function' ? command(ctx) : command;
-            let finalCmd = cmdStr;
-            if (cmdStr.startsWith('stk ')) {
-                finalCmd = cmdStr.replace('stk ', 'go run /workspace/packages/cli/cmd/stk/main.go ');
-            }
-            await ctx.runCli(finalCmd);
+            await ctx.runCli(cmdStr);
         }
     };
 }

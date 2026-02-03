@@ -293,7 +293,12 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
 
   async function ensureProjectPrepared() {
     if (projectPrepared) return;
-    await runCli(`go run /workspace/packages/cli/cmd/stk/main.go init ${projectDirContainer}`, '/workspace');
+    // Build the CLI to ensure we test the latest code
+    // usage of go build is preferred over go install to control output location if needed, 
+    // but go install puts it in $GOPATH/bin which is in PATH usually.
+    await runCli('cd /workspace/packages/cli && go build -o /usr/local/bin/stk ./cmd/stk', '/workspace');
+
+    await runCli(`stk init ${projectDirContainer}`, '/workspace');
     writeProjectFiles();
     // Copy the locally generated files into the container volume
     // Since writeProjectFiles creates the structure in the temp dir, we copy the contents
@@ -309,7 +314,7 @@ async function startFlowContext(): Promise<{ ctx: FlowContext; cleanup: () => Pr
   async function ensureLogicApplied() {
     if (logicApplied) return;
     await ensureProjectPrepared();
-    await runCli('go run /workspace/packages/cli/cmd/stk/main.go logic apply', projectDirContainer);
+    await runCli('stk logic apply', projectDirContainer);
     logicApplied = true;
   }
 
