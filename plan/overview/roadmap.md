@@ -75,8 +75,11 @@
 ## Phase 5: Auto CRUD & Permissions (중기) (2-4주)
 목표: Auto CRUD & Permissions의 핵심 기능 구현.
 
+스펙:
+- `plan/spec/crud.md`
+
 스코프:
-- `crud/{db}/{table}/{op}` 라우팅
+- `db/{db}/{table}/{op}` 라우팅
 - `config/permissions.yaml` + 컬럼 prefix(s_/c_/p_/_ ) 규칙 적용
 - owner 기반 RLS 자동 필터(표준화된 user claim 필요)
 - 오버라이드(`logic/{table}/{operation}.sql`) 우선순위

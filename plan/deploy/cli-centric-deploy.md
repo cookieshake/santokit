@@ -97,6 +97,12 @@ Hub-less:
 - “런타임 중 live update”는 기본적으로 없다(이미지 교체가 배포)
 - 엣지(KV) 기반 실시간 프로비저닝에 비해 배포 주기가 길 수 있음
 
+## 3.1) Cloudflare Workers Deploy Naming (v1)
+
+v1 스펙:
+- `stk deploy cfworker`는 타겟 Worker 이름을 자동 생성하지 않는다.
+- 사용자가 명시한다: `--name <worker-name>`
+
 ### Bridge 이미지에 manifest를 bake-in 했을 때의 동작 변화(중요)
 - Bridge는 부팅 시 `MANIFEST_PATH`(예: `/app/manifest.json`)를 읽어 로직 인덱스를 구성한다.
 - Hub에서 manifest를 pull하지 않으므로:

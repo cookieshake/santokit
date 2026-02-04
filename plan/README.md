@@ -17,5 +17,7 @@
 ## Entry Points
 - `plan/spec/v1.md`
 - `plan/spec/schema-yaml.md`
+- `plan/spec/multi-project.md`
+- `plan/spec/auth.md`
 - `plan/deploy/cli-centric-deploy.md`
 - `plan/secrets/without-hub.md`
