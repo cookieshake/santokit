@@ -1,9 +1,0 @@
-FROM golang:1.23-bookworm
-WORKDIR /workspace
-ENV GOTOOLCHAIN=auto
-
-# Build santokit CLI and put it on PATH for manual use
-COPY . .
-RUN cd /workspace/packages/cli && go build -o /usr/local/bin/stk ./cmd/stk
-
-CMD ["sleep", "infinity"]

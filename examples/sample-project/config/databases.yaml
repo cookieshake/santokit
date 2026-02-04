@@ -1,2 +1,0 @@
-main:
-  url: ${DATABASE_URL}
