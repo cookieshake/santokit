@@ -1,5 +1,0 @@
-node:
-  version: "24.13.0"
-  packageManager: "pnpm"
-  pnpm:
-    version: "9.0.0"

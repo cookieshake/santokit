@@ -1,4 +1,4 @@
-# Secrets / Connections (Hub / Control Plane) — Spec v1
+# Secrets / Connections (Hub / Control Plane) — Spec
 
 전제:
 - Hub(Control Plane)는 필수다.
@@ -24,14 +24,14 @@ Hub는 최소한 아래를 가진다:
 - `project`
 - `env` (예: `dev`, `stg`, `prod`)
 - `connection` (예: `main`)
-  - `engine` (v1: `postgres`)
+  - `engine` (예: `postgres`)
   - `encryptedConfig` (예: `DB_URL` 등)
 
 ---
 
 ## 3) Encryption (최소)
 
-v1 원칙:
+원칙:
 - Hub DB에는 secret “평문”을 저장하지 않는다.
 - Hub는 서버 환경변수로 주입된 마스터키로 암복호화한다(대칭키).
 - 감사로그에는 “값”이 아니라 “키 이름/connection id/actor(keyId)”만 남긴다.
@@ -60,5 +60,5 @@ Connections:
 - `stk connections set --project <project> --env <env> --name <connection> --engine postgres --db-url <...>`
 - `stk connections test --project <project> --env <env> --name <connection>`
 
-Rotation (Phase 2+):
+Rotation:
 - `stk connections rotate --project <project> --env <env> --name <connection>`
