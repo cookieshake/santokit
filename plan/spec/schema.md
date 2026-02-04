@@ -128,13 +128,15 @@ tables:
 
 Core types:
 - `string`
-- `int`
-- `bigint`
-- `float`
+- `int` (JSON: `number`)
+- `bigint` (JSON: `string`) - 64-bit 정밀도 보장을 위해 문자열로 전송
+- `float` (JSON: `number`) - 64-bit Double Precision
+- `decimal` (JSON: `string`) - 고정 소수점(금융 등), 정밀도 보장을 위해 문자열로 전송
 - `boolean`
 - `json`
-- `timestamp`
+- `timestamp` (JSON: `string`) - ISO 8601
 - `bytes`
+- `file` (storage path string; see below)
 - `array` (typed JSON array; see below)
 
 엔진별 매핑은 Hub가 담당한다.
@@ -157,6 +159,22 @@ tables:
     columns:
       tags: { type: array, items: string, nullable: false }
       scores: { type: array, items: int, nullable: true }
+
+`file`:
+- 의미: Storage에 저장된 파일의 경로(string)를 담는 컬럼이다.
+- 속성:
+  - `bucket`: 대상 버킷 alias (필수)
+  - `onDelete`: Row 삭제 시 파일 처리 정책 (선택)
+    - `preserve` (Default): 파일은 스토리지에 그대로 남겨둔다. (공유 참조 시 안전)
+    - `cascade`: 스토리지에서 해당 파일도 삭제한다. (1:1 관계 등 확실할 때만 사용)
+
+예:
+```yaml
+avatar:
+  type: file
+  bucket: main
+  onDelete: cascade # 유저 삭제 시 프로필 이미지도 삭제
+```
 ```
 
 ---

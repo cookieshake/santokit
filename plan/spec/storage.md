@@ -120,4 +120,18 @@ CEL Context 변수:
 ## 5) Limitation
 
 - Bridge는 파일 스트림을 직접 처리하지 않는다 (Proxy 모드 미지원).
+- Bridge는 파일 스트림을 직접 처리하지 않는다 (Proxy 모드 미지원).
 - Multipart Upload(대용량 분할 업로드)를 위한 복잡한 Sign Flow는 v1에서 제외한다.
+
+---
+
+## 6) Schema Integration
+
+스키마(`type: file`)와 연동하여 자동 관리를 지원한다.
+
+- `onDelete: cascade`:
+  - Bridge는 해당 컬럼을 가진 Row가 `DELETE` 될 때, `params`로 전달된 ID 등을 이용해 삭제 전 데이터를 조회한다.
+  - 조회된 파일 경로를 이용해 S3 `DeleteObject`를 비동기(Background)로 요청한다.
+  - 실패 시 에러 로그를 남기지만, 트랜잭션을 롤백하지는 않는다(Best Effort).
+- `onDelete: preserve`:
+  - 아무 동작도 하지 않는다. (기본값)
