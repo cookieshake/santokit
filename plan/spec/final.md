@@ -103,6 +103,7 @@ CLI:
 - CEL(Common Expression Language) 기반의 동적 Condition을 지원한다.
 - 상세: `plan/spec/crud.md`
 - 상세: `plan/spec/logics.md`
+- 상세: `plan/spec/storage.md`
 
 ### 3.2 Schema
 의미:
@@ -225,6 +226,10 @@ Auto CRUD:
 Custom Logic:
 - `path`: `logics/{name}`
 - 상세 스펙: `plan/spec/logics.md`
+
+Storage:
+- `path`: `storage/{bucket}/{op}`
+- 상세 스펙: `plan/spec/storage.md`
 
 ---
 
