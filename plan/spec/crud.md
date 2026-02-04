@@ -7,12 +7,13 @@
 범위:
 - DB 엔진: Postgres (기본)
 - 권한 주체: Project API key roles + End User access token roles/identity
-- 권한 모델: 테이블/컬럼 레벨 권한 + owner 기반 RLS
+- 권한 모델: 테이블/컬럼 레벨 권한 + **CEL(Common Expression Language) 기반 Condition**
 - where: equality(AND) + 확장 표현식(and/or/in/like/비교 연산)
 - 컬럼 prefix 규칙으로 민감도/기본 노출을 자동 적용
 
 스키마 상세:
 - `plan/spec/schema.md`
+- 커스텀 로직(`logics/`) 상세: `plan/spec/logics.md`
 
 ---
 
@@ -24,6 +25,10 @@ Bridge는 단일 엔드포인트를 유지한다:
 Auto CRUD는 `path` 컨벤션으로 라우팅된다:
 - `db/{table}/{op}`
 - `op`: `select` | `insert` | `update` | `delete`
+
+커스텀 로직:
+- `logics/{name}`
+- 상세: `plan/spec/logics.md`
 
 예:
 ```json
@@ -114,8 +119,11 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 권한 키워드:
 - `public` (인증 없이 허용)
 - `authenticated` (End User access token 필요)
-- `owner` (End User `sub` 기반)
 - `{role}` (API key roles 또는 End User roles에 매칭)
+
+**Condition (CEL)**:
+- 단순 role 체크를 넘어선 동적 조건을 정의한다.
+- 구글 CEL(Common Expression Language) 표준을 사용한다.
 
 테이블/컬럼 레벨 권한:
 - `select|insert|update|delete`에 대해 허용 주체를 지정한다.
@@ -125,22 +133,18 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 ```yaml
 tables:
   users:
-    select: [authenticated]
-    insert: [admin]
-    update: [owner, admin]
-    delete: [admin]
+    select:
+      roles: [authenticated]
+      # 'resource'는 현재 row, 'request.auth'는 토큰 정보를 담는다.
+      condition: "resource.id == request.auth.sub"
+    insert:
+      roles: [public]
+    update:
+      roles: [authenticated]
+      condition: "resource.id == request.auth.sub"
     columns:
       select: ["*", "!c_*", "!p_*"]
       update: ["name", "avatar_url"]
-  _default:
-    select: [authenticated]
-    insert: [admin]
-    update: [owner, admin]
-    delete: [admin]
-
-ownerColumn:
-  _default: user_id
-  users: id
 ```
 
 멀티 connection 규칙:
@@ -151,22 +155,14 @@ ownerColumn:
 - `public`: credential 없이 허용
 - `authenticated`: End User access token 필요
 - `{role}`: API key roles 또는 End User roles에 포함되어야 함
-- `owner`: End User access token 필요 + ownerColumn 기반 row filter 강제
+- `condition`: CEL 표현식이 `true`로 평가되어야 함.
+  - Bridge는 이를 `WHERE` 절에 주입하여 DB 레벨에서 필터링한다(RLS).
 
-`ownerColumn`:
-- `ownerColumn`에서 테이블별 “소유자 컬럼”을 정의한다.
-  - `_default`는 프로젝트 기본값이다.
-  - 예: `ownerColumn.users: id`면, `users` 테이블은 `id = <endUserSub>` 조건이 강제된다.
+변수(Context):
+- `request.auth.sub`: End User ID
+- `request.auth.roles`: Role list
+- `resource`: 현재 접근하려는 Table의 Row (alias)
 
-관계(FK)와의 관계:
-- `ownerColumn`은 “접근 제어용 row filter” 규칙이다.
-- `user_id` 같은 FK/관계 설정은 스키마에서 optional이며, owner 정책을 쓰기 위한 필수 요건은 아니다.
-
-토큰 주의:
-- End User roles는 “Santokit 발급 access token”에서 읽는 것을 기준으로 한다(외부 OIDC 토큰 직접 사용 X).
-
-주의:
-- API key 기반 호출은 “서버/서비스용”으로 권장한다(End User identity가 없으므로 owner를 만족할 수 없음).
 
 ---
 

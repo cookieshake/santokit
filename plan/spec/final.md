@@ -100,13 +100,15 @@ CLI:
 ### 3.1 Permissions
 의미:
 - `config/permissions.yaml` 기반 테이블/컬럼 레벨 권한을 적용한다.
+- CEL(Common Expression Language) 기반의 동적 Condition을 지원한다.
 - 상세: `plan/spec/crud.md`
+- 상세: `plan/spec/logics.md`
 
 ### 3.2 Schema
 의미:
 - 선언 스키마(YAML)가 Source of Truth다.
 - Hub(Control Plane)가 plan/apply를 실행한다(Operator가 CLI로 트리거).
-- destructive 변경은 허용하지 않는다.
+- destructive 변경은 기본 차단하되, `--force`로 허용할 수 있다(안전한 파괴).
 - DB 드리프트가 있으면 릴리즈를 차단한다.
 - 상세: `plan/spec/schema.md`
 
@@ -215,11 +217,14 @@ Credential extraction(권장 규칙):
 { "error": { "code": "BAD_REQUEST", "message": "...", "requestId": "..." } }
 ```
 
-### 6.2 Auto CRUD
-핵심 기능이다.
-
+### 6.2 Auto CRUD / Custom Logic
+Auto CRUD:
 - `path`: `db/{table}/{op}`
 - 상세 스펙: `plan/spec/crud.md`
+
+Custom Logic:
+- `path`: `logics/{name}`
+- 상세 스펙: `plan/spec/logics.md`
 
 ---
 

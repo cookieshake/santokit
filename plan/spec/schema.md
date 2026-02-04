@@ -3,7 +3,8 @@
 목표:
 - Santokit의 스키마 Source of Truth는 선언 스키마(YAML)이다.
 - Hub(Control Plane)가 선언 스키마를 기준으로 DB에 대해 **plan/apply**를 수행한다.
-- destructive 변경은 허용하지 않는다.
+- destructive 변경은 기본적으로 차단하되, **명시적 승인(`--force`)** 시 허용한다.
+- 데이터 변환 로직이 필요한 복잡한 형변환은 지원하지 않는다(에러 처리).
 - DB가 수동으로 변경되어 스키마 드리프트가 발생하면 **릴리즈를 차단**한다.
 
 ---
@@ -175,19 +176,21 @@ CLI (최종 표면):
 멀티 connection 동작:
 - `schema/*.yaml`에 등장하는 모든 connection에 대해 plan/apply를 수행한다.
 
-허용되는 apply subset(비파괴):
+허용되는 apply subset(Safe Alter):
 - create table
-- add column (안전한 조건에서만)
+- add column (nullable or has default)
 - create index
 - add foreign key constraint (기존 데이터가 위배하면 실패)
 
-금지(Destructive):
+조건부 허용(Explicit Destructive):
+- `stk apply` 시 `--force` 또는 `--allow-destroy` 옵션 필요.
 - drop table/column/index
-- rename table/column
-- column type change
-- drop/alter foreign key constraint
-- nullable 감소(예: nullable=true → false)
-- 의미가 불명확한 변경은 기본적으로 차단
+- 제약 조건 강화 (예: Nullable → Not Null; 데이터 위배 시 실패)
+- 단순 통/폐합 (re-create table)
+
+지원하지 않음(Complex Casting):
+- 데이터 변환 로직이 필요한 형변환 (예: `text` → `int`)
+- Santokit은 마이그레이션 스크립트를 실행하지 않으므로, 사용자가 (1) 컬럼을 drop하고 다시 만들거나 (2) 수동으로 데이터를 정리해야 한다.
 
 ---
 
