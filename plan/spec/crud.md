@@ -37,14 +37,21 @@ Auto CRUD는 `path` 컨벤션으로 라우팅된다:
 공통:
 - `where`: object (표현식)
 
+where 확장:
+- `in` 연산자는 array 값을 받는다.
+
 `select`:
 - `select`: string[] | "*" (default `"*"`)
+- `expand`: string[] (optional; FK 기반 관계 로드)
 - `orderBy`: object (예: `{ created_at: "desc" }`)
 - `limit`: number
 - `offset`: number
 
 `insert`:
 - `data`: object
+  - PK 컬럼(`id.name`)은 기본적으로 입력에서 허용하지 않는다(Bridge가 생성).
+    - `generate=auto_increment`면 DB가 생성한다(Bridge는 `RETURNING id` 등으로 값을 회수).
+  - 단, 스키마에서 `tables.<name>.id.generate=client`면 입력에서 허용한다.
 
 `update`:
 - `data`: object
@@ -64,10 +71,38 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 - 테이블/컬럼 존재 여부 검증
 - 허용되지 않은 컬럼 접근 차단(예: 존재하지 않는 컬럼, 읽기 전용 컬럼 등)
 - 타입 기반 값 검증(가능한 범위)
+  - `array` 타입이면 “배열 여부 + 요소 타입”을 검증한다.
 
 멀티 connection:
 - `path`의 `{table}`을 기준으로 해당 table의 `connection`을 결정하고,
   해당 connection의 `schema_ir`을 선택한다.
+
+관계 로드(`expand`):
+- 목적: `posts.user_id` 같은 FK를 기반으로 “관련 row”를 같이 가져온다.
+- 전제: 스키마에서 `references`가 선언되어 있어야 한다.
+- 허용 범위:
+  - 같은 connection 안에서만 허용한다(= cross-DB expand 금지).
+  - 1-depth(단일 hop)만 지원한다(중첩 expand는 최종 스펙 범위 밖).
+- 권한:
+  - expand 대상 테이블에 대한 `select` 권한이 없으면 `403`.
+  - 반환 컬럼은 expand 대상 테이블의 column permissions/prefix rules를 동일하게 적용한다.
+- 참고:
+  - `onDelete/onUpdate`(cascade 등)는 DB 레벨 동작이며, Bridge는 이를 “추가로 구현”하지 않는다.
+
+예:
+```json
+{
+  "path": "db/posts/select",
+  "params": {
+    "where": { "status": "published" },
+    "expand": ["user"],
+    "limit": 10
+  }
+}
+```
+
+응답(개념):
+- 각 row에 `user` 객체가 포함된다(관계 이름은 `references.as`를 사용, 없으면 기본값은 참조 table명).
 
 ---
 
@@ -122,6 +157,10 @@ ownerColumn:
 - `ownerColumn`에서 테이블별 “소유자 컬럼”을 정의한다.
   - `_default`는 프로젝트 기본값이다.
   - 예: `ownerColumn.users: id`면, `users` 테이블은 `id = <endUserSub>` 조건이 강제된다.
+
+관계(FK)와의 관계:
+- `ownerColumn`은 “접근 제어용 row filter” 규칙이다.
+- `user_id` 같은 FK/관계 설정은 스키마에서 optional이며, owner 정책을 쓰기 위한 필수 요건은 아니다.
 
 토큰 주의:
 - End User roles는 “Santokit 발급 access token”에서 읽는 것을 기준으로 한다(외부 OIDC 토큰 직접 사용 X).
