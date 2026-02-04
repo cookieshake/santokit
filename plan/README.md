@@ -10,14 +10,12 @@
 ## Structure
 - `plan/overview/`: 큰 그림(현황/로드맵)
 - `plan/spec/`: 현재 합의된 스펙(대화 기준점)
-- `plan/deploy/`: 배포 모델/아티팩트/타겟별 전략
-- `plan/secrets/`: Hub-less 환경에서의 시크릿 모델
+- `plan/deploy/`: 배포 모델/아티팩트/타겟별 전략 (Phase 2+)
+- `plan/secrets/`: Hub 기반 시크릿/연결정보 모델
 - `plan/notes/`: 비교 검토/의사결정 메모
 
 ## Entry Points
 - `plan/spec/v1.md`
-- `plan/spec/schema-yaml.md`
-- `plan/spec/multi-project.md`
 - `plan/spec/auth.md`
-- `plan/deploy/cli-centric-deploy.md`
-- `plan/secrets/without-hub.md`
+- `plan/spec/crud.md`
+- `plan/secrets/model.md`

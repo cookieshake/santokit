@@ -22,18 +22,19 @@
 
 스코프:
 - 인증은 개발 편의상 `STK_DISABLE_AUTH=true`로 우회 가능
-- Bridge는 Node 어댑터를 먼저 구현 (Cloudflare는 Phase 3)
-- 로직은 SQL 우선(필요 시 JS는 제한적으로)
-- 스키마는 **YAML 선언 스키마**를 사용하고, 로컬 검증 + apply를 제공
- - Hub-less 전제: 배포/시크릿은 타겟 플랫폼 기능을 사용
+- Bridge(Data Plane)는 Node/Docker만 지원
+- v1은 Auto CRUD만 포함(수동 SQL/커스텀 로직/SDK/CF Workers 제외)
+- 스키마는 DB introspection snapshot을 사용한다(YAML 선언 스키마 plan/apply는 Phase 2+)
+- Hub(Control Plane)가 프로젝트/환경/릴리즈/시크릿/연결정보의 Source of Truth가 된다(웹 콘솔 없이 CLI로만 조작)
+- GitOps 전제: 프로젝트는 1개, env(dev/prod 등)로 승격(promotion)한다
 
 완료 기준(데모 시나리오):
-1. `stk init demo && cd demo`
-2. 로컬 Bridge 실행 (Node)
-4. `stk schema validate`로 로컬 검증 통과
-5. `stk schema apply`로 테이블 생성 (BYO DB에 직접 연결; Hub 없음)
-6. `logic/users/get.sql` 작성 후 `stk deploy <target>`로 배포
-7. `stk sync` 후 `@santokit/client`에서 `client.users.get({ id })` 호출 성공
+1. Hub(Control Plane) 실행
+2. Bridge(Data Plane) 실행 (Node)
+3. `stk project/env/connections` 설정
+4. `stk schema snapshot`으로 인트로스펙션 스냅샷 생성
+5. `stk permissions apply` + `stk release create`
+6. `POST /call`로 `db/main/<table>/select` 호출 성공 + 권한 거부 케이스(`403`) 확인
 
 테스트:
 - 최소 1개의 통합 테스트(또는 스크립트)로 위 시나리오 자동 검증
@@ -55,7 +56,7 @@
 목표: 운영 가능한 런타임/관측성을 갖춘다.
 
 스코프:
-- Cloudflare Workers 어댑터 (KV + Hyperdrive) 재구성
+- Cloudflare Workers 어댑터 (옵션, 필요 시)
 - 캐시 정책을 스펙대로 고도화
 - 로깅/트레이싱(요청 ID, 기본 구조화 로그)
 
@@ -72,20 +73,14 @@
 완료 기준:
 - `stk login`으로 토큰을 발급받아 `stk logic apply`가 동작
 
-## Phase 5: Auto CRUD & Permissions (중기) (2-4주)
-목표: Auto CRUD & Permissions의 핵심 기능 구현.
-
-스펙:
-- `plan/spec/crud.md`
+## Phase 5: Auto CRUD (중기) (2-4주)
+목표: v1 Auto CRUD를 “실전 수준”으로 확장한다.
 
 스코프:
 - `db/{db}/{table}/{op}` 라우팅
-- `config/permissions.yaml` + 컬럼 prefix(s_/c_/p_/_ ) 규칙 적용
-- owner 기반 RLS 자동 필터(표준화된 user claim 필요)
-- 오버라이드(`logic/{table}/{operation}.sql`) 우선순위
-
-완료 기준:
-- select/insert/update/delete 각각 최소 1개 테이블에 대해 정상 동작 + 권한 거부 케이스 테스트
+- `config/permissions.yaml` 등 권한 모델 도입
+- End User JWT(OIDC) + owner 기반 RLS
+- where 표현식 확장(and/or/in/like)
 
 ## Phase 6: DX & Packaging (지속)
 목표: 사용자가 "바로 쓰는" 경험 강화.

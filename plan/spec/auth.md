@@ -1,12 +1,19 @@
-# Auth (Hub-less) — Spec v1
+# Auth — Spec v1 (Operator + End User)
 
 목표:
-- Hub가 없어도 프로젝트별로 인증/권한을 적용할 수 있어야 한다.
-- “프로젝트별 배포(Option A)” 전제에서, 각 Bridge 배포 단위가 하나의 Auth 정책을 가진다.
+- Santokit “사람 주체”를 두 종류로 분리해 모델링한다.
+  - Operator: Hub(Control Plane)를 운영/관리하는 팀 멤버(사람)
+  - End User: Bridge(Data Plane)의 `/call`을 호출하는 앱의 최종 사용자(사람)
+- 웹 콘솔 없이 `stk`(CLI)로만 운영/관리 플로우가 가능해야 한다.
 
 핵심 원칙:
-- Santokit은 “유저 DB/로그인 UI/세션 관리”를 제공하지 않는다.
-- Bridge는 **외부 JWT issuer**(OIDC)에서 발급된 토큰을 **검증**하고, claim 기반으로 권한을 판단한다.
+- Control Plane은 “사용자 로그인 + 팀/프로젝트 RBAC”을 전제로 한다.
+- Data Plane은 “프로젝트 API 키(서버/CI)” + “End User JWT(OIDC)”를 함께 지원한다.
+- project/env 격리는 “라우팅”이 아니라 **검증된 credential**로 강제한다.
+
+v1(Slim) 범위:
+- Data Plane은 Project API Key만 필수로 지원한다.
+- End User JWT(OIDC)는 Phase 2+로 미룬다.
 
 ---
 
@@ -20,76 +27,105 @@
 
 ---
 
-## 2) Token Format
+## 2) Operator Auth (Hub / Control Plane)
 
-지원:
-- JWT (JWS) only
+대상:
+- `stk`가 호출하는 Hub API(프로젝트/환경/연결정보/키/권한/릴리즈 관리)
 
-토큰 전달:
+요구:
+- Operator(사람)가 로그인할 수 있어야 한다.
+- Hub(Control Plane)는 org/team/project 단위 RBAC을 가진다(예: org owner/admin/member).
+
+v1 제안(웹 콘솔 없이):
+- `stk login` → Hub에서 Control Plane access token 발급
+- 토큰은 로컬 머신에 저장되고, `stk`가 Hub API 호출에 사용한다.
+
+---
+
+## 3) End User / Data Plane Auth (Bridge / Data Plane)
+
+Bridge(`/call`)는 두 종류의 credential을 다룬다.
+
+### 3.1 Project API Key (서버/CI)
+요청 헤더(v1):
+- `X-Santokit-Api-Key: <api_key>`
+
+키 속성(v1):
+- 스코프는 `project + env`에 바인딩된다. (예: `myproj:prod`)
+- 키는 “keyId + secret” 형태이며, Hub는 평문 저장을 금지한다.
+- 회전을 위해 최소 2개 동시 활성(또는 versioned) 모델을 지원한다.
+
+권장 UX:
+- `apiKey` 값은 생성 시 **1회만** 노출한다(재조회 불가).
+- CLI는 `keyId`와 `apiKey`를 함께 출력한다.
+
+### 3.2 End User JWT (OIDC)
+요청 헤더(v1):
 - `Authorization: Bearer <jwt>`
 
----
-
-## 3) Verification (OIDC/JWKS)
-
-프로젝트(=Bridge 배포)별 설정 값:
-- `STK_AUTH_ISSUER` (예: `https://issuer.example.com/`)
-- `STK_AUTH_AUDIENCE` (optional, 있으면 aud 체크)
-- `STK_AUTH_JWKS_URL` (optional, 없으면 `issuer + /.well-known/jwks.json` 규칙 사용)
-- `STK_AUTH_REQUIRED` (`true|false`, default `false` for MVP)
-
-검증 규칙(v1):
-- signature 검증(JWKS)
-- `iss` 체크(issuer 일치)
-- `exp` 체크(만료)
+검증(v1):
+- JWKS로 signature 검증
+- `iss`/`exp` 체크
 - `aud`는 설정 시에만 체크
 
-캐싱:
-- JWKS는 캐시한다(메모리/Workers cache). TTL은 기본 10~60분 사이로 구현.
-
----
-
-## 4) Claims Mapping (v1)
-
-Bridge 내부 표준 claims (권한/CRUD/로직 auth에 사용):
+표준 claims 매핑(v1):
 - `sub` → `user.id`
-- `role` 또는 `roles` → `user.roles: string[]`
-
-설정으로 claim 키를 매핑 가능:
-- `STK_AUTH_ROLE_CLAIM` (default: `roles`, fallback `role`)
+- `roles` 또는 `role` → `user.roles: string[]`
 
 ---
 
-## 5) How Logic Declares Auth
+## 4) Context Binding / Environment Isolation (필수)
+
+### 4.1 Project API Key
+- Bridge는 API key를 먼저 검증한다.
+- key가 바인딩한 `project/env`를 **최종 요청 컨텍스트**로 설정한다.
+- 요청이 `X-Santokit-Project`, `X-Santokit-Env`를 보내더라도 “라우팅 힌트”일 뿐이다.
+- header의 `project/env`와 key의 `project/env`가 다르면 `403`으로 거부한다(헤더로 env 바꿔치기 불가).
+
+### 4.2 End User JWT
+- JWT는 “누가 호출했는지(user)”만 증명한다.
+- `project/env`는 라우팅(Host 또는 header)로 결정되며,
+  end-user token만으로 `project/env`를 바꿀 수 없도록 한다.
+
+---
+
+## 5) Roles / Permissions (v1, Data Plane)
+
+권한 판단에 쓰는 roles의 출처:
+- API key: key에 부여된 `roles`(예: `admin`, `writer`, `reader`)
+- End-user JWT: 토큰 claims에서 파싱한 `user.roles`
+
+Auto CRUD(Phase 5+) 권한 체크에 사용한다.
+
+---
+
+## 6) How Logic Declares Auth
 
 로직 메타(프론트매터 또는 twin metadata)에서:
 - `auth: public` (default)
-- `auth: authenticated`
-- `auth: roles: [admin, ...]`
+- `auth: roles: [admin, ...]` (API key roles 또는 user.roles에 적용)
 
 Bridge 처리:
-- `public`: 토큰 없이 허용
-- `authenticated`: 토큰 필요 + 검증 성공 필요
-- `roles`: 검증 성공 + role 포함 필요
+- `public`: credential 없이 허용(권장하지 않음; 운영에서는 기본 비활성)
+- `roles`: (API key 또는 JWT) 필요 + role 포함 필요
 
 ---
 
-## 6) Project-Level Policy (Optional, v1)
+## 7) CLI Commands (v1, Draft)
 
-`config/santokit.yaml`에서 프로젝트 기본 정책을 둘 수 있다(초안):
-- `auth.default = public|authenticated`
-- `auth.issuer/audience/jwksUrl/roleClaim`
+### 7.1 Operator Login (Control Plane)
+- `stk login`
+- `stk logout`
+- `stk whoami`
 
-단, secrets는 플랫폼 env로 주입이 원칙이므로
-- config 파일에 issuer 같은 “비밀 아닌 설정”은 가능
-- 실제 비밀은 env로 주입
+### 7.2 API Key (Data Plane)
+- `stk apikey create --project <project> --env <env> --name <name> --roles admin,writer,reader`
+  - 출력(예시): `keyId=...` + `apiKey=...` (apiKey는 1회만)
+- `stk apikey list --project <project> --env <env>`
+  - 출력(예시): `keyId`, `name`, `roles`, `status`, `createdAt`, `lastUsedAt`
+- `stk apikey revoke --project <project> --env <env> --key-id <keyId>`
 
----
-
-## 7) Deploy Implications
-
-프로젝트별 배포 모델에서:
-- dev/prod는 서로 다른 Worker(또는 이미지)로 배포되므로
-  - issuer/audience가 다르면 각 배포에 다른 env를 주입하면 된다.
-  - secrets도 배포 단위로 분리된다.
-
+권장 회전(무중단):
+1) 새 키 생성: `stk apikey create ...`
+2) 서버/CI에 새 키 배포
+3) 구 키 폐기: `stk apikey revoke ...`
