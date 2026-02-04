@@ -61,8 +61,8 @@ santokit/
 
 ### D. Core Logic (`core-rs`)
 *   **Serialization:** **Serde** (`serde_json`, `serde_yaml`)
-*   **CEL Parser:** `cel-parser` (Google Common Expression Language 구현체)
-    *   권한 Condition 평가 및 SQL Where절 변환 로직 담당.
+*   **CEL Engine:** **`cel`** (https://github.com/cel-rust/cel-rust)
+    *   권한 Condition 평가(Interpreter) 및 SQL Where절 변환(AST 활용) 담당.
 *   **Schema Validation:** 자체 구현 (Serde + Validator).
 
 ---
