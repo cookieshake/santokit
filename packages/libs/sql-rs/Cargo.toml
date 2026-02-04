@@ -1,0 +1,8 @@
+[package]
+name = "sql-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sea-query = { version = "0.30", features = ["postgres-types", "with-uuid"] }
+core-rs = { path = "../core-rs" }

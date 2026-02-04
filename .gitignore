@@ -408,3 +408,5 @@ $RECYCLE.BIN/
 vitest.config.*.timestamp*
 .moon/cache
 .moon/docker
+# Rust
+target/

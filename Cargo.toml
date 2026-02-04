@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "packages/libs/core-rs",
+    "packages/libs/sql-rs",
+    "packages/services/bridge",
+    "packages/services/hub",
+    "packages/tools/cli",
+]
