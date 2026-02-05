@@ -22,6 +22,15 @@ pub struct AppState {
 
     /// DB Connection Pool 캐시 (connection_id → Pool)
     pub db_pools: RwLock<HashMap<String, sqlx::PgPool>>,
+
+    /// Rate limit state (ip → window)
+    pub rate_limits: RwLock<HashMap<String, RateLimitState>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RateLimitState {
+    pub window_start: std::time::Instant,
+    pub count: u32,
 }
 
 /// 캐시된 릴리즈 정보
@@ -40,6 +49,9 @@ pub struct CachedRelease {
     /// Storage 설정
     pub storage: StorageConfig,
 
+    /// Custom Logics
+    pub logics: std::collections::HashMap<String, String>,
+
     /// 연결 정보
     pub connections: std::collections::HashMap<String, ConnectionInfo>,
 
@@ -54,6 +66,7 @@ impl AppState {
             config: config.clone(),
             release_cache: RwLock::new(HashMap::new()),
             db_pools: RwLock::new(HashMap::new()),
+            rate_limits: RwLock::new(HashMap::new()),
         })
     }
 
@@ -96,6 +109,7 @@ impl AppState {
             schema: body.schema,
             permissions: body.permissions,
             storage: body.storage,
+            logics: body.logics,
             connections: body.connections,
             cached_at: chrono::Utc::now(),
         };
@@ -143,6 +157,7 @@ struct InternalReleaseResponse {
     pub schema: ProjectSchema,
     pub permissions: PermissionPolicy,
     pub storage: StorageConfig,
+    pub logics: std::collections::HashMap<String, String>,
     pub connections: std::collections::HashMap<String, ConnectionInfo>,
 }
 

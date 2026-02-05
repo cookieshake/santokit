@@ -12,11 +12,13 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_yaml;
 
 use stk_core::auth::{ApiKey, TokenKind, TokenValidator};
 use stk_core::id::IdGenerator;
+use stk_sql::params::SelectColumns;
 use stk_sql::CrudParams;
-use sqlx::{Column, Row, TypeInfo};
+use sqlx::{query::Query, Column, Row, TypeInfo};
 
 use crate::error::{BridgeError, Result};
 use crate::state::AppState;
@@ -55,6 +57,24 @@ pub async fn handle_call(
     headers: HeaderMap,
     Json(request): Json<CallRequest>,
 ) -> Result<Json<CallResponse>> {
+    let client_ip = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|s| s.trim().to_string())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string())
+        });
+
+    if !check_rate_limit(&state, client_ip.as_deref()) {
+        return Err(BridgeError::TooManyRequests {
+            message: "Rate limit exceeded".to_string(),
+        });
+    }
+
     // 1. 컨텍스트 힌트 추출 (project/env)
     let context_hint = extract_context(&headers)?;
 
@@ -79,7 +99,7 @@ pub async fn handle_call(
             handle_auto_crud(&state, &release, &principal, &table, &operation, request.params).await
         }
         Route::Logic { name } => {
-            handle_logic(&state, &release, &principal, &name, request.params).await
+            handle_logic(&state, &release, &principal, &name, request.params, client_ip).await
         }
         Route::Storage { bucket, operation } => {
             handle_storage(&state, &release, &principal, &bucket, &operation, request.params).await
@@ -178,7 +198,7 @@ async fn authenticate(
             })
         }
         TokenKind::AccessToken(token) => {
-            let validator = TokenValidator::new(vec![]);
+            let validator = TokenValidator::new(state.config.paseto_keys.clone());
             let claims = validator
                 .validate_access_token(&token)
                 .map_err(BridgeError::Core)?;
@@ -463,6 +483,48 @@ async fn handle_auto_crud(
                     message: "Delete requires non-empty where clause".to_string(),
                 });
             }
+
+            let file_columns = table_def
+                .columns
+                .iter()
+                .filter_map(|col| match &col.column_type {
+                    stk_core::schema::ColumnType::File { bucket, on_delete } => {
+                        if *on_delete == stk_core::schema::FileDeletePolicy::Cascade {
+                            Some((col.name.clone(), bucket.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+
+            let mut file_deletes: Vec<(String, String)> = Vec::new();
+            if !file_columns.is_empty() {
+                let mut select_params = CrudParams::default();
+                select_params.r#where = Some(where_clause.clone());
+                select_params.select = Some(SelectColumns::Columns(
+                    file_columns.iter().map(|(name, _)| name.clone()).collect(),
+                ));
+
+                let builder = stk_sql::SelectBuilder::new(table_def);
+                let (select_sql, _) = builder.build(&select_params, eval_result.where_clause.as_deref());
+                let rows = sqlx::query(&select_sql)
+                    .fetch_all(&pool)
+                    .await
+                    .map_err(BridgeError::Database)?;
+
+                for row in rows {
+                    for (col_name, bucket) in &file_columns {
+                        if let Ok(Some(value)) = row.try_get::<Option<String>, _>(col_name.as_str()) {
+                            if !value.is_empty() {
+                                file_deletes.push((bucket.clone(), value));
+                            }
+                        }
+                    }
+                }
+            }
+
             let builder = stk_sql::DeleteBuilder::new(table_def);
             let sql = builder.build(&where_clause, eval_result.where_clause.as_deref());
             let rows = sqlx::query(&sql)
@@ -473,6 +535,13 @@ async fn handle_auto_crud(
                 .iter()
                 .filter_map(|row| row.try_get::<String, _>(0).ok())
                 .collect::<Vec<_>>();
+
+            if !file_deletes.is_empty() {
+                if let Err(e) = delete_s3_objects(&release.storage, &file_deletes).await {
+                    tracing::warn!("Failed to delete file objects: {}", e);
+                }
+            }
+
             serde_json::json!({ "ids": ids })
         }
     };
@@ -482,20 +551,74 @@ async fn handle_auto_crud(
 
 /// Custom Logic 처리
 async fn handle_logic(
-    _state: &AppState,
-    _release: &crate::state::CachedRelease,
-    _principal: &Principal,
+    state: &AppState,
+    release: &crate::state::CachedRelease,
+    principal: &Principal,
     name: &str,
     params: Value,
+    client_ip: Option<String>,
 ) -> Result<Json<CallResponse>> {
-    // 현재는 입력을 그대로 반환하는 dev용 동작만 지원
-    Ok(Json(CallResponse {
-        data: serde_json::json!({
-            "logic": name,
-            "params": params,
-        }),
-        meta: None,
-    }))
+    let raw = release
+        .logics
+        .get(name)
+        .ok_or_else(|| BridgeError::NotFound {
+            message: format!("Logic not found: {}", name),
+        })?;
+
+    let logic = parse_logic(raw)?;
+    enforce_logic_auth(&logic.meta, principal)?;
+    let resolved_params = resolve_logic_params(&logic.meta, params)?;
+
+    let conn_name = logic
+        .meta
+        .connection
+        .as_deref()
+        .unwrap_or("main");
+    let conn = release
+        .connections
+        .get(conn_name)
+        .ok_or_else(|| BridgeError::Internal {
+            message: format!("Connection not found: {}", conn_name),
+        })?;
+    let pool = state
+        .get_pool(conn)
+        .await
+        .map_err(|e| BridgeError::Internal {
+            message: format!("Failed to connect DB: {}", e),
+        })?;
+
+    let (sql, values) = build_logic_query(
+        &logic.sql,
+        &resolved_params,
+        principal,
+        client_ip.as_deref(),
+    )?;
+
+    let lower = sql.trim_start().to_lowercase();
+    let returns_rows = lower.starts_with("select")
+        || lower.starts_with("with")
+        || lower.contains("returning");
+
+    if returns_rows {
+        let rows = bind_values(sqlx::query::<sqlx::Postgres>(&sql), values)
+            .fetch_all(&pool)
+            .await
+            .map_err(BridgeError::Database)?;
+        let data = rows_to_json(rows);
+        Ok(Json(CallResponse {
+            data: serde_json::json!({ "data": data }),
+            meta: None,
+        }))
+    } else {
+        let result = bind_values(sqlx::query::<sqlx::Postgres>(&sql), values)
+            .execute(&pool)
+            .await
+            .map_err(BridgeError::Database)?;
+        Ok(Json(CallResponse {
+            data: serde_json::json!({ "affected": result.rows_affected() }),
+            meta: None,
+        }))
+    }
 }
 
 /// Storage 처리
@@ -550,22 +673,30 @@ async fn handle_storage(
     }
 
     if let Some(max) = rule.max_size_bytes() {
-        if let Some(len) = params.get("contentLength").and_then(|v| v.as_u64()) {
-            if len > max {
-                return Err(BridgeError::BadRequest {
-                    message: "Content length exceeds max size".to_string(),
-                });
-            }
+        let len = params
+            .get("contentLength")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| BridgeError::BadRequest {
+                message: "Missing contentLength".to_string(),
+            })?;
+        if len > max {
+            return Err(BridgeError::BadRequest {
+                message: "Content length exceeds max size".to_string(),
+            });
         }
     }
 
     if let Some(types) = &rule.allowed_types {
-        if let Some(content_type) = params.get("contentType").and_then(|v| v.as_str()) {
-            if !types.iter().any(|t| t == content_type) {
-                return Err(BridgeError::BadRequest {
-                    message: "Content type not allowed".to_string(),
-                });
-            }
+        let content_type = params
+            .get("contentType")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| BridgeError::BadRequest {
+                message: "Missing contentType".to_string(),
+            })?;
+        if !types.iter().any(|t| t == content_type) {
+            return Err(BridgeError::BadRequest {
+                message: "Content type not allowed".to_string(),
+            });
         }
     }
 
@@ -575,6 +706,268 @@ async fn handle_storage(
         data: presigned,
         meta: None,
     }))
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LogicMeta {
+    #[allow(dead_code)]
+    description: Option<String>,
+    auth: Option<String>,
+    roles: Option<Vec<String>>,
+    params: Option<std::collections::HashMap<String, LogicParamSpec>>,
+    connection: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct LogicParamSpec {
+    #[serde(rename = "type")]
+    param_type: Option<String>,
+    required: Option<bool>,
+    default: Option<Value>,
+}
+
+struct LogicFile {
+    meta: LogicMeta,
+    sql: String,
+}
+
+fn parse_logic(raw: &str) -> Result<LogicFile> {
+    let mut lines = raw.lines();
+    let mut meta = LogicMeta::default();
+    let mut sql = raw.to_string();
+
+    if let Some(first) = lines.next() {
+        if first.trim() == "---" {
+            let mut meta_lines = Vec::new();
+            for line in lines.by_ref() {
+                if line.trim() == "---" {
+                    break;
+                }
+                meta_lines.push(line);
+            }
+            let meta_yaml = meta_lines.join("\n");
+            if !meta_yaml.trim().is_empty() {
+                meta = serde_yaml::from_str(&meta_yaml).map_err(|e| BridgeError::BadRequest {
+                    message: format!("Invalid logic frontmatter: {}", e),
+                })?;
+            }
+            sql = lines.collect::<Vec<_>>().join("\n");
+        }
+    }
+
+    if sql.trim().is_empty() {
+        return Err(BridgeError::BadRequest {
+            message: "Logic SQL is empty".to_string(),
+        });
+    }
+
+    Ok(LogicFile { meta, sql })
+}
+
+fn enforce_logic_auth(meta: &LogicMeta, principal: &Principal) -> Result<()> {
+    let auth = meta.auth.as_deref().unwrap_or("authenticated");
+    if auth != "public" && matches!(principal, Principal::Anonymous) {
+        return Err(BridgeError::Unauthorized {
+            message: "Authentication required".to_string(),
+        });
+    }
+
+    if let Some(roles) = &meta.roles {
+        let allowed = roles.iter().any(|role| match principal {
+            Principal::ApiKey { roles, .. } => roles.iter().any(|r| r == role),
+            Principal::EndUser { roles, .. } => roles.iter().any(|r| r == role),
+            Principal::Anonymous => false,
+        });
+        if !allowed {
+            return Err(BridgeError::Forbidden {
+                message: "Insufficient roles".to_string(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn resolve_logic_params(meta: &LogicMeta, params: Value) -> Result<std::collections::HashMap<String, Value>> {
+    let mut map = match params {
+        Value::Null => std::collections::HashMap::new(),
+        Value::Object(obj) => obj.into_iter().collect(),
+        _ => {
+            return Err(BridgeError::BadRequest {
+                message: "Logic params must be an object".to_string(),
+            })
+        }
+    };
+
+    if let Some(specs) = &meta.params {
+        for (name, spec) in specs {
+            if !map.contains_key(name) {
+                if let Some(default) = &spec.default {
+                    map.insert(name.clone(), default.clone());
+                } else if spec.required.unwrap_or(false) {
+                    return Err(BridgeError::BadRequest {
+                        message: format!("Missing required param: {}", name),
+                    });
+                }
+            }
+
+            if let Some(val) = map.get(name) {
+                if let Some(param_type) = &spec.param_type {
+                    if !validate_param_type(param_type, val) {
+                        return Err(BridgeError::BadRequest {
+                            message: format!("Invalid type for param: {}", name),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(map)
+}
+
+fn validate_param_type(param_type: &str, value: &Value) -> bool {
+    match param_type {
+        "string" => value.is_string(),
+        "int" => value.as_i64().is_some(),
+        "float" => value.as_f64().is_some(),
+        "bool" | "boolean" => value.is_boolean(),
+        "json" => value.is_object() || value.is_array(),
+        _ => true,
+    }
+}
+
+fn build_logic_query(
+    sql: &str,
+    params: &std::collections::HashMap<String, Value>,
+    principal: &Principal,
+    client_ip: Option<&str>,
+) -> Result<(String, Vec<Value>)> {
+    let mut system = std::collections::HashMap::new();
+    let sub = match principal {
+        Principal::EndUser { user_id, .. } => user_id.clone(),
+        Principal::ApiKey { key_id, .. } => key_id.clone(),
+        Principal::Anonymous => "".to_string(),
+    };
+    let roles = match principal {
+        Principal::EndUser { roles, .. } => roles.clone(),
+        Principal::ApiKey { roles, .. } => roles.clone(),
+        Principal::Anonymous => Vec::new(),
+    };
+    system.insert("auth.sub".to_string(), Value::String(sub));
+    system.insert(
+        "auth.roles".to_string(),
+        Value::Array(roles.into_iter().map(Value::String).collect()),
+    );
+    if let Some(ip) = client_ip {
+        system.insert("client.ip".to_string(), Value::String(ip.to_string()));
+    }
+
+    let (built, names) = extract_params(sql);
+    let mut values = Vec::new();
+    for name in names {
+        if let Some(val) = params.get(&name) {
+            values.push(val.clone());
+            continue;
+        }
+        if let Some(val) = system.get(&name) {
+            values.push(val.clone());
+            continue;
+        }
+        return Err(BridgeError::BadRequest {
+            message: format!("Missing param binding: {}", name),
+        });
+    }
+
+    Ok((built, values))
+}
+
+fn extract_params(sql: &str) -> (String, Vec<String>) {
+    let mut out = String::new();
+    let mut params = Vec::new();
+    let mut chars = sql.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == ':' {
+            if let Some(':') = chars.peek().copied() {
+                out.push(':');
+                out.push(':');
+                chars.next();
+                continue;
+            }
+            if let Some(next) = chars.peek().copied() {
+                if next.is_ascii_alphabetic() || next == '_' {
+                    let mut name = String::new();
+                    while let Some(c) = chars.peek().copied() {
+                        if c.is_ascii_alphanumeric() || c == '_' || c == '.' {
+                            name.push(c);
+                            chars.next();
+                        } else {
+                            break;
+                        }
+                    }
+                    let idx = params.len() + 1;
+                    out.push('$');
+                    out.push_str(&idx.to_string());
+                    params.push(name);
+                    continue;
+                }
+            }
+        }
+        out.push(ch);
+    }
+    (out, params)
+}
+
+fn bind_values<'a>(
+    mut query: Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
+    values: Vec<Value>,
+) -> Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    for value in values {
+        match value {
+            Value::Null => {
+                let v: Option<String> = None;
+                query = query.bind(v);
+            }
+            Value::Bool(b) => query = query.bind(b),
+            Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    query = query.bind(i);
+                } else if let Some(f) = n.as_f64() {
+                    query = query.bind(f);
+                } else {
+                    query = query.bind(n.to_string());
+                }
+            }
+            Value::String(s) => query = query.bind(s),
+            Value::Array(_) | Value::Object(_) => {
+                query = query.bind(sqlx::types::Json(value));
+            }
+        }
+    }
+    query
+}
+
+fn check_rate_limit(state: &AppState, ip: Option<&str>) -> bool {
+    let key = ip.unwrap_or("unknown").to_string();
+    let now = std::time::Instant::now();
+    let window = std::time::Duration::from_secs(state.config.rate_limit_window_secs);
+
+    let mut limits = state.rate_limits.write().unwrap();
+    let entry = limits.entry(key).or_insert(crate::state::RateLimitState {
+        window_start: now,
+        count: 0,
+    });
+
+    if now.duration_since(entry.window_start) > window {
+        entry.window_start = now;
+        entry.count = 0;
+    }
+
+    if entry.count >= state.config.rate_limit_max {
+        return false;
+    }
+
+    entry.count += 1;
+    true
 }
 
 async fn verify_api_key(state: &AppState, key_id: &str, secret: &str) -> Result<ApiKey> {
@@ -934,4 +1327,30 @@ async fn presign_s3(
         "method": method,
         "headers": header_map
     }))
+}
+
+async fn delete_s3_objects(
+    storage: &stk_core::storage::StorageConfig,
+    deletes: &[(String, String)],
+) -> Result<()> {
+    let config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let client = aws_sdk_s3::Client::new(&config);
+
+    for (bucket_alias, key) in deletes {
+        let Some(bucket_cfg) = storage.buckets.get(bucket_alias) else {
+            tracing::warn!("Missing bucket config for alias {}", bucket_alias);
+            continue;
+        };
+        let resp = client
+            .delete_object()
+            .bucket(&bucket_cfg.bucket)
+            .key(key)
+            .send()
+            .await;
+        if let Err(e) = resp {
+            tracing::warn!("Failed to delete {} from {}: {}", key, bucket_cfg.bucket, e);
+        }
+    }
+
+    Ok(())
 }

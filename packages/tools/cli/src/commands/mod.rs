@@ -7,5 +7,7 @@ pub mod connections;
 pub mod context;
 pub mod env;
 pub mod http;
+pub mod oidc;
 pub mod project;
 pub mod release;
+pub mod schema;

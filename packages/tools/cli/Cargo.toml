@@ -33,4 +33,5 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 dotenvy = { workspace = true }
+walkdir = { workspace = true }
 dirs = "5.0"

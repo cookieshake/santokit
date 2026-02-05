@@ -5,7 +5,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::{routing::post, Router};
+use axum::{middleware::from_fn, routing::post, Router};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -64,6 +64,7 @@ fn create_router(state: Arc<AppState>) -> Router {
         // Middleware
         .layer(TraceLayer::new_for_http())
         .layer(CorsLayer::permissive())
+        .layer(from_fn(middleware::request_id))
         // State
         .with_state(state)
 }

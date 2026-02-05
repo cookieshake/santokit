@@ -7,6 +7,7 @@ use crate::error::{Error, Result};
 use super::api_key::{ApiKey, ApiKeyId};
 use super::claims::AccessTokenClaims;
 use base64::{engine::general_purpose, Engine as _};
+use rusty_paseto::core::UntrustedToken;
 use rusty_paseto::prelude::*;
 
 /// 토큰 종류
@@ -55,14 +56,18 @@ impl TokenKind {
 /// Bridge에서 토큰을 검증하고 컨텍스트를 추출합니다.
 pub struct TokenValidator {
     /// PASETO 복호화 키 (현재 + 이전 키들)
-    _symmetric_keys: Vec<String>,
+    symmetric_keys: Vec<PasetoKey>,
 }
 
 impl TokenValidator {
     /// 새 검증기 생성
     pub fn new(symmetric_keys: Vec<String>) -> Self {
+        let parsed = symmetric_keys
+            .into_iter()
+            .filter_map(parse_key_entry)
+            .collect::<Vec<_>>();
         Self {
-            _symmetric_keys: symmetric_keys,
+            symmetric_keys: parsed,
         }
     }
 
@@ -74,7 +79,7 @@ impl TokenValidator {
     pub fn validate_access_token(&self, _token: &str) -> Result<AccessTokenClaims> {
         let token = _token.trim();
 
-        if !self._symmetric_keys.is_empty() {
+        if !self.symmetric_keys.is_empty() {
             if let Some(claims) = self.validate_paseto(token)? {
                 return Ok(claims);
             }
@@ -109,20 +114,20 @@ impl TokenValidator {
     }
 
     fn validate_paseto(&self, token: &str) -> Result<Option<AccessTokenClaims>> {
-        for key in &self._symmetric_keys {
-            let Some(key_bytes) = parse_key_material(key) else {
-                continue;
-            };
+        let kid = extract_kid(token);
 
-            let key = PasetoSymmetricKey::<V4, Local>::from(Key::from(key_bytes));
-            let parsed = PasetoParser::<V4, Local>::default().parse(token, &key);
-
-            match parsed {
-                Ok(value) => {
-                    let claims: AccessTokenClaims = serde_json::from_value(value)?;
+        if let Some(kid) = kid {
+            if let Some(entry) = self.symmetric_keys.iter().find(|k| k.kid.as_deref() == Some(&kid)) {
+                if let Some(claims) = try_parse_paseto(token, entry)? {
                     return Ok(Some(claims));
                 }
-                Err(_) => continue,
+                return Ok(None);
+            }
+        }
+
+        for entry in &self.symmetric_keys {
+            if let Some(claims) = try_parse_paseto(token, entry)? {
+                return Ok(Some(claims));
             }
         }
 
@@ -217,6 +222,48 @@ fn decode_hex(input: &str) -> Option<Vec<u8>> {
         bytes.push(((hi << 4) | lo) as u8);
     }
     Some(bytes)
+}
+
+#[derive(Debug, Clone)]
+struct PasetoKey {
+    kid: Option<String>,
+    key: [u8; 32],
+}
+
+fn parse_key_entry(raw: String) -> Option<PasetoKey> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let (kid, material) = if let Some((k, v)) = trimmed.split_once(':') {
+        (Some(k.trim().to_string()), v.trim())
+    } else {
+        (None, trimmed)
+    };
+
+    let key = parse_key_material(material)?;
+    Some(PasetoKey { kid, key })
+}
+
+fn extract_kid(token: &str) -> Option<String> {
+    let untrusted = UntrustedToken::try_parse(token).ok()?;
+    let footer = untrusted.footer_str().ok().flatten()?;
+    let value: serde_json::Value = serde_json::from_str(&footer).ok()?;
+    value.get("kid")?.as_str().map(|s| s.to_string())
+}
+
+fn try_parse_paseto(token: &str, entry: &PasetoKey) -> Result<Option<AccessTokenClaims>> {
+    let key = PasetoSymmetricKey::<V4, Local>::from(Key::from(entry.key));
+    let mut parser = PasetoParser::<V4, Local>::default();
+
+    match parser.parse(token, &key) {
+        Ok(value) => {
+            let claims: AccessTokenClaims = serde_json::from_value(value)?;
+            Ok(Some(claims))
+        }
+        Err(_) => Ok(None),
+    }
 }
 
 /// 인증된 주체

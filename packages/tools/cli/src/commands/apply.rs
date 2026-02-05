@@ -24,6 +24,7 @@ pub async fn apply(
     let schema_files = read_schema_files()?;
     let permissions = read_permissions_file()?;
     let storage = read_storage_file()?;
+    let logics = read_logics_files()?;
 
     let only_list = only.as_deref().map(|s| {
         s.split(',')
@@ -43,6 +44,7 @@ pub async fn apply(
         schema: Vec<String>,
         permissions: Option<String>,
         storage: Option<String>,
+        logics: Option<std::collections::HashMap<String, String>>,
     }
 
     #[derive(Deserialize)]
@@ -64,6 +66,7 @@ pub async fn apply(
                 schema: schema_files,
                 permissions,
                 storage,
+                logics,
             }),
     )
     .await?;
@@ -116,4 +119,32 @@ fn read_storage_file() -> anyhow::Result<Option<String>> {
         return Ok(None);
     }
     Ok(Some(std::fs::read_to_string(path)?))
+}
+
+fn read_logics_files() -> anyhow::Result<Option<std::collections::HashMap<String, String>>> {
+    let dir = std::path::Path::new("logics");
+    if !dir.exists() {
+        return Ok(None);
+    }
+
+    let mut map = std::collections::HashMap::new();
+    for entry in walkdir::WalkDir::new(dir).into_iter().filter_map(Result::ok) {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("sql") {
+            continue;
+        }
+        let content = std::fs::read_to_string(path)?;
+        let rel = path.strip_prefix(dir).unwrap_or(path);
+        let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
+        map.insert(name, content);
+    }
+
+    if map.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(map))
+    }
 }

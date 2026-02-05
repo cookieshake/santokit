@@ -22,6 +22,9 @@ pub enum BridgeError {
     #[error("not found: {message}")]
     NotFound { message: String },
 
+    #[error("too many requests: {message}")]
+    TooManyRequests { message: String },
+
     #[error("internal error: {message}")]
     Internal { message: String },
 
@@ -60,6 +63,9 @@ impl IntoResponse for BridgeError {
             }
             BridgeError::NotFound { message } => {
                 (StatusCode::NOT_FOUND, "NOT_FOUND", message.clone())
+            }
+            BridgeError::TooManyRequests { message } => {
+                (StatusCode::TOO_MANY_REQUESTS, "TOO_MANY_REQUESTS", message.clone())
             }
             BridgeError::Internal { message } => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", message.clone())

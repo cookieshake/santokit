@@ -124,6 +124,18 @@ enum Commands {
         #[command(subcommand)]
         action: ReleaseAction,
     },
+
+    /// Manage schema
+    Schema {
+        #[command(subcommand)]
+        action: SchemaAction,
+    },
+
+    /// Manage OIDC providers
+    Oidc {
+        #[command(subcommand)]
+        action: OidcAction,
+    },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,6 +245,37 @@ enum ReleaseAction {
     },
 }
 
+#[derive(Subcommand)]
+enum SchemaAction {
+    /// Take schema snapshot for drift detection
+    Snapshot,
+}
+
+#[derive(Subcommand)]
+enum OidcAction {
+    /// Create or update an OIDC provider
+    ProviderSet {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        issuer: String,
+        #[arg(long)]
+        auth_url: String,
+        #[arg(long)]
+        token_url: String,
+        #[arg(long)]
+        userinfo_url: Option<String>,
+        #[arg(long)]
+        client_id: String,
+        #[arg(long)]
+        client_secret: String,
+        #[arg(long)]
+        redirect_uri: Vec<String>,
+    },
+    /// List OIDC providers
+    ProviderList,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
@@ -318,6 +361,40 @@ async fn main() -> anyhow::Result<()> {
             }
             ReleaseAction::Rollback { to } => {
                 commands::release::rollback(&config, &effective_context, &to).await
+            }
+        },
+
+        Commands::Schema { action } => match action {
+            SchemaAction::Snapshot => commands::schema::snapshot(&config, &effective_context).await,
+        },
+
+        Commands::Oidc { action } => match action {
+            OidcAction::ProviderSet {
+                name,
+                issuer,
+                auth_url,
+                token_url,
+                userinfo_url,
+                client_id,
+                client_secret,
+                redirect_uri,
+            } => {
+                commands::oidc::set_provider(
+                    &config,
+                    &effective_context,
+                    &name,
+                    &issuer,
+                    &auth_url,
+                    &token_url,
+                    userinfo_url.as_deref(),
+                    &client_id,
+                    &client_secret,
+                    redirect_uri,
+                )
+                .await
+            }
+            OidcAction::ProviderList => {
+                commands::oidc::list_providers(&config, &effective_context).await
             }
         },
     }

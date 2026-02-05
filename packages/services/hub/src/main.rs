@@ -7,15 +7,17 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    http::{header::SET_COOKIE, HeaderMap, HeaderValue, StatusCode},
+    response::{IntoResponse, Redirect, Response},
     routing::{delete, get, post},
     Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
+use jsonwebtoken::{decode, decode_header, jwk::JwkSet, DecodingKey, Validation};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use url::Url;
 
 use stk_core::auth::{ApiKey, ApiKeyFull, ApiKeyStatus};
 use stk_core::permissions::PermissionPolicy;
@@ -32,7 +34,7 @@ use db::{
 use rusty_paseto::core::{Key, Local, PasetoSymmetricKey, V4};
 use rusty_paseto::prelude::*;
 use base64::Engine as _;
-use sqlx::Connection;
+use sqlx::{Connection, Row};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -78,16 +80,20 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/connections/:name/test", post(test_connection))
         .route("/api/apikeys", post(create_apikey).get(list_apikeys))
         .route("/api/apikeys/:id", delete(revoke_apikey))
+        .route("/api/schema/snapshot", post(schema_snapshot))
         .route("/api/apply", post(apply))
         .route("/api/releases", get(list_releases))
         .route("/api/releases/current", get(current_release))
         .route("/api/releases/:id", get(show_release))
         .route("/api/releases/promote", post(promote_release))
         .route("/api/releases/rollback", post(rollback_release))
+        .route("/api/oidc/providers", post(set_oidc_provider).get(list_oidc_providers))
         .route("/api/endusers/signup", post(enduser_signup))
         .route("/api/endusers/login", post(enduser_login))
         .route("/api/endusers/token", post(enduser_token))
         .route("/api/endusers/logout", post(enduser_logout))
+        .route("/oidc/:provider/start", get(oidc_start))
+        .route("/oidc/:provider/callback", get(oidc_callback))
         .route(
             "/internal/releases/:project/:env/current",
             get(internal_current_release),
@@ -115,7 +121,7 @@ async fn health_check() -> &'static str {
 #[derive(Clone)]
 struct HubState {
     db: Arc<HubDb>,
-    paseto_keys: Vec<[u8; 32]>,
+    paseto_keys: Vec<PasetoKey>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -124,6 +130,8 @@ enum HubError {
     BadRequest(String),
     #[error("unauthorized: {0}")]
     Unauthorized(String),
+    #[error("forbidden: {0}")]
+    Forbidden(String),
     #[error("not found: {0}")]
     NotFound(String),
     #[error("internal error: {0}")]
@@ -148,6 +156,7 @@ impl IntoResponse for HubError {
             HubError::Unauthorized(msg) => {
                 (StatusCode::UNAUTHORIZED, "UNAUTHORIZED", msg.clone())
             }
+            HubError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg.clone()),
             HubError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg.clone()),
             HubError::Internal(msg) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", msg.clone())
@@ -167,12 +176,34 @@ impl IntoResponse for HubError {
 
 type Result<T> = std::result::Result<T, HubError>;
 
-fn parse_paseto_keys() -> Vec<[u8; 32]> {
+#[derive(Clone)]
+struct PasetoKey {
+    kid: Option<String>,
+    key: [u8; 32],
+}
+
+fn parse_paseto_entry(raw: &str) -> Option<PasetoKey> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let (kid, material) = if let Some((k, v)) = trimmed.split_once(':') {
+        (Some(k.trim().to_string()), v.trim())
+    } else {
+        (None, trimmed)
+    };
+
+    let key = parse_key_material(material)?;
+    Some(PasetoKey { kid, key })
+}
+
+fn parse_paseto_keys() -> Vec<PasetoKey> {
     std::env::var("STK_PASETO_KEYS")
         .ok()
         .map(|val| {
             val.split(',')
-                .filter_map(|s| parse_key_material(s))
+                .filter_map(parse_paseto_entry)
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default()
@@ -226,6 +257,51 @@ fn new_secret() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
+fn cookie_name(prefix: &str, project: &str, env: &str) -> String {
+    format!("{}_{}_{}", prefix, project, env)
+}
+
+fn build_cookie(name: &str, value: &str, max_age: i64) -> String {
+    let secure = std::env::var("STK_COOKIE_SECURE")
+        .ok()
+        .and_then(|v| v.parse::<bool>().ok())
+        .unwrap_or(false);
+    let domain = std::env::var("STK_COOKIE_DOMAIN").ok();
+
+    let mut parts = vec![
+        format!("{}={}", name, value),
+        "HttpOnly".to_string(),
+        "SameSite=Lax".to_string(),
+        "Path=/".to_string(),
+        format!("Max-Age={}", max_age),
+    ];
+
+    if secure {
+        parts.push("Secure".to_string());
+    }
+    if let Some(domain) = domain {
+        parts.push(format!("Domain={}", domain));
+    }
+
+    parts.join("; ")
+}
+
+fn build_clear_cookie(name: &str) -> String {
+    let mut parts = vec![
+        format!("{}=", name),
+        "HttpOnly".to_string(),
+        "SameSite=Lax".to_string(),
+        "Path=/".to_string(),
+        "Max-Age=0".to_string(),
+    ];
+    if let Ok(domain) = std::env::var("STK_COOKIE_DOMAIN") {
+        if !domain.trim().is_empty() {
+            parts.push(format!("Domain={}", domain));
+        }
+    }
+    parts.join("; ")
+}
+
 #[derive(Deserialize)]
 struct LoginRequest {
     email: String,
@@ -257,6 +333,10 @@ async fn login(State(state): State<HubState>, Json(req): Json<LoginRequest>) -> 
             .await
             .map_err(|e| HubError::Internal(e.to_string()))?
     };
+
+    db.ensure_default_team(&operator.id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
 
     let token = new_token();
     db.insert_session(&token, &operator.id)
@@ -309,7 +389,7 @@ async fn create_project(
     headers: HeaderMap,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
 
     let db = state.db.clone();
     if db
@@ -322,9 +402,19 @@ async fn create_project(
     }
 
     let project = db
-        .create_project(&req.name)
+        .create_project(&req.name, &operator.id)
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    db.insert_audit_log(
+        &operator.id,
+        "project.create",
+        "project",
+        Some(&project.id),
+        Some(serde_json::json!({ "name": project.name })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
 
     Ok(Json(serde_json::json!({
         "name": project.name,
@@ -333,10 +423,10 @@ async fn create_project(
 }
 
 async fn list_projects(State(state): State<HubState>, headers: HeaderMap) -> Result<Json<Vec<serde_json::Value>>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let rows = state
         .db
-        .list_projects()
+        .list_projects(&operator.id)
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
 
@@ -358,7 +448,7 @@ async fn create_env(
     Path(project): Path<String>,
     Json(req): Json<CreateEnvRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
 
     let project_row = db
@@ -366,6 +456,7 @@ async fn create_env(
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?
         .ok_or_else(|| HubError::NotFound("Project not found".to_string()))?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
 
     if db
         .get_env(&project_row.id, &req.name)
@@ -381,6 +472,16 @@ async fn create_env(
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
 
+    db.insert_audit_log(
+        &operator.id,
+        "env.create",
+        "env",
+        Some(&env.id),
+        Some(serde_json::json!({ "project": project_row.name, "name": env.name })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
     Ok(Json(serde_json::json!({
         "name": env.name,
         "created_at": env.created_at
@@ -392,7 +493,7 @@ async fn list_envs(
     headers: HeaderMap,
     Path(project): Path<String>,
 ) -> Result<Json<Vec<serde_json::Value>>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
 
     let project_row = db
@@ -400,6 +501,7 @@ async fn list_envs(
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?
         .ok_or_else(|| HubError::NotFound("Project not found".to_string()))?;
+    require_project_role(&db, &operator.id, &project_row.id, "member").await?;
 
     let envs = db
         .list_envs(&project_row.id)
@@ -427,15 +529,31 @@ async fn set_connection(
     headers: HeaderMap,
     Json(req): Json<SetConnectionRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
 
     let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
 
     let conn = db
         .upsert_connection(&project_row.id, &env_row.id, &req.name, &req.engine, &req.db_url)
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    db.insert_audit_log(
+        &operator.id,
+        "connection.set",
+        "connection",
+        Some(&conn.id),
+        Some(serde_json::json!({
+            "project": project_row.name,
+            "env": env_row.name,
+            "name": conn.name,
+            "engine": conn.engine,
+        })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
 
     Ok(Json(serde_json::json!({
         "name": conn.name,
@@ -455,9 +573,10 @@ async fn list_connections(
     headers: HeaderMap,
     Query(query): Query<ListConnectionsQuery>,
 ) -> Result<Json<Vec<serde_json::Value>>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "member").await?;
 
     let list = db
         .list_connections(&project_row.id, &env_row.id)
@@ -492,9 +611,10 @@ async fn test_connection(
     Path(name): Path<String>,
     Query(query): Query<TestConnectionQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "member").await?;
 
     let conn = db
         .get_connection(&project_row.id, &env_row.id, &name)
@@ -535,9 +655,10 @@ async fn create_apikey(
     headers: HeaderMap,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> Result<Json<CreateApiKeyResponse>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
 
     let secret = new_secret();
     let secret_hash = hash_password(&secret)?;
@@ -559,6 +680,21 @@ async fn create_apikey(
         secret,
     };
 
+    db.insert_audit_log(
+        &operator.id,
+        "apikey.create",
+        "api_key",
+        Some(&key.id.0),
+        Some(serde_json::json!({
+            "project": project_row.name,
+            "env": env_row.name,
+            "name": req.name,
+            "roles": req.roles,
+        })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
     Ok(Json(CreateApiKeyResponse {
         key_id: key.id.0,
         api_key: api_key.to_header_value(),
@@ -577,9 +713,10 @@ async fn list_apikeys(
     headers: HeaderMap,
     Query(query): Query<ListApiKeysQuery>,
 ) -> Result<Json<Vec<ApiKey>>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "member").await?;
 
     let keys = db
         .list_api_keys(&project_row.id, &env_row.id)
@@ -601,13 +738,24 @@ async fn revoke_apikey(
     Path(id): Path<String>,
     Query(query): Query<RevokeApiKeyQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
 
     db.revoke_api_key(&id, &project_row.id, &env_row.id)
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    db.insert_audit_log(
+        &operator.id,
+        "apikey.revoke",
+        "api_key",
+        Some(&id),
+        Some(serde_json::json!({ "project": project_row.name, "env": env_row.name })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
 
     Ok(Json(serde_json::json!({ "ok": true })))
 }
@@ -624,6 +772,7 @@ struct ApplyRequest {
     schema: Vec<String>,
     permissions: Option<String>,
     storage: Option<String>,
+    logics: Option<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Serialize)]
@@ -635,6 +784,43 @@ struct ApplyResponse {
     release_id: Option<String>,
     reused: bool,
     plan: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct SchemaSnapshotRequest {
+    project: String,
+    env: String,
+}
+
+#[derive(Serialize)]
+struct SchemaSnapshotResponse {
+    project: String,
+    env: String,
+    snapshots: Vec<SchemaSnapshotEntry>,
+}
+
+#[derive(Serialize)]
+struct SchemaSnapshotEntry {
+    connection: String,
+    snapshot: SchemaSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SchemaSnapshot {
+    tables: Vec<SnapshotTable>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SnapshotTable {
+    name: String,
+    columns: Vec<SnapshotColumn>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SnapshotColumn {
+    name: String,
+    data_type: String,
+    nullable: bool,
 }
 
 #[derive(Default)]
@@ -670,7 +856,7 @@ async fn apply(
     headers: HeaderMap,
     Json(req): Json<ApplyRequest>,
 ) -> Result<Json<ApplyResponse>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
 
     let only = parse_only(&req.only);
@@ -709,8 +895,10 @@ async fn apply(
     } else {
         StorageConfig::default()
     };
+    let logics = req.logics.clone().unwrap_or_default();
 
     let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
 
     let mut plan = Vec::new();
     if only.schema {
@@ -740,7 +928,7 @@ async fn apply(
     let mut reused = false;
 
     if only.release && !req.dry_run {
-        let snapshot_hash = compute_snapshot_hash(&schema, &permissions, &storage, &req.r#ref)
+        let snapshot_hash = compute_snapshot_hash(&schema, &permissions, &storage, &logics, &req.r#ref)
             .map_err(|e| HubError::Internal(e.to_string()))?;
 
         if let Some(existing) = db
@@ -759,6 +947,7 @@ async fn apply(
                     &schema,
                     &permissions,
                     &storage,
+                    &logics,
                     &snapshot_hash,
                 )
                 .await
@@ -773,6 +962,22 @@ async fn apply(
         }
     }
 
+    db.insert_audit_log(
+        &operator.id,
+        "release.apply",
+        "release",
+        release_id.as_deref(),
+        Some(serde_json::json!({
+            "project": project_row.name,
+            "env": env_row.name,
+            "ref": req.r#ref,
+            "dry_run": req.dry_run,
+            "reused": reused,
+        })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
     Ok(Json(ApplyResponse {
         project: req.project,
         env: req.env,
@@ -781,6 +986,61 @@ async fn apply(
         release_id,
         reused,
         plan,
+    }))
+}
+
+async fn schema_snapshot(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Json(req): Json<SchemaSnapshotRequest>,
+) -> Result<Json<SchemaSnapshotResponse>> {
+    let operator = require_auth(&headers, &state).await?;
+    let db = state.db.clone();
+    let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
+
+    let connections = db
+        .list_connections(&project_row.id, &env_row.id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let mut snapshots = Vec::new();
+    for conn in connections {
+        if conn.engine != "postgres" {
+            continue;
+        }
+        let db_url = db
+            .decrypt_db_url(&conn)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        let snapshot = introspect_postgres(&db_url)
+            .await
+            .map_err(|e| HubError::BadRequest(e))?;
+        let snapshot_json = serde_json::to_string(&snapshot)
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        db.insert_schema_snapshot(&project_row.id, &env_row.id, &conn.name, &snapshot_json)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        snapshots.push(SchemaSnapshotEntry {
+            connection: conn.name,
+            snapshot,
+        });
+    }
+
+    db.insert_audit_log(
+        &operator.id,
+        "schema.snapshot",
+        "schema_snapshot",
+        None,
+        Some(serde_json::json!({ "project": project_row.name, "env": env_row.name })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    Ok(Json(SchemaSnapshotResponse {
+        project: req.project,
+        env: req.env,
+        snapshots,
     }))
 }
 
@@ -796,9 +1056,10 @@ async fn list_releases(
     headers: HeaderMap,
     Query(query): Query<ReleaseQuery>,
 ) -> Result<Json<Vec<serde_json::Value>>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "member").await?;
 
     let list = db
         .list_releases(&project_row.id, &env_row.id, query.limit)
@@ -817,9 +1078,10 @@ async fn current_release(
     headers: HeaderMap,
     Query(query): Query<ReleaseQuery>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "member").await?;
 
     let rid = db
         .get_current_release(&project_row.id, &env_row.id)
@@ -841,13 +1103,14 @@ async fn show_release(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let release = state
         .db
         .get_release(&id)
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?
         .ok_or_else(|| HubError::NotFound("Release not found".to_string()))?;
+    require_project_role(&state.db, &operator.id, &release.project_id, "member").await?;
 
     Ok(Json(release_to_json(&release)))
 }
@@ -865,7 +1128,7 @@ async fn promote_release(
     headers: HeaderMap,
     Json(req): Json<PromoteRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
 
     let project_row = db
@@ -873,7 +1136,9 @@ async fn promote_release(
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?
         .ok_or_else(|| HubError::NotFound("Project not found".to_string()))?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
 
+    let from_env = req.from.clone();
     let release_id = if let Some(rid) = req.release_id {
         rid
     } else if let Some(from_env) = req.from {
@@ -904,9 +1169,48 @@ async fn promote_release(
         .map_err(|e| HubError::Internal(e.to_string()))?
         .ok_or_else(|| HubError::NotFound("Target env not found".to_string()))?;
 
+    let release = db
+        .get_release(&release_id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .ok_or_else(|| HubError::NotFound("Release not found".to_string()))?;
+    let schema = release.schema().map_err(|e| HubError::Internal(e.to_string()))?;
+    let connections = db
+        .list_connections(&project_row.id, &to_env.id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    for (conn_name, schema_ir) in &schema.connections {
+        let conn = connections
+            .iter()
+            .find(|c| c.name == *conn_name)
+            .ok_or_else(|| HubError::BadRequest(format!("Missing connection: {}", conn_name)))?;
+        let db_url = db
+            .decrypt_db_url(conn)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        apply_schema_to_postgres(&db_url, schema_ir, true, false)
+            .await
+            .map_err(|e| HubError::BadRequest(e))?;
+    }
+
     db.set_current_release(&project_row.id, &to_env.id, &release_id)
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    db.insert_audit_log(
+        &operator.id,
+        "release.promote",
+        "release",
+        Some(&release_id),
+        Some(serde_json::json!({
+            "project": project_row.name,
+            "to_env": to_env.name,
+            "from_env": from_env,
+        })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
 
     Ok(Json(serde_json::json!({ "ok": true, "release_id": release_id })))
 }
@@ -923,16 +1227,300 @@ async fn rollback_release(
     headers: HeaderMap,
     Json(req): Json<RollbackRequest>,
 ) -> Result<Json<serde_json::Value>> {
-    let _ = require_auth(&headers, &state).await?;
+    let operator = require_auth(&headers, &state).await?;
     let db = state.db.clone();
 
     let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
 
     db.set_current_release(&project_row.id, &env_row.id, &req.to_release_id)
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
 
+    db.insert_audit_log(
+        &operator.id,
+        "release.rollback",
+        "release",
+        Some(&req.to_release_id),
+        Some(serde_json::json!({ "project": project_row.name, "env": env_row.name })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
     Ok(Json(serde_json::json!({ "ok": true, "release_id": req.to_release_id })))
+}
+
+#[derive(Deserialize)]
+struct OidcProviderRequest {
+    project: String,
+    env: String,
+    name: String,
+    issuer: String,
+    auth_url: String,
+    token_url: String,
+    userinfo_url: Option<String>,
+    client_id: String,
+    client_secret: String,
+    redirect_uris: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct OidcProviderResponse {
+    name: String,
+    issuer: String,
+    auth_url: String,
+    token_url: String,
+    userinfo_url: Option<String>,
+    client_id: String,
+    redirect_uris: Vec<String>,
+}
+
+async fn set_oidc_provider(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Json(req): Json<OidcProviderRequest>,
+) -> Result<Json<OidcProviderResponse>> {
+    let operator = require_auth(&headers, &state).await?;
+    let db = state.db.clone();
+    let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
+
+    let provider = db
+        .upsert_oidc_provider(
+            &project_row.id,
+            &env_row.id,
+            &req.name,
+            &req.issuer,
+            &req.auth_url,
+            &req.token_url,
+            req.userinfo_url.as_deref(),
+            &req.client_id,
+            &req.client_secret,
+            &req.redirect_uris,
+        )
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    db.insert_audit_log(
+        &operator.id,
+        "oidc.provider.set",
+        "oidc_provider",
+        Some(&provider.id),
+        Some(serde_json::json!({ "project": project_row.name, "env": env_row.name, "name": provider.name })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let redirects = provider
+        .redirect_uris()
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    Ok(Json(OidcProviderResponse {
+        name: provider.name,
+        issuer: provider.issuer,
+        auth_url: provider.auth_url,
+        token_url: provider.token_url,
+        userinfo_url: provider.userinfo_url,
+        client_id: provider.client_id,
+        redirect_uris: redirects,
+    }))
+}
+
+#[derive(Deserialize)]
+struct OidcProviderQuery {
+    project: String,
+    env: String,
+}
+
+async fn list_oidc_providers(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Query(query): Query<OidcProviderQuery>,
+) -> Result<Json<Vec<OidcProviderResponse>>> {
+    let operator = require_auth(&headers, &state).await?;
+    let db = state.db.clone();
+    let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "member").await?;
+
+    let providers = db
+        .list_oidc_providers(&project_row.id, &env_row.id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let list = providers
+        .into_iter()
+        .map(|p| {
+            let redirects = p.redirect_uris().unwrap_or_default();
+            OidcProviderResponse {
+                name: p.name,
+                issuer: p.issuer,
+                auth_url: p.auth_url,
+                token_url: p.token_url,
+                userinfo_url: p.userinfo_url,
+                client_id: p.client_id,
+                redirect_uris: redirects,
+            }
+        })
+        .collect();
+
+    Ok(Json(list))
+}
+
+#[derive(Deserialize)]
+struct OidcStartQuery {
+    project: String,
+    env: String,
+    redirect: String,
+}
+
+async fn oidc_start(
+    State(state): State<HubState>,
+    Path(provider): Path<String>,
+    Query(query): Query<OidcStartQuery>,
+) -> Result<Redirect> {
+    let db = state.db.clone();
+    let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+
+    let provider_row = db
+        .get_oidc_provider(&project_row.id, &env_row.id, &provider)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .ok_or_else(|| HubError::NotFound("OIDC provider not found".to_string()))?;
+
+    let redirects = provider_row
+        .redirect_uris()
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+    if !redirects.iter().any(|r| r == &query.redirect) {
+        return Err(HubError::BadRequest("Redirect URI not allowed".to_string()));
+    }
+
+    let state_token = new_secret();
+    db.insert_oidc_session(&state_token, &project_row.id, &env_row.id, &provider, &query.redirect)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let redirect_uri = oidc_callback_url(&provider);
+    let mut url = Url::parse(&provider_row.auth_url)
+        .map_err(|e| HubError::BadRequest(e.to_string()))?;
+    url.query_pairs_mut()
+        .append_pair("client_id", &provider_row.client_id)
+        .append_pair("response_type", "code")
+        .append_pair("scope", "openid email profile")
+        .append_pair("redirect_uri", &redirect_uri)
+        .append_pair("state", &state_token);
+
+    Ok(Redirect::temporary(url.as_str()))
+}
+
+#[derive(Deserialize)]
+struct OidcCallbackQuery {
+    code: String,
+    state: String,
+}
+
+async fn oidc_callback(
+    State(state): State<HubState>,
+    Path(provider): Path<String>,
+    Query(query): Query<OidcCallbackQuery>,
+) -> Result<Response> {
+    let db = state.db.clone();
+    let session = db
+        .take_oidc_session(&query.state)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .ok_or_else(|| HubError::BadRequest("Invalid OIDC state".to_string()))?;
+
+    let provider_row = db
+        .get_oidc_provider(&session.project_id, &session.env_id, &provider)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .ok_or_else(|| HubError::NotFound("OIDC provider not found".to_string()))?;
+
+    let redirect_uri = oidc_callback_url(&provider);
+    let token = exchange_oidc_code(&provider_row, &query.code, &redirect_uri).await?;
+    let claims = verify_oidc_id_token(&provider_row, &token.id_token).await?;
+
+    let subject = claims
+        .get("sub")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| HubError::BadRequest("OIDC token missing sub".to_string()))?
+        .to_string();
+    let email = claims
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&subject)
+        .to_string();
+
+    let roles = extract_roles(&claims);
+
+    let end_user = if let Some(existing) = db
+        .get_end_user_by_identity(&session.project_id, &session.env_id, &provider, &subject)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+    {
+        existing
+    } else {
+        let password = new_secret();
+        let hash = hash_password(&password)?;
+        let row = db
+            .create_end_user(&session.project_id, &session.env_id, &email, &hash, &roles)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        db.link_end_user_identity(&row.id, &session.project_id, &session.env_id, &provider, &subject)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        row
+    };
+
+    let ttl_seconds = std::env::var("STK_ACCESS_TTL")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(3600);
+
+    let access_token = issue_access_token(
+        &state.paseto_keys,
+        &end_user.id,
+        &session.project_id,
+        &session.env_id,
+        &end_user.roles,
+        ttl_seconds,
+    )?;
+    let refresh = issue_refresh_token(&db, &end_user.id, &session.project_id, &session.env_id)
+        .await?;
+
+    let project_name = db
+        .get_project_by_id(&session.project_id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .map(|p| p.name)
+        .unwrap_or_else(|| session.project_id.clone());
+    let env_name = db
+        .get_env_by_id(&session.env_id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .map(|e| e.name)
+        .unwrap_or_else(|| session.env_id.clone());
+
+    let access_cookie = cookie_name("stk_access", &project_name, &env_name);
+    let refresh_cookie = cookie_name("stk_refresh", &project_name, &env_name);
+
+    let mut redirect_url = Url::parse(&session.redirect_uri)
+        .map_err(|e| HubError::BadRequest(e.to_string()))?;
+    redirect_url.query_pairs_mut().append_pair("status", "ok");
+
+    let mut response = Redirect::temporary(redirect_url.as_str()).into_response();
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_cookie(&access_cookie, &access_token, ttl_seconds))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_cookie(&refresh_cookie, &refresh.token, 60 * 60 * 24 * 30))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+
+    Ok(response)
 }
 
 #[derive(Serialize)]
@@ -941,6 +1529,7 @@ struct InternalReleaseResponse {
     schema: ProjectSchema,
     permissions: PermissionPolicy,
     storage: StorageConfig,
+    logics: std::collections::HashMap<String, String>,
     connections: std::collections::HashMap<String, ConnectionInfo>,
 }
 
@@ -966,6 +1555,7 @@ async fn internal_current_release(
     let schema = release.schema().map_err(|e| HubError::Internal(e.to_string()))?;
     let permissions = release.permissions().map_err(|e| HubError::Internal(e.to_string()))?;
     let storage = release.storage().map_err(|e| HubError::Internal(e.to_string()))?;
+    let logics = release.logics().map_err(|e| HubError::Internal(e.to_string()))?;
 
     let connections = db
         .list_connections(&project_row.id, &env_row.id)
@@ -986,6 +1576,7 @@ async fn internal_current_release(
         schema,
         permissions,
         storage,
+        logics,
         connections: connections_map,
     }))
 }
@@ -1082,7 +1673,7 @@ struct EndUserAuthResponse {
 async fn enduser_login(
     State(state): State<HubState>,
     Json(req): Json<EndUserLoginRequest>,
-) -> Result<Json<EndUserAuthResponse>> {
+) -> Result<Response> {
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
 
@@ -1113,11 +1704,30 @@ async fn enduser_login(
     let refresh = issue_refresh_token(&db, &end_user.id, &project_row.id, &env_row.id)
         .await?;
 
-    Ok(Json(EndUserAuthResponse {
+    let body = EndUserAuthResponse {
         access_token: token,
         refresh_token: refresh.token,
         expires_in: ttl_seconds,
-    }))
+    };
+
+    let access_cookie = cookie_name("stk_access", &req.project, &req.env);
+    let refresh_cookie = cookie_name("stk_refresh", &req.project, &req.env);
+    let access_value = body.access_token.clone();
+    let refresh_value = body.refresh_token.clone();
+
+    let mut response = Json(body).into_response();
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_cookie(&access_cookie, &access_value, ttl_seconds))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_cookie(&refresh_cookie, &refresh_value, 60 * 60 * 24 * 30))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+
+    Ok(response)
 }
 
 #[derive(Deserialize)]
@@ -1130,7 +1740,7 @@ struct EndUserTokenRequest {
 async fn enduser_token(
     State(state): State<HubState>,
     Json(req): Json<EndUserTokenRequest>,
-) -> Result<Json<EndUserAuthResponse>> {
+) -> Result<Response> {
     let db = state.db.clone();
     let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
 
@@ -1187,22 +1797,42 @@ async fn enduser_token(
         ttl_seconds,
     )?;
 
-    Ok(Json(EndUserAuthResponse {
+    let body = EndUserAuthResponse {
         access_token: token,
         refresh_token: req.refresh_token,
         expires_in: ttl_seconds,
-    }))
+    };
+
+    let access_cookie = cookie_name("stk_access", &req.project, &req.env);
+    let refresh_cookie = cookie_name("stk_refresh", &req.project, &req.env);
+    let access_value = body.access_token.clone();
+    let refresh_value = body.refresh_token.clone();
+    let mut response = Json(body).into_response();
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_cookie(&access_cookie, &access_value, ttl_seconds))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_cookie(&refresh_cookie, &refresh_value, 60 * 60 * 24 * 30))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+
+    Ok(response)
 }
 
 #[derive(Deserialize)]
 struct EndUserLogoutRequest {
+    project: String,
+    env: String,
     refresh_token: String,
 }
 
 async fn enduser_logout(
     State(state): State<HubState>,
     Json(req): Json<EndUserLogoutRequest>,
-) -> Result<Json<serde_json::Value>> {
+) -> Result<Response> {
     let db = state.db.clone();
 
     let (token_id, _) = parse_refresh_token(&req.refresh_token)
@@ -1212,11 +1842,24 @@ async fn enduser_logout(
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
 
-    Ok(Json(serde_json::json!({ "ok": true })))
+    let access_cookie = cookie_name("stk_access", &req.project, &req.env);
+    let refresh_cookie = cookie_name("stk_refresh", &req.project, &req.env);
+    let mut response = Json(serde_json::json!({ "ok": true })).into_response();
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_clear_cookie(&access_cookie))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+    response.headers_mut().append(
+        SET_COOKIE,
+        HeaderValue::from_str(&build_clear_cookie(&refresh_cookie))
+            .map_err(|e| HubError::Internal(e.to_string()))?,
+    );
+    Ok(response)
 }
 
 fn issue_access_token(
-    keys: &[ [u8;32] ],
+    keys: &[PasetoKey],
     user_id: &str,
     project_id: &str,
     env_id: &str,
@@ -1231,9 +1874,17 @@ fn issue_access_token(
     let exp = now + Duration::seconds(ttl_seconds);
     let jti = ulid::Ulid::new().to_string();
 
-    let paseto_key = PasetoSymmetricKey::<V4, Local>::from(Key::from(*key));
+    let footer_json = key
+        .kid
+        .as_ref()
+        .map(|kid| serde_json::json!({ "kid": kid }).to_string());
+    let paseto_key = PasetoSymmetricKey::<V4, Local>::from(Key::from(key.key));
+    let mut builder = PasetoBuilder::<V4, Local>::default();
+    if let Some(ref json) = footer_json {
+        builder.set_footer(Footer::from(json.as_str()));
+    }
 
-    let token = PasetoBuilder::<V4, Local>::default()
+    let token = builder
         .set_claim(SubjectClaim::from(user_id))
         .set_claim(IssuedAtClaim::try_from(now.to_rfc3339()).map_err(|e| HubError::Internal(e.to_string()))?)
         .set_claim(ExpirationClaim::try_from(exp.to_rfc3339()).map_err(|e| HubError::Internal(e.to_string()))?)
@@ -1304,6 +1955,33 @@ async fn resolve_project_env(db: &HubDb, project: &str, env: &str) -> Result<(db
         .ok_or_else(|| HubError::NotFound("Env not found".to_string()))?;
 
     Ok((project_row, env_row))
+}
+
+fn role_rank(role: &str) -> u8 {
+    match role {
+        "owner" => 3,
+        "admin" => 2,
+        "member" => 1,
+        _ => 0,
+    }
+}
+
+async fn require_project_role(
+    db: &HubDb,
+    operator_id: &str,
+    project_id: &str,
+    min_role: &str,
+) -> Result<()> {
+    let role = db
+        .operator_role_for_project(operator_id, project_id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .ok_or_else(|| HubError::Forbidden("No project access".to_string()))?;
+
+    if role_rank(&role) < role_rank(min_role) {
+        return Err(HubError::Forbidden("Insufficient role".to_string()));
+    }
+    Ok(())
 }
 
 async fn apply_schema_to_postgres(
@@ -1413,4 +2091,146 @@ async fn apply_schema_to_postgres(
     }
 
     Ok(plan)
+}
+
+async fn introspect_postgres(db_url: &str) -> std::result::Result<SchemaSnapshot, String> {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(2)
+        .connect(db_url)
+        .await
+        .map_err(|e| format!("DB connect failed: {}", e))?;
+
+    let rows = sqlx::query(
+        r#"SELECT table_name, column_name, data_type, is_nullable
+           FROM information_schema.columns
+           WHERE table_schema = 'public'
+           ORDER BY table_name, ordinal_position"#,
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut tables: std::collections::BTreeMap<String, Vec<SnapshotColumn>> = std::collections::BTreeMap::new();
+    for row in rows {
+        let table_name: String = row.try_get("table_name").map_err(|e| e.to_string())?;
+        let column_name: String = row.try_get("column_name").map_err(|e| e.to_string())?;
+        let data_type: String = row.try_get("data_type").map_err(|e| e.to_string())?;
+        let is_nullable: String = row.try_get("is_nullable").map_err(|e| e.to_string())?;
+        let nullable = is_nullable.eq_ignore_ascii_case("yes");
+
+        tables
+            .entry(table_name)
+            .or_default()
+            .push(SnapshotColumn {
+                name: column_name,
+                data_type,
+                nullable,
+            });
+    }
+
+    let table_list = tables
+        .into_iter()
+        .map(|(name, columns)| SnapshotTable { name, columns })
+        .collect::<Vec<_>>();
+
+    Ok(SchemaSnapshot { tables: table_list })
+}
+
+fn oidc_callback_url(provider: &str) -> String {
+    let base = std::env::var("STK_HUB_PUBLIC_URL")
+        .unwrap_or_else(|_| "http://localhost:4000".to_string());
+    format!("{}/oidc/{}/callback", base.trim_end_matches('/'), provider)
+}
+
+#[derive(Deserialize)]
+struct OidcDiscovery {
+    jwks_uri: String,
+}
+
+#[derive(Deserialize)]
+struct OidcTokenResponse {
+    id_token: String,
+    #[allow(dead_code)]
+    access_token: Option<String>,
+}
+
+async fn exchange_oidc_code(
+    provider: &db::OidcProviderRow,
+    code: &str,
+    redirect_uri: &str,
+) -> Result<OidcTokenResponse> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&provider.token_url)
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", code),
+            ("redirect_uri", redirect_uri),
+            ("client_id", provider.client_id.as_str()),
+            ("client_secret", provider.client_secret.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    if !resp.status().is_success() {
+        return Err(HubError::BadRequest("OIDC token exchange failed".to_string()));
+    }
+
+    let token: OidcTokenResponse = resp
+        .json()
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+    Ok(token)
+}
+
+async fn verify_oidc_id_token(
+    provider: &db::OidcProviderRow,
+    id_token: &str,
+) -> Result<serde_json::Value> {
+    let issuer = provider.issuer.trim_end_matches('/');
+    let discovery_url = format!("{}/.well-known/openid-configuration", issuer);
+    let discovery: OidcDiscovery = reqwest::get(&discovery_url)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .json()
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let jwks: JwkSet = reqwest::get(&discovery.jwks_uri)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .json()
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let header = decode_header(id_token).map_err(|e| HubError::BadRequest(e.to_string()))?;
+    let kid = header.kid.ok_or_else(|| HubError::BadRequest("OIDC token missing kid".to_string()))?;
+    let jwk = jwks
+        .keys
+        .iter()
+        .find(|k| k.common.key_id.as_deref() == Some(&kid))
+        .ok_or_else(|| HubError::BadRequest("OIDC key not found".to_string()))?;
+
+    let decoding_key = DecodingKey::from_jwk(jwk).map_err(|e| HubError::BadRequest(e.to_string()))?;
+    let mut validation = Validation::new(header.alg);
+    validation.set_issuer(&[issuer]);
+    validation.set_audience(&[provider.client_id.as_str()]);
+
+    let token = decode::<serde_json::Value>(id_token, &decoding_key, &validation)
+        .map_err(|e| HubError::BadRequest(e.to_string()))?;
+    Ok(token.claims)
+}
+
+fn extract_roles(claims: &serde_json::Value) -> Vec<String> {
+    if let Some(arr) = claims.get("roles").and_then(|v| v.as_array()) {
+        return arr
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+    }
+    if let Some(role) = claims.get("role").and_then(|v| v.as_str()) {
+        return vec![role.to_string()];
+    }
+    vec!["user".to_string()]
 }

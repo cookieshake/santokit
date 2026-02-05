@@ -21,7 +21,7 @@ tokio = { version = "1.43", features = ["full"] }
 
 # Web Framework
 axum = { version = "0.8", features = ["macros"] }
-tower = "0.5"
+tower = { version = "0.5", features = ["limit"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 
 # Database
@@ -46,6 +46,7 @@ rusty_paseto = "0.8"
 argon2 = "0.5"
 rand = "0.8"
 chacha20poly1305 = "0.10"
+jsonwebtoken = "9.3"
 
 # CEL (Common Expression Language)
 cel-interpreter = "0.8"
@@ -54,6 +55,7 @@ cel-interpreter = "0.8"
 thiserror = "2.0"
 anyhow = "1.0"
 futures = "0.3"
+walkdir = "2.5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 chrono = { version = "0.4", features = ["serde"] }
