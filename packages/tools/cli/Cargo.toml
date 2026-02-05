@@ -1,0 +1,36 @@
+[package]
+name = "stk-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "stk"
+path = "src/main.rs"
+
+[dependencies]
+stk-core = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+inquire = { workspace = true }
+indicatif = { workspace = true }
+comfy-table = { workspace = true }
+
+# HTTP
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+
+# Utilities
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+dirs = "5.0"

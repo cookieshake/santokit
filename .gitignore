@@ -408,3 +408,12 @@ $RECYCLE.BIN/
 vitest.config.*.timestamp*
 .moon/cache
 .moon/docker
+
+# Rust
+target/
+Cargo.lock
+*.rlib
+*.rmeta
+
+# CLI local context
+.stk/
