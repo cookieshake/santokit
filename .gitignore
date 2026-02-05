@@ -451,7 +451,6 @@ vitest.config.*.timestamp*
 
 # Rust
 target/
-Cargo.lock
 *.rlib
 *.rmeta
 

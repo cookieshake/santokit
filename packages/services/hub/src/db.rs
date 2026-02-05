@@ -1136,8 +1136,8 @@ impl HubDb {
         .await?;
 
         self.get_oidc_provider(project_id, env_id, name)
-            .await
-            .map(|opt| opt.ok_or_else(|| anyhow::anyhow!("oidc provider missing")))? 
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("oidc provider missing"))?
     }
 
     pub async fn get_oidc_provider(
@@ -1515,7 +1515,11 @@ pub fn compute_snapshot_hash(
     let schema_json = serde_json::to_string(schema)?;
     let permissions_json = serde_json::to_string(permissions)?;
     let storage_json = serde_json::to_string(storage)?;
-    let logics_json = serde_json::to_string(logics)?;
+    let logics_sorted = logics
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect::<std::collections::BTreeMap<String, String>>();
+    let logics_json = serde_json::to_string(&logics_sorted)?;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     schema_json.hash(&mut hasher);
     permissions_json.hash(&mut hasher);

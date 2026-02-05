@@ -263,8 +263,6 @@
       "unfree": false,
       "version": "1.25.5",
       "outputs_to_install": [
-        "out",
-        "out",
         "out"
       ],
       "outputs": {
@@ -650,7 +648,6 @@
       "unfree": false,
       "version": "python3-3.13.11",
       "outputs_to_install": [
-        "out",
         "out"
       ],
       "outputs": {
@@ -680,7 +677,6 @@
       "unfree": false,
       "version": "python3-3.13.11",
       "outputs_to_install": [
-        "out",
         "out"
       ],
       "outputs": {
@@ -740,7 +736,6 @@
       "unfree": false,
       "version": "python3-3.13.11",
       "outputs_to_install": [
-        "out",
         "out"
       ],
       "outputs": {

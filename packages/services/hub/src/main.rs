@@ -2603,17 +2603,106 @@ async fn apply_schema_to_postgres(
             continue;
         }
 
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name = $1",
+        let rows: Vec<(String, String, bool, Option<String>)> = sqlx::query_as(
+            r#"SELECT a.attname,
+                      format_type(a.atttypid, a.atttypmod) AS data_type,
+                      a.attnotnull,
+                      pg_get_expr(ad.adbin, ad.adrelid) AS column_default
+               FROM pg_attribute a
+               JOIN pg_class c ON a.attrelid = c.oid
+               JOIN pg_namespace n ON c.relnamespace = n.oid
+               LEFT JOIN pg_attrdef ad ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum
+               WHERE n.nspname = 'public'
+                 AND c.relname = $1
+                 AND a.attnum > 0
+                 AND NOT a.attisdropped"#,
         )
         .bind(&table.name)
         .fetch_all(&pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        let mut existing_columns: HashSet<String> = rows.into_iter().map(|r| r.0).collect();
+        let mut existing_map = std::collections::HashMap::new();
+        for (name, data_type, not_null, default_expr) in rows {
+            existing_map.insert(
+                name.clone(),
+                ExistingColumnInfo {
+                    data_type,
+                    nullable: !not_null,
+                    default_expr,
+                },
+            );
+        }
+        let mut existing_columns: HashSet<String> = existing_map.keys().cloned().collect();
 
         for column in table.columns.iter().map(|c| &c.name).chain(std::iter::once(&table.id.name)) {
+            if let Some(info) = existing_map.get(column) {
+                existing_columns.remove(column);
+
+                if column == &table.id.name {
+                    continue;
+                }
+
+                if let Some(col) = table.find_column(column) {
+                    let desired_type = normalize_pg_type(&col.column_type.to_postgres_type());
+                    let actual_type = normalize_pg_type(&info.data_type);
+                    if desired_type != actual_type {
+                        let ddl = format!(
+                            "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" TYPE {};",
+                            table.name,
+                            col.name,
+                            col.column_type.to_postgres_type()
+                        );
+                        plan.push(format!("alter column {}.{} type", table.name, col.name));
+                        if !dry_run {
+                            sqlx::query(&ddl).execute(&pool).await.map_err(|e| e.to_string())?;
+                        }
+                    }
+
+                    if info.nullable != col.nullable {
+                        let ddl = if col.nullable {
+                            format!(
+                                "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" DROP NOT NULL;",
+                                table.name, col.name
+                            )
+                        } else {
+                            format!(
+                                "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET NOT NULL;",
+                                table.name, col.name
+                            )
+                        };
+                        plan.push(format!("alter column {}.{} nullability", table.name, col.name));
+                        if !dry_run {
+                            sqlx::query(&ddl).execute(&pool).await.map_err(|e| e.to_string())?;
+                        }
+                    }
+
+                    let desired_default = col.default.as_deref().map(desired_default_expr);
+                    let actual_default = info
+                        .default_expr
+                        .as_deref()
+                        .map(normalize_default_expr);
+                    if desired_default != actual_default {
+                        let ddl = if let Some(default_expr) = desired_default {
+                            format!(
+                                "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" SET DEFAULT {};",
+                                table.name, col.name, default_expr
+                            )
+                        } else {
+                            format!(
+                                "ALTER TABLE \"{}\" ALTER COLUMN \"{}\" DROP DEFAULT;",
+                                table.name, col.name
+                            )
+                        };
+                        plan.push(format!("alter column {}.{} default", table.name, col.name));
+                        if !dry_run {
+                            sqlx::query(&ddl).execute(&pool).await.map_err(|e| e.to_string())?;
+                        }
+                    }
+                }
+                continue;
+            }
+
             if !existing_columns.remove(column) {
                 let col_def = if column == &table.id.name {
                     None
@@ -2675,6 +2764,46 @@ async fn apply_schema_to_postgres(
     }
 
     Ok(plan)
+}
+
+#[derive(Debug)]
+struct ExistingColumnInfo {
+    data_type: String,
+    nullable: bool,
+    default_expr: Option<String>,
+}
+
+fn normalize_pg_type(data_type: &str) -> String {
+    match data_type.trim().to_lowercase().as_str() {
+        "character varying" | "varchar" => "text".to_string(),
+        "timestamp with time zone" | "timestamptz" => "timestamptz".to_string(),
+        "timestamp without time zone" => "timestamp".to_string(),
+        "double precision" => "double precision".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn desired_default_expr(default: &str) -> String {
+    match default {
+        "now" | "now()" => "NOW()".to_string(),
+        "true" => "TRUE".to_string(),
+        "false" => "FALSE".to_string(),
+        s if s.starts_with('\'') => s.to_string(),
+        s if s.parse::<i64>().is_ok() => s.to_string(),
+        s if s.parse::<f64>().is_ok() => s.to_string(),
+        s => format!("'{}'", s.replace('\'', "''")),
+    }
+}
+
+fn normalize_default_expr(default: &str) -> String {
+    let mut s = default.trim().to_string();
+    if s.starts_with('(') && s.ends_with(')') && s.len() > 1 {
+        s = s[1..s.len() - 1].to_string();
+    }
+    if let Some((expr, _)) = s.split_once("::") {
+        return expr.trim().to_string();
+    }
+    s
 }
 
 async fn introspect_postgres(db_url: &str) -> std::result::Result<SchemaSnapshot, String> {
