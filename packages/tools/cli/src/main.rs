@@ -136,6 +136,18 @@ enum Commands {
         #[command(subcommand)]
         action: OidcAction,
     },
+
+    /// Manage operators
+    Operators {
+        #[command(subcommand)]
+        action: OperatorAction,
+    },
+
+    /// Query audit logs
+    Audit {
+        #[command(subcommand)]
+        action: AuditAction,
+    },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +179,13 @@ enum ProjectAction {
     Create { name: String },
     /// List projects
     List,
+    /// Add operator to project
+    AddOperator {
+        #[arg(long)]
+        email: String,
+        #[arg(long, default_value = "member")]
+        role: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -249,6 +268,8 @@ enum ReleaseAction {
 enum SchemaAction {
     /// Take schema snapshot for drift detection
     Snapshot,
+    /// Check schema drift against latest snapshot
+    Drift,
 }
 
 #[derive(Subcommand)]
@@ -274,6 +295,57 @@ enum OidcAction {
     },
     /// List OIDC providers
     ProviderList,
+    /// Delete an OIDC provider
+    ProviderDelete {
+        #[arg(long)]
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum OperatorAction {
+    /// List operators
+    List,
+    /// Invite or reset an operator
+    Invite {
+        #[arg(long)]
+        email: String,
+        #[arg(long)]
+        roles: String,
+    },
+    /// Update operator roles
+    UpdateRoles {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        roles: String,
+    },
+    /// Update operator status
+    UpdateStatus {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        status: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuditAction {
+    /// List audit logs
+    Logs {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        env: Option<String>,
+        #[arg(long)]
+        operator_id: Option<String>,
+        #[arg(long)]
+        action: Option<String>,
+        #[arg(long)]
+        resource_type: Option<String>,
+        #[arg(long, default_value = "100")]
+        limit: u32,
+    },
 }
 
 #[tokio::main]
@@ -311,6 +383,9 @@ async fn main() -> anyhow::Result<()> {
                 commands::project::create(&config, &name).await
             }
             ProjectAction::List => commands::project::list(&config).await,
+            ProjectAction::AddOperator { email, role } => {
+                commands::project::add_operator(&config, &effective_context, &email, &role).await
+            }
         },
 
         Commands::Env { action } => match action {
@@ -366,6 +441,7 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Schema { action } => match action {
             SchemaAction::Snapshot => commands::schema::snapshot(&config, &effective_context).await,
+            SchemaAction::Drift => commands::schema::drift(&config, &effective_context).await,
         },
 
         Commands::Oidc { action } => match action {
@@ -395,6 +471,43 @@ async fn main() -> anyhow::Result<()> {
             }
             OidcAction::ProviderList => {
                 commands::oidc::list_providers(&config, &effective_context).await
+            }
+            OidcAction::ProviderDelete { name } => {
+                commands::oidc::delete_provider(&config, &effective_context, &name).await
+            }
+        },
+        Commands::Operators { action } => match action {
+            OperatorAction::List => commands::operators::list(&config).await,
+            OperatorAction::Invite { email, roles } => {
+                commands::operators::invite(&config, &email, &roles).await
+            }
+            OperatorAction::UpdateRoles { id, roles } => {
+                commands::operators::update_roles(&config, &id, &roles).await
+            }
+            OperatorAction::UpdateStatus { id, status } => {
+                commands::operators::update_status(&config, &id, &status).await
+            }
+        },
+        Commands::Audit { action } => match action {
+            AuditAction::Logs {
+                project,
+                env,
+                operator_id,
+                action,
+                resource_type,
+                limit,
+            } => {
+                commands::audit::logs(
+                    &config,
+                    &effective_context,
+                    project,
+                    env,
+                    operator_id,
+                    action,
+                    resource_type,
+                    limit,
+                )
+                .await
             }
         },
     }

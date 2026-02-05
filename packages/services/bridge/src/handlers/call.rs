@@ -69,7 +69,7 @@ pub async fn handle_call(
                 .map(|s| s.to_string())
         });
 
-    if !check_rate_limit(&state, client_ip.as_deref()) {
+    if !check_rate_limit(&state, client_ip.as_deref()).await {
         return Err(BridgeError::TooManyRequests {
             message: "Rate limit exceeded".to_string(),
         });
@@ -141,6 +141,20 @@ fn extract_context(headers: &HeaderMap) -> Result<Option<RequestContext>> {
     }
 }
 
+fn extract_cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    let header = headers.get("cookie")?.to_str().ok()?;
+    header.split(';').find_map(|pair| {
+        let mut parts = pair.trim().splitn(2, '=');
+        let key = parts.next()?;
+        let value = parts.next()?;
+        if key == name {
+            Some(value.to_string())
+        } else {
+            None
+        }
+    })
+}
+
 /// 인증 처리
 async fn authenticate(
     state: &AppState,
@@ -166,10 +180,16 @@ async fn authenticate(
         .get("authorization")
         .and_then(|v| v.to_str().ok());
 
-    let token_kind = TokenKind::from_headers(api_key, auth_header).ok_or_else(|| {
-        BridgeError::Unauthorized {
-            message: "No valid credentials provided".to_string(),
-        }
+    let token_kind = if let Some(kind) = TokenKind::from_headers(api_key, auth_header) {
+        Some(kind)
+    } else if let Some(hint) = &context_hint {
+        let cookie_name = format!("stk_access_{}_{}", hint.project, hint.env);
+        extract_cookie_value(headers, &cookie_name).map(TokenKind::AccessToken)
+    } else {
+        None
+    }
+    .ok_or_else(|| BridgeError::Unauthorized {
+        message: "No valid credentials provided".to_string(),
     })?;
 
     match token_kind {
@@ -946,10 +966,47 @@ fn bind_values<'a>(
     query
 }
 
-fn check_rate_limit(state: &AppState, ip: Option<&str>) -> bool {
+async fn check_rate_limit(state: &AppState, ip: Option<&str>) -> bool {
     let key = ip.unwrap_or("unknown").to_string();
+    let window_secs = state.config.rate_limit_window_secs.max(1);
+
+    if let Some(pool) = &state.rate_limit_db {
+        let now = chrono::Utc::now().timestamp();
+        let window_start = now / window_secs as i64;
+        if let Err(err) = sqlx::query(
+            r#"INSERT INTO rate_limits (key, window_start, count)
+               VALUES (?1, ?2, 1)
+               ON CONFLICT(key, window_start) DO UPDATE SET count = count + 1"#,
+        )
+        .bind(&key)
+        .bind(window_start)
+        .execute(pool)
+        .await
+        {
+            tracing::error!("rate limit db error: {:?}", err);
+            return true;
+        }
+
+        let count: i64 = match sqlx::query_scalar(
+            r#"SELECT count FROM rate_limits WHERE key = ?1 AND window_start = ?2"#,
+        )
+        .bind(&key)
+        .bind(window_start)
+        .fetch_one(pool)
+        .await
+        {
+            Ok(value) => value,
+            Err(err) => {
+                tracing::error!("rate limit db error: {:?}", err);
+                return true;
+            }
+        };
+
+        return count <= state.config.rate_limit_max as i64;
+    }
+
     let now = std::time::Instant::now();
-    let window = std::time::Duration::from_secs(state.config.rate_limit_window_secs);
+    let window = std::time::Duration::from_secs(window_secs);
 
     let mut limits = state.rate_limits.write().unwrap();
     let entry = limits.entry(key).or_insert(crate::state::RateLimitState {

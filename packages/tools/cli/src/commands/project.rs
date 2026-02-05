@@ -52,3 +52,33 @@ pub async fn list(config: &CliConfig) -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+pub async fn add_operator(
+    config: &CliConfig,
+    ctx: &crate::context::EffectiveContext,
+    email: &str,
+    role: &str,
+) -> anyhow::Result<()> {
+    let project = ctx.require_project()?;
+    let hub_url = crate::commands::http::resolve_hub_url(config, ctx)?;
+    let client = crate::commands::http::client();
+
+    #[derive(Serialize)]
+    struct Req<'a> {
+        email: &'a str,
+        role: &'a str,
+    }
+
+    crate::commands::http::send_json::<serde_json::Value>(
+        crate::commands::http::with_auth(
+            config,
+            client
+                .post(format!("{}/api/projects/{}/operators", hub_url, project))
+                .json(&Req { email, role }),
+        )?,
+    )
+    .await?;
+
+    println!("Added operator {} to project {} as {}", email, project, role);
+    Ok(())
+}

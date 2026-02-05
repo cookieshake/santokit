@@ -25,6 +25,9 @@ pub struct AppState {
 
     /// Rate limit state (ip → window)
     pub rate_limits: RwLock<HashMap<String, RateLimitState>>,
+
+    /// Rate limit persistent store (optional)
+    pub rate_limit_db: Option<sqlx::SqlitePool>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,11 +65,32 @@ pub struct CachedRelease {
 impl AppState {
     /// 새 상태 생성
     pub async fn new(config: &Config) -> anyhow::Result<Self> {
+        let rate_limit_db = if let Some(db_url) = &config.rate_limit_db {
+            let pool = sqlx::sqlite::SqlitePoolOptions::new()
+                .max_connections(5)
+                .connect(db_url)
+                .await?;
+            sqlx::query(
+                r#"CREATE TABLE IF NOT EXISTS rate_limits (
+                    key TEXT NOT NULL,
+                    window_start INTEGER NOT NULL,
+                    count INTEGER NOT NULL,
+                    PRIMARY KEY (key, window_start)
+                )"#,
+            )
+            .execute(&pool)
+            .await?;
+            Some(pool)
+        } else {
+            None
+        };
+
         Ok(Self {
             config: config.clone(),
             release_cache: RwLock::new(HashMap::new()),
             db_pools: RwLock::new(HashMap::new()),
             rate_limits: RwLock::new(HashMap::new()),
+            rate_limit_db,
         })
     }
 

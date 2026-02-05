@@ -25,6 +25,9 @@ pub struct Config {
 
     /// Rate limit window seconds
     pub rate_limit_window_secs: u64,
+
+    /// Rate limit store (sqlite URL)
+    pub rate_limit_db: Option<String>,
 }
 
 impl Config {
@@ -67,6 +70,8 @@ impl Config {
                 .unwrap_or_else(|_| "60".to_string())
                 .parse()
                 .unwrap_or(60),
+
+            rate_limit_db: env::var("STK_RATE_LIMIT_DB").ok(),
         })
     }
 }

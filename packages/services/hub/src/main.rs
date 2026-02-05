@@ -75,12 +75,19 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/projects", post(create_project).get(list_projects))
+        .route("/api/projects/:id/operators", post(add_project_operator))
         .route("/api/projects/:id/envs", post(create_env).get(list_envs))
         .route("/api/connections", post(set_connection).get(list_connections))
         .route("/api/connections/:name/test", post(test_connection))
+        .route("/api/operators", get(list_operators))
+        .route("/api/operators/invite", post(invite_operator))
+        .route("/api/operators/:id/roles", post(update_operator_roles))
+        .route("/api/operators/:id/status", post(update_operator_status))
         .route("/api/apikeys", post(create_apikey).get(list_apikeys))
         .route("/api/apikeys/:id", delete(revoke_apikey))
+        .route("/api/audit/logs", get(list_audit_logs))
         .route("/api/schema/snapshot", post(schema_snapshot))
+        .route("/api/schema/drift", post(schema_drift))
         .route("/api/apply", post(apply))
         .route("/api/releases", get(list_releases))
         .route("/api/releases/current", get(current_release))
@@ -88,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/releases/promote", post(promote_release))
         .route("/api/releases/rollback", post(rollback_release))
         .route("/api/oidc/providers", post(set_oidc_provider).get(list_oidc_providers))
+        .route("/api/oidc/providers/:name", delete(delete_oidc_provider))
         .route("/api/endusers/signup", post(enduser_signup))
         .route("/api/endusers/login", post(enduser_login))
         .route("/api/endusers/token", post(enduser_token))
@@ -209,6 +217,17 @@ fn parse_paseto_keys() -> Vec<PasetoKey> {
         .unwrap_or_default()
 }
 
+fn require_owner(operator: &db::OperatorRow) -> Result<()> {
+    let roles = operator
+        .roles()
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+    if roles.iter().any(|r| r == "owner") {
+        Ok(())
+    } else {
+        Err(HubError::Forbidden("Owner role required".to_string()))
+    }
+}
+
 async fn require_auth(headers: &HeaderMap, state: &HubState) -> Result<db::OperatorRow> {
     let token = headers
         .get("authorization")
@@ -222,6 +241,10 @@ async fn require_auth(headers: &HeaderMap, state: &HubState) -> Result<db::Opera
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?
         .ok_or_else(|| HubError::Unauthorized("Invalid token".to_string()))?;
+
+    if !operator.is_active() {
+        return Err(HubError::Forbidden("Operator disabled".to_string()));
+    }
 
     Ok(operator)
 }
@@ -326,6 +349,9 @@ async fn login(State(state): State<HubState>, Json(req): Json<LoginRequest>) -> 
         if !verify_password(&op.password_hash, &req.password) {
             return Err(HubError::Unauthorized("Invalid credentials".to_string()));
         }
+        if !op.is_active() {
+            return Err(HubError::Unauthorized("Operator disabled".to_string()));
+        }
         op
     } else {
         let hash = hash_password(&req.password)?;
@@ -411,6 +437,8 @@ async fn create_project(
         "project.create",
         "project",
         Some(&project.id),
+        Some(&project.id),
+        None,
         Some(serde_json::json!({ "name": project.name })),
     )
     .await
@@ -435,6 +463,228 @@ async fn list_projects(State(state): State<HubState>, headers: HeaderMap) -> Res
         .map(|p| serde_json::json!({ "name": p.name, "created_at": p.created_at }))
         .collect();
     Ok(Json(list))
+}
+
+#[derive(Serialize)]
+struct OperatorResponse {
+    id: String,
+    email: String,
+    roles: Vec<String>,
+    status: String,
+    created_at: String,
+}
+
+async fn list_operators(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<OperatorResponse>>> {
+    let operator = require_auth(&headers, &state).await?;
+    require_owner(&operator)?;
+
+    let rows = state
+        .db
+        .list_operators()
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let list = rows
+        .into_iter()
+        .map(|o| {
+            let roles = o.roles().unwrap_or_default();
+            OperatorResponse {
+                id: o.id,
+                email: o.email,
+                roles,
+                status: o.status,
+                created_at: o.created_at,
+            }
+        })
+        .collect();
+
+    Ok(Json(list))
+}
+
+#[derive(Deserialize)]
+struct UpdateOperatorRolesRequest {
+    roles: Vec<String>,
+}
+
+async fn update_operator_roles(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateOperatorRolesRequest>,
+) -> Result<Json<serde_json::Value>> {
+    let operator = require_auth(&headers, &state).await?;
+    require_owner(&operator)?;
+
+    state
+        .db
+        .update_operator_roles(&id, &req.roles)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct UpdateOperatorStatusRequest {
+    status: String,
+}
+
+async fn update_operator_status(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateOperatorStatusRequest>,
+) -> Result<Json<serde_json::Value>> {
+    let operator = require_auth(&headers, &state).await?;
+    require_owner(&operator)?;
+
+    let status = req.status.as_str();
+    if status != "active" && status != "disabled" {
+        return Err(HubError::BadRequest("Invalid status".to_string()));
+    }
+
+    state
+        .db
+        .update_operator_status(&id, status)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct InviteOperatorRequest {
+    email: String,
+    roles: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct InviteOperatorResponse {
+    id: String,
+    email: String,
+    roles: Vec<String>,
+    status: String,
+    temp_password: String,
+}
+
+async fn invite_operator(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Json(req): Json<InviteOperatorRequest>,
+) -> Result<Json<InviteOperatorResponse>> {
+    let operator = require_auth(&headers, &state).await?;
+    require_owner(&operator)?;
+
+    if req.roles.is_empty() {
+        return Err(HubError::BadRequest("roles are required".to_string()));
+    }
+
+    let temp_password = new_secret();
+    let hash = hash_password(&temp_password)?;
+    let invited = state
+        .db
+        .upsert_operator(&req.email, &hash, &req.roles)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+    state
+        .db
+        .update_operator_status(&invited.id, "active")
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+    state
+        .db
+        .ensure_default_team(&invited.id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    state
+        .db
+        .insert_audit_log(
+            &operator.id,
+            "operator.invite",
+            "operator",
+            Some(&invited.id),
+            None,
+            None,
+            Some(serde_json::json!({ "email": invited.email, "roles": req.roles })),
+        )
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    Ok(Json(InviteOperatorResponse {
+        id: invited.id,
+        email: invited.email,
+        roles: req.roles,
+        status: "active".to_string(),
+        temp_password,
+    }))
+}
+
+#[derive(Deserialize)]
+struct AddProjectOperatorRequest {
+    email: String,
+    role: String,
+}
+
+async fn add_project_operator(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Path(project): Path<String>,
+    Json(req): Json<AddProjectOperatorRequest>,
+) -> Result<Json<serde_json::Value>> {
+    let operator = require_auth(&headers, &state).await?;
+    let db = state.db.clone();
+
+    let project_row = db
+        .get_project_by_name(&project)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .ok_or_else(|| HubError::NotFound("Project not found".to_string()))?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
+
+    let target = db
+        .get_operator_by_email(&req.email)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+        .ok_or_else(|| HubError::NotFound("Operator not found".to_string()))?;
+
+    let team_id = if let Some(team_id) = db
+        .get_project_team_id(&project_row.id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+    {
+        team_id
+    } else {
+        let team_id = db
+            .ensure_default_team(&operator.id)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        db.add_project_team(&project_row.id, &team_id)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        team_id
+    };
+
+    db.add_operator_membership(&target.id, &team_id, &req.role)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    db.insert_audit_log(
+        &operator.id,
+        "project.operator.add",
+        "project",
+        Some(&project_row.id),
+        Some(&project_row.id),
+        None,
+        Some(serde_json::json!({ "email": target.email, "role": req.role })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 #[derive(Deserialize)]
@@ -476,6 +726,8 @@ async fn create_env(
         &operator.id,
         "env.create",
         "env",
+        Some(&env.id),
+        Some(&project_row.id),
         Some(&env.id),
         Some(serde_json::json!({ "project": project_row.name, "name": env.name })),
     )
@@ -545,6 +797,8 @@ async fn set_connection(
         "connection.set",
         "connection",
         Some(&conn.id),
+        Some(&project_row.id),
+        Some(&env_row.id),
         Some(serde_json::json!({
             "project": project_row.name,
             "env": env_row.name,
@@ -685,6 +939,8 @@ async fn create_apikey(
         "apikey.create",
         "api_key",
         Some(&key.id.0),
+        Some(&project_row.id),
+        Some(&env_row.id),
         Some(serde_json::json!({
             "project": project_row.name,
             "env": env_row.name,
@@ -752,6 +1008,8 @@ async fn revoke_apikey(
         "apikey.revoke",
         "api_key",
         Some(&id),
+        Some(&project_row.id),
+        Some(&env_row.id),
         Some(serde_json::json!({ "project": project_row.name, "env": env_row.name })),
     )
     .await
@@ -797,6 +1055,19 @@ struct SchemaSnapshotResponse {
     project: String,
     env: String,
     snapshots: Vec<SchemaSnapshotEntry>,
+}
+
+#[derive(Serialize)]
+struct SchemaDriftResponse {
+    project: String,
+    env: String,
+    drift: Vec<SchemaDriftEntry>,
+}
+
+#[derive(Serialize)]
+struct SchemaDriftEntry {
+    connection: String,
+    issues: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -924,6 +1195,46 @@ async fn apply(
         }
     }
 
+    if only.release && !req.dry_run {
+        let connections = db
+            .list_connections(&project_row.id, &env_row.id)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+
+        for conn in connections {
+            if conn.engine != "postgres" {
+                continue;
+            }
+            let db_url = db
+                .decrypt_db_url(&conn)
+                .await
+                .map_err(|e| HubError::Internal(e.to_string()))?;
+            let current_snapshot = introspect_postgres(&db_url)
+                .await
+                .map_err(|e| HubError::BadRequest(e))?;
+            if let Some(latest) = db
+                .get_latest_snapshot(&project_row.id, &env_row.id, &conn.name)
+                .await
+                .map_err(|e| HubError::Internal(e.to_string()))?
+            {
+                let issues = compare_snapshots(&latest, &current_snapshot);
+                if !issues.is_empty() {
+                    return Err(HubError::BadRequest(format!(
+                        "Drift detected in {}: {}",
+                        conn.name,
+                        issues.join(", ")
+                    )));
+                }
+            } else {
+                let snapshot_json = serde_json::to_string(&current_snapshot)
+                    .map_err(|e| HubError::Internal(e.to_string()))?;
+                db.insert_schema_snapshot(&project_row.id, &env_row.id, &conn.name, &snapshot_json)
+                    .await
+                    .map_err(|e| HubError::Internal(e.to_string()))?;
+            }
+        }
+    }
+
     let mut release_id = None;
     let mut reused = false;
 
@@ -967,6 +1278,8 @@ async fn apply(
         "release.apply",
         "release",
         release_id.as_deref(),
+        Some(&project_row.id),
+        Some(&env_row.id),
         Some(serde_json::json!({
             "project": project_row.name,
             "env": env_row.name,
@@ -1032,6 +1345,8 @@ async fn schema_snapshot(
         "schema.snapshot",
         "schema_snapshot",
         None,
+        Some(&project_row.id),
+        Some(&env_row.id),
         Some(serde_json::json!({ "project": project_row.name, "env": env_row.name })),
     )
     .await
@@ -1042,6 +1357,142 @@ async fn schema_snapshot(
         env: req.env,
         snapshots,
     }))
+}
+
+async fn schema_drift(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Json(req): Json<SchemaSnapshotRequest>,
+) -> Result<Json<SchemaDriftResponse>> {
+    let operator = require_auth(&headers, &state).await?;
+    let db = state.db.clone();
+    let (project_row, env_row) = resolve_project_env(&db, &req.project, &req.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
+
+    let connections = db
+        .list_connections(&project_row.id, &env_row.id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let mut drift = Vec::new();
+    for conn in connections {
+        if conn.engine != "postgres" {
+            continue;
+        }
+        let db_url = db
+            .decrypt_db_url(&conn)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+        let current = introspect_postgres(&db_url)
+            .await
+            .map_err(|e| HubError::BadRequest(e))?;
+        let latest = db
+            .get_latest_snapshot(&project_row.id, &env_row.id, &conn.name)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?;
+
+        let issues = if let Some(snapshot) = latest {
+            compare_snapshots(&snapshot, &current)
+        } else {
+            vec!["no snapshot available".to_string()]
+        };
+        drift.push(SchemaDriftEntry {
+            connection: conn.name,
+            issues,
+        });
+    }
+
+    Ok(Json(SchemaDriftResponse {
+        project: req.project,
+        env: req.env,
+        drift,
+    }))
+}
+
+#[derive(Deserialize)]
+struct AuditLogQuery {
+    project: Option<String>,
+    env: Option<String>,
+    operator_id: Option<String>,
+    action: Option<String>,
+    resource_type: Option<String>,
+    limit: Option<usize>,
+}
+
+async fn list_audit_logs(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Query(query): Query<AuditLogQuery>,
+) -> Result<Json<Vec<serde_json::Value>>> {
+    let operator = require_auth(&headers, &state).await?;
+    let db = state.db.clone();
+
+    if query.env.is_some() && query.project.is_none() {
+        return Err(HubError::BadRequest(
+            "project is required when env is provided".to_string(),
+        ));
+    }
+
+    let (project_id, env_id) = if let Some(project) = &query.project {
+        let project_row = db
+            .get_project_by_name(project)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?
+            .ok_or_else(|| HubError::NotFound("Project not found".to_string()))?;
+        require_project_role(&db, &operator.id, &project_row.id, "member").await?;
+
+        let env_id = if let Some(env) = &query.env {
+            let env_row = db
+                .get_env(&project_row.id, env)
+                .await
+                .map_err(|e| HubError::Internal(e.to_string()))?
+                .ok_or_else(|| HubError::NotFound("Env not found".to_string()))?;
+            Some(env_row.id)
+        } else {
+            None
+        };
+
+        (Some(project_row.id), env_id)
+    } else {
+        require_owner(&operator)?;
+        (None, None)
+    };
+
+    let limit = query.limit.unwrap_or(100).min(500);
+    let rows = db
+        .query_audit_logs(
+            project_id.as_deref(),
+            env_id.as_deref(),
+            query.operator_id.as_deref(),
+            query.action.as_deref(),
+            query.resource_type.as_deref(),
+            limit,
+        )
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    let list = rows
+        .into_iter()
+        .map(|row| {
+            let metadata = row
+                .metadata_json
+                .as_ref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
+            serde_json::json!({
+                "id": row.id,
+                "operator_id": row.operator_id,
+                "action": row.action,
+                "resource_type": row.resource_type,
+                "resource_id": row.resource_id,
+                "project_id": row.project_id,
+                "env_id": row.env_id,
+                "metadata": metadata,
+                "created_at": row.created_at,
+            })
+        })
+        .collect();
+
+    Ok(Json(list))
 }
 
 #[derive(Deserialize)]
@@ -1189,6 +1640,25 @@ async fn promote_release(
             .decrypt_db_url(conn)
             .await
             .map_err(|e| HubError::Internal(e.to_string()))?;
+
+        let current_snapshot = introspect_postgres(&db_url)
+            .await
+            .map_err(|e| HubError::BadRequest(e))?;
+        if let Some(latest) = db
+            .get_latest_snapshot(&project_row.id, &to_env.id, &conn.name)
+            .await
+            .map_err(|e| HubError::Internal(e.to_string()))?
+        {
+            let issues = compare_snapshots(&latest, &current_snapshot);
+            if !issues.is_empty() {
+                return Err(HubError::BadRequest(format!(
+                    "Drift detected in {}: {}",
+                    conn.name,
+                    issues.join(", ")
+                )));
+            }
+        }
+
         apply_schema_to_postgres(&db_url, schema_ir, true, false)
             .await
             .map_err(|e| HubError::BadRequest(e))?;
@@ -1203,6 +1673,8 @@ async fn promote_release(
         "release.promote",
         "release",
         Some(&release_id),
+        Some(&project_row.id),
+        Some(&to_env.id),
         Some(serde_json::json!({
             "project": project_row.name,
             "to_env": to_env.name,
@@ -1242,6 +1714,8 @@ async fn rollback_release(
         "release.rollback",
         "release",
         Some(&req.to_release_id),
+        Some(&project_row.id),
+        Some(&env_row.id),
         Some(serde_json::json!({ "project": project_row.name, "env": env_row.name })),
     )
     .await
@@ -1306,6 +1780,8 @@ async fn set_oidc_provider(
         "oidc.provider.set",
         "oidc_provider",
         Some(&provider.id),
+        Some(&project_row.id),
+        Some(&env_row.id),
         Some(serde_json::json!({ "project": project_row.name, "env": env_row.name, "name": provider.name })),
     )
     .await
@@ -1364,6 +1840,41 @@ async fn list_oidc_providers(
         .collect();
 
     Ok(Json(list))
+}
+
+async fn delete_oidc_provider(
+    State(state): State<HubState>,
+    headers: HeaderMap,
+    Path(name): Path<String>,
+    Query(query): Query<OidcProviderQuery>,
+) -> Result<Json<serde_json::Value>> {
+    let operator = require_auth(&headers, &state).await?;
+    let db = state.db.clone();
+    let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    require_project_role(&db, &operator.id, &project_row.id, "admin").await?;
+
+    let deleted = db
+        .delete_oidc_provider(&project_row.id, &env_row.id, &name)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    if !deleted {
+        return Err(HubError::NotFound("OIDC provider not found".to_string()));
+    }
+
+    db.insert_audit_log(
+        &operator.id,
+        "oidc.provider.delete",
+        "oidc_provider",
+        None,
+        Some(&project_row.id),
+        Some(&env_row.id),
+        Some(serde_json::json!({ "project": project_row.name, "env": env_row.name, "name": name })),
+    )
+    .await
+    .map_err(|e| HubError::Internal(e.to_string()))?;
+
+    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 #[derive(Deserialize)]
@@ -1445,11 +1956,13 @@ async fn oidc_callback(
         .and_then(|v| v.as_str())
         .ok_or_else(|| HubError::BadRequest("OIDC token missing sub".to_string()))?
         .to_string();
-    let email = claims
+    let email_claim = claims
         .get("email")
         .and_then(|v| v.as_str())
-        .unwrap_or(&subject)
-        .to_string();
+        .map(|v| v.to_string());
+    let fallback_email = email_claim
+        .clone()
+        .unwrap_or_else(|| subject.clone());
 
     let roles = extract_roles(&claims);
 
@@ -1460,16 +1973,64 @@ async fn oidc_callback(
     {
         existing
     } else {
-        let password = new_secret();
-        let hash = hash_password(&password)?;
-        let row = db
-            .create_end_user(&session.project_id, &session.env_id, &email, &hash, &roles)
+        if let Some(email) = email_claim {
+            if let Some(existing) = db
+                .get_end_user(&session.project_id, &session.env_id, &email)
+                .await
+                .map_err(|e| HubError::Internal(e.to_string()))?
+            {
+                db.link_end_user_identity(
+                    &existing.id,
+                    &session.project_id,
+                    &session.env_id,
+                    &provider,
+                    &subject,
+                )
+                .await
+                .map_err(|e| HubError::Internal(e.to_string()))?;
+                existing
+            } else {
+                let password = new_secret();
+                let hash = hash_password(&password)?;
+                let row = db
+                    .create_end_user(&session.project_id, &session.env_id, &email, &hash, &roles)
+                    .await
+                    .map_err(|e| HubError::Internal(e.to_string()))?;
+                db.link_end_user_identity(
+                    &row.id,
+                    &session.project_id,
+                    &session.env_id,
+                    &provider,
+                    &subject,
+                )
+                .await
+                .map_err(|e| HubError::Internal(e.to_string()))?;
+                row
+            }
+        } else {
+            let password = new_secret();
+            let hash = hash_password(&password)?;
+            let row = db
+                .create_end_user(
+                    &session.project_id,
+                    &session.env_id,
+                    &fallback_email,
+                    &hash,
+                    &roles,
+                )
+                .await
+                .map_err(|e| HubError::Internal(e.to_string()))?;
+            db.link_end_user_identity(
+                &row.id,
+                &session.project_id,
+                &session.env_id,
+                &provider,
+                &subject,
+            )
             .await
             .map_err(|e| HubError::Internal(e.to_string()))?;
-        db.link_end_user_identity(&row.id, &session.project_id, &session.env_id, &provider, &subject)
-            .await
-            .map_err(|e| HubError::Internal(e.to_string()))?;
-        row
+            row
+        }
     };
 
     let ttl_seconds = std::env::var("STK_ACCESS_TTL")
@@ -2134,6 +2695,51 @@ async fn introspect_postgres(db_url: &str) -> std::result::Result<SchemaSnapshot
         .collect::<Vec<_>>();
 
     Ok(SchemaSnapshot { tables: table_list })
+}
+
+fn compare_snapshots(old: &db::SchemaSnapshotRow, current: &SchemaSnapshot) -> Vec<String> {
+    let mut issues = Vec::new();
+    let parsed: SchemaSnapshot = match serde_json::from_str(&old.snapshot_json) {
+        Ok(v) => v,
+        Err(_) => return vec!["invalid snapshot data".to_string()],
+    };
+
+    let old_tables = parsed
+        .tables
+        .iter()
+        .map(|t| (t.name.clone(), t.columns.iter().map(|c| c.name.clone()).collect::<std::collections::HashSet<_>>()))
+        .collect::<std::collections::HashMap<_, _>>();
+    let new_tables = current
+        .tables
+        .iter()
+        .map(|t| (t.name.clone(), t.columns.iter().map(|c| c.name.clone()).collect::<std::collections::HashSet<_>>()))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    for (table, cols) in &old_tables {
+        if let Some(new_cols) = new_tables.get(table) {
+            for col in cols {
+                if !new_cols.contains(col) {
+                    issues.push(format!("missing column {}.{}", table, col));
+                }
+            }
+        } else {
+            issues.push(format!("missing table {}", table));
+        }
+    }
+
+    for (table, cols) in &new_tables {
+        if !old_tables.contains_key(table) {
+            issues.push(format!("extra table {}", table));
+        } else if let Some(old_cols) = old_tables.get(table) {
+            for col in cols {
+                if !old_cols.contains(col) {
+                    issues.push(format!("extra column {}.{}", table, col));
+                }
+            }
+        }
+    }
+
+    issues
 }
 
 fn oidc_callback_url(provider: &str) -> String {

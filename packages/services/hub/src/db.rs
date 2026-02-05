@@ -37,6 +37,7 @@ impl HubDb {
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 roles TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
                 created_at TEXT NOT NULL
             );"#,
             r#"CREATE TABLE IF NOT EXISTS sessions (
@@ -155,6 +156,8 @@ impl HubDb {
                 action TEXT NOT NULL,
                 resource_type TEXT NOT NULL,
                 resource_id TEXT,
+                project_id TEXT,
+                env_id TEXT,
                 metadata_json TEXT,
                 created_at TEXT NOT NULL
             );"#,
@@ -195,6 +198,9 @@ impl HubDb {
             sqlx::query(q).execute(&self.pool).await?;
         }
         self.ensure_column("releases", "logics_json", "TEXT NOT NULL DEFAULT '{}'").await?;
+        self.ensure_column("operators", "status", "TEXT NOT NULL DEFAULT 'active'").await?;
+        self.ensure_column("audit_logs", "project_id", "TEXT").await?;
+        self.ensure_column("audit_logs", "env_id", "TEXT").await?;
 
         Ok(())
     }
@@ -224,8 +230,8 @@ impl HubDb {
         let created_at = Utc::now().to_rfc3339();
 
         sqlx::query(
-            r#"INSERT INTO operators (id, email, password_hash, roles, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5)
+            r#"INSERT INTO operators (id, email, password_hash, roles, status, created_at)
+               VALUES (?1, ?2, ?3, ?4, 'active', ?5)
                ON CONFLICT(email) DO UPDATE SET password_hash=excluded.password_hash, roles=excluded.roles"#,
         )
         .bind(&id)
@@ -242,13 +248,49 @@ impl HubDb {
 
     pub async fn get_operator_by_email(&self, email: &str) -> anyhow::Result<Option<OperatorRow>> {
         let row = sqlx::query_as::<_, OperatorRow>(
-            r#"SELECT id, email, password_hash, roles, created_at FROM operators WHERE email = ?1"#,
+            r#"SELECT id, email, password_hash, roles, status, created_at FROM operators WHERE email = ?1"#,
         )
         .bind(email)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
+    }
+
+    pub async fn list_operators(&self) -> anyhow::Result<Vec<OperatorRow>> {
+        let rows = sqlx::query_as::<_, OperatorRow>(
+            r#"SELECT id, email, password_hash, roles, status, created_at FROM operators ORDER BY created_at ASC"#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn update_operator_roles(
+        &self,
+        operator_id: &str,
+        roles: &[String],
+    ) -> anyhow::Result<()> {
+        let roles_json = serde_json::to_string(roles)?;
+        sqlx::query(r#"UPDATE operators SET roles = ?1 WHERE id = ?2"#)
+            .bind(roles_json)
+            .bind(operator_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_operator_status(
+        &self,
+        operator_id: &str,
+        status: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(r#"UPDATE operators SET status = ?1 WHERE id = ?2"#)
+            .bind(status)
+            .bind(operator_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn ensure_default_team(&self, operator_id: &str) -> anyhow::Result<String> {
@@ -327,6 +369,45 @@ impl HubDb {
         Ok(row.map(|r| r.0))
     }
 
+    pub async fn get_project_team_id(&self, project_id: &str) -> anyhow::Result<Option<String>> {
+        let row: Option<(String,)> = sqlx::query_as(
+            r#"SELECT team_id FROM project_teams WHERE project_id = ?1 LIMIT 1"#,
+        )
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| r.0))
+    }
+
+    pub async fn add_project_team(&self, project_id: &str, team_id: &str) -> anyhow::Result<()> {
+        sqlx::query(r#"INSERT OR IGNORE INTO project_teams (project_id, team_id) VALUES (?1, ?2)"#)
+            .bind(project_id)
+            .bind(team_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn add_operator_membership(
+        &self,
+        operator_id: &str,
+        team_id: &str,
+        role: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            r#"INSERT INTO operator_memberships (operator_id, team_id, role, created_at)
+               VALUES (?1, ?2, ?3, ?4)
+               ON CONFLICT(operator_id, team_id) DO UPDATE SET role=excluded.role"#,
+        )
+        .bind(operator_id)
+        .bind(team_id)
+        .bind(role)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn operator_role_for_project(
         &self,
         operator_id: &str,
@@ -364,25 +445,68 @@ impl HubDb {
         action: &str,
         resource_type: &str,
         resource_id: Option<&str>,
+        project_id: Option<&str>,
+        env_id: Option<&str>,
         metadata: Option<serde_json::Value>,
     ) -> anyhow::Result<()> {
         let id = ulid::Ulid::new().to_string();
         let created_at = Utc::now().to_rfc3339();
         let metadata_json = metadata.map(|m| m.to_string());
         sqlx::query(
-            r#"INSERT INTO audit_logs (id, operator_id, action, resource_type, resource_id, metadata_json, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"#,
+            r#"INSERT INTO audit_logs (id, operator_id, action, resource_type, resource_id, project_id, env_id, metadata_json, created_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
         )
         .bind(id)
         .bind(operator_id)
         .bind(action)
         .bind(resource_type)
         .bind(resource_id)
+        .bind(project_id)
+        .bind(env_id)
         .bind(metadata_json)
         .bind(created_at)
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub async fn list_audit_logs(&self, limit: usize) -> anyhow::Result<Vec<AuditLogRow>> {
+        self.query_audit_logs(None, None, None, None, None, limit).await
+    }
+
+    pub async fn query_audit_logs(
+        &self,
+        project_id: Option<&str>,
+        env_id: Option<&str>,
+        operator_id: Option<&str>,
+        action: Option<&str>,
+        resource_type: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<AuditLogRow>> {
+        let mut qb = sqlx::QueryBuilder::<sqlx::Sqlite>::new(
+            "SELECT id, operator_id, action, resource_type, resource_id, project_id, env_id, metadata_json, created_at FROM audit_logs",
+        );
+        let mut conditions = qb.separated(" WHERE ");
+        if let Some(project_id) = project_id {
+            conditions.push("project_id = ").push_bind(project_id);
+        }
+        if let Some(env_id) = env_id {
+            conditions.push("env_id = ").push_bind(env_id);
+        }
+        if let Some(operator_id) = operator_id {
+            conditions.push("operator_id = ").push_bind(operator_id);
+        }
+        if let Some(action) = action {
+            conditions.push("action = ").push_bind(action);
+        }
+        if let Some(resource_type) = resource_type {
+            conditions.push("resource_type = ").push_bind(resource_type);
+        }
+        qb.push(" ORDER BY created_at DESC");
+        qb.push(" LIMIT ").push_bind(limit as i64);
+        let rows = qb.build_query_as::<AuditLogRow>().fetch_all(&self.pool).await?;
+        Ok(rows)
     }
 
     pub async fn delete_session(&self, token: &str) -> anyhow::Result<()> {
@@ -395,7 +519,7 @@ impl HubDb {
 
     pub async fn get_operator_by_token(&self, token: &str) -> anyhow::Result<Option<OperatorRow>> {
         let row = sqlx::query_as::<_, OperatorRow>(
-            r#"SELECT o.id, o.email, o.password_hash, o.roles, o.created_at
+            r#"SELECT o.id, o.email, o.password_hash, o.roles, o.status, o.created_at
                FROM sessions s JOIN operators o ON s.operator_id = o.id
                WHERE s.token = ?1"#,
         )
@@ -589,6 +713,27 @@ impl HubDb {
         .execute(&self.pool)
         .await?;
         Ok(id)
+    }
+
+    pub async fn get_latest_snapshot(
+        &self,
+        project_id: &str,
+        env_id: &str,
+        connection_name: &str,
+    ) -> anyhow::Result<Option<SchemaSnapshotRow>> {
+        let row = sqlx::query_as::<_, SchemaSnapshotRow>(
+            r#"SELECT id, project_id, env_id, connection_name, snapshot_json, created_at
+               FROM schema_snapshots
+               WHERE project_id = ?1 AND env_id = ?2 AND connection_name = ?3
+               ORDER BY created_at DESC
+               LIMIT 1"#,
+        )
+        .bind(project_id)
+        .bind(env_id)
+        .bind(connection_name)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
     }
 
     pub async fn get_connection(
@@ -1027,6 +1172,23 @@ impl HubDb {
         Ok(rows)
     }
 
+    pub async fn delete_oidc_provider(
+        &self,
+        project_id: &str,
+        env_id: &str,
+        name: &str,
+    ) -> anyhow::Result<bool> {
+        let result = sqlx::query(
+            r#"DELETE FROM oidc_providers WHERE project_id = ?1 AND env_id = ?2 AND name = ?3"#,
+        )
+        .bind(project_id)
+        .bind(env_id)
+        .bind(name)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn insert_oidc_session(
         &self,
         state: &str,
@@ -1121,12 +1283,17 @@ pub struct OperatorRow {
     pub email: String,
     pub password_hash: String,
     pub roles: String,
+    pub status: String,
     pub created_at: String,
 }
 
 impl OperatorRow {
     pub fn roles(&self) -> anyhow::Result<Vec<String>> {
         Ok(serde_json::from_str(&self.roles)?)
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.status == "active"
     }
 }
 
@@ -1270,6 +1437,29 @@ impl ReleaseRow {
     pub fn logics(&self) -> anyhow::Result<std::collections::HashMap<String, String>> {
         Ok(serde_json::from_str(&self.logics_json)?)
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct SchemaSnapshotRow {
+    pub id: String,
+    pub project_id: String,
+    pub env_id: String,
+    pub connection_name: String,
+    pub snapshot_json: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AuditLogRow {
+    pub id: String,
+    pub operator_id: String,
+    pub action: String,
+    pub resource_type: String,
+    pub resource_id: Option<String>,
+    pub project_id: Option<String>,
+    pub env_id: Option<String>,
+    pub metadata_json: Option<String>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

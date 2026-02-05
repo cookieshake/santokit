@@ -88,7 +88,7 @@ impl IntoResponse for BridgeError {
             error: ErrorBody {
                 code: code.to_string(),
                 message,
-                request_id: None,
+                request_id: crate::middleware::current_request_id(),
             },
         };
 

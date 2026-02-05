@@ -102,3 +102,29 @@ pub async fn list_providers(config: &CliConfig, ctx: &EffectiveContext) -> anyho
 
     Ok(())
 }
+
+pub async fn delete_provider(
+    config: &CliConfig,
+    ctx: &EffectiveContext,
+    name: &str,
+) -> anyhow::Result<()> {
+    let project = ctx.require_project()?;
+    let env = ctx.require_env()?;
+
+    let hub_url = http::resolve_hub_url(config, ctx)?;
+    let client = http::client();
+
+    http::send_json::<serde_json::Value>(
+        http::with_auth(
+            config,
+            client.delete(format!(
+                "{}/api/oidc/providers/{}?project={}&env={}",
+                hub_url, name, project, env
+            )),
+        )?,
+    )
+    .await?;
+
+    println!("OIDC provider deleted: {}", name);
+    Ok(())
+}
