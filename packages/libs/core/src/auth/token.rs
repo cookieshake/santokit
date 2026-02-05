@@ -7,7 +7,7 @@ use crate::error::{Error, Result};
 use super::api_key::{ApiKey, ApiKeyId};
 use super::claims::AccessTokenClaims;
 use base64::{engine::general_purpose, Engine as _};
-use rusty_paseto::core::UntrustedToken;
+use rusty_paseto::core::{Footer, UntrustedToken};
 use rusty_paseto::prelude::*;
 
 /// 토큰 종류
@@ -255,7 +255,11 @@ fn extract_kid(token: &str) -> Option<String> {
 
 fn try_parse_paseto(token: &str, entry: &PasetoKey) -> Result<Option<AccessTokenClaims>> {
     let key = PasetoSymmetricKey::<V4, Local>::from(Key::from(entry.key));
+    let footer_owned = Footer::try_from_token(token).ok().flatten();
     let mut parser = PasetoParser::<V4, Local>::default();
+    if let Some(ref footer_str) = footer_owned {
+        parser.set_footer(Footer::from(footer_str.as_str()));
+    }
 
     match parser.parse(token, &key) {
         Ok(value) => {

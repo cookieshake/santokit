@@ -21,6 +21,8 @@ pnpm.pkg-path = "pnpm"
 moon.pkg-path = "moon"
 cargo.pkg-path = "cargo"
 rustc.pkg-path = "rustc"
+python313.pkg-path = "python313"
+uv.pkg-path = "uv"
 # gum.pkg-path = "gum"
 # gum.version = "^0.14.5"
 

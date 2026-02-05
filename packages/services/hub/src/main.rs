@@ -51,8 +51,12 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or_else(|_| "sqlite://.context/hub.db".to_string());
 
     if let Some(path) = db_url.strip_prefix("sqlite://") {
-        if let Some(parent) = std::path::Path::new(path).parent() {
+        let path = std::path::Path::new(path);
+        if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
+        }
+        if path != std::path::Path::new(":memory:") && !path.exists() {
+            std::fs::File::create(path)?;
         }
     }
 
@@ -75,35 +79,35 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/auth/logout", post(logout))
         .route("/api/auth/me", get(me))
         .route("/api/projects", post(create_project).get(list_projects))
-        .route("/api/projects/:id/operators", post(add_project_operator))
-        .route("/api/projects/:id/envs", post(create_env).get(list_envs))
+        .route("/api/projects/{id}/operators", post(add_project_operator))
+        .route("/api/projects/{id}/envs", post(create_env).get(list_envs))
         .route("/api/connections", post(set_connection).get(list_connections))
-        .route("/api/connections/:name/test", post(test_connection))
+        .route("/api/connections/{name}/test", post(test_connection))
         .route("/api/operators", get(list_operators))
         .route("/api/operators/invite", post(invite_operator))
-        .route("/api/operators/:id/roles", post(update_operator_roles))
-        .route("/api/operators/:id/status", post(update_operator_status))
+        .route("/api/operators/{id}/roles", post(update_operator_roles))
+        .route("/api/operators/{id}/status", post(update_operator_status))
         .route("/api/apikeys", post(create_apikey).get(list_apikeys))
-        .route("/api/apikeys/:id", delete(revoke_apikey))
+        .route("/api/apikeys/{id}", delete(revoke_apikey))
         .route("/api/audit/logs", get(list_audit_logs))
         .route("/api/schema/snapshot", post(schema_snapshot))
         .route("/api/schema/drift", post(schema_drift))
         .route("/api/apply", post(apply))
         .route("/api/releases", get(list_releases))
         .route("/api/releases/current", get(current_release))
-        .route("/api/releases/:id", get(show_release))
+        .route("/api/releases/{id}", get(show_release))
         .route("/api/releases/promote", post(promote_release))
         .route("/api/releases/rollback", post(rollback_release))
         .route("/api/oidc/providers", post(set_oidc_provider).get(list_oidc_providers))
-        .route("/api/oidc/providers/:name", delete(delete_oidc_provider))
+        .route("/api/oidc/providers/{name}", delete(delete_oidc_provider))
         .route("/api/endusers/signup", post(enduser_signup))
         .route("/api/endusers/login", post(enduser_login))
         .route("/api/endusers/token", post(enduser_token))
         .route("/api/endusers/logout", post(enduser_logout))
-        .route("/oidc/:provider/start", get(oidc_start))
-        .route("/oidc/:provider/callback", get(oidc_callback))
+        .route("/oidc/{provider}/start", get(oidc_start))
+        .route("/oidc/{provider}/callback", get(oidc_callback))
         .route(
-            "/internal/releases/:project/:env/current",
+            "/internal/releases/{project}/{env}/current",
             get(internal_current_release),
         )
         .route("/internal/apikeys/verify", post(internal_verify_apikey))
@@ -1192,6 +1196,17 @@ async fn apply(
                 .await
                 .map_err(|e| HubError::BadRequest(e))?;
             plan.extend(steps);
+
+            if !req.dry_run {
+                let current_snapshot = introspect_postgres(&db_url)
+                    .await
+                    .map_err(|e| HubError::BadRequest(e))?;
+                let snapshot_json = serde_json::to_string(&current_snapshot)
+                    .map_err(|e| HubError::Internal(e.to_string()))?;
+                db.insert_schema_snapshot(&project_row.id, &env_row.id, &conn.name, &snapshot_json)
+                    .await
+                    .map_err(|e| HubError::Internal(e.to_string()))?;
+            }
         }
     }
 
@@ -1879,18 +1894,18 @@ async fn delete_oidc_provider(
 
 #[derive(Deserialize)]
 struct OidcStartQuery {
-    project: String,
-    env: String,
     redirect: String,
 }
 
 async fn oidc_start(
     State(state): State<HubState>,
     Path(provider): Path<String>,
+    headers: HeaderMap,
     Query(query): Query<OidcStartQuery>,
 ) -> Result<Redirect> {
     let db = state.db.clone();
-    let (project_row, env_row) = resolve_project_env(&db, &query.project, &query.env).await?;
+    let (project, env) = resolve_project_env_from_headers(&headers)?;
+    let (project_row, env_row) = resolve_project_env(&db, &project, &env).await?;
 
     let provider_row = db
         .get_oidc_provider(&project_row.id, &env_row.id, &provider)
@@ -2038,17 +2053,6 @@ async fn oidc_callback(
         .and_then(|v| v.parse::<i64>().ok())
         .unwrap_or(3600);
 
-    let access_token = issue_access_token(
-        &state.paseto_keys,
-        &end_user.id,
-        &session.project_id,
-        &session.env_id,
-        &end_user.roles,
-        ttl_seconds,
-    )?;
-    let refresh = issue_refresh_token(&db, &end_user.id, &session.project_id, &session.env_id)
-        .await?;
-
     let project_name = db
         .get_project_by_id(&session.project_id)
         .await
@@ -2061,6 +2065,17 @@ async fn oidc_callback(
         .map_err(|e| HubError::Internal(e.to_string()))?
         .map(|e| e.name)
         .unwrap_or_else(|| session.env_id.clone());
+
+    let access_token = issue_access_token(
+        &state.paseto_keys,
+        &end_user.id,
+        &project_name,
+        &env_name,
+        &end_user.roles,
+        ttl_seconds,
+    )?;
+    let refresh = issue_refresh_token(&db, &end_user.id, &session.project_id, &session.env_id)
+        .await?;
 
     let access_cookie = cookie_name("stk_access", &project_name, &env_name);
     let refresh_cookie = cookie_name("stk_refresh", &project_name, &env_name);
@@ -2176,7 +2191,21 @@ async fn internal_verify_apikey(
         return Ok(Json(VerifyApiKeyResponse { valid: false, key: None }));
     }
 
-    let key = row.into_api_key().map_err(|e| HubError::Internal(e.to_string()))?;
+    let mut key = row.into_api_key().map_err(|e| HubError::Internal(e.to_string()))?;
+    if let Some(project) = db
+        .get_project_by_id(&key.project_id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+    {
+        key.project_name = Some(project.name);
+    }
+    if let Some(env) = db
+        .get_env_by_id(&key.env_id)
+        .await
+        .map_err(|e| HubError::Internal(e.to_string()))?
+    {
+        key.env_name = Some(env.name);
+    }
     db.update_api_key_last_used(&key.id.0, Utc::now())
         .await
         .map_err(|e| HubError::Internal(e.to_string()))?;
@@ -2256,8 +2285,8 @@ async fn enduser_login(
     let token = issue_access_token(
         &state.paseto_keys,
         &end_user.id,
-        &project_row.id,
-        &env_row.id,
+        &req.project,
+        &req.env,
         &end_user.roles,
         ttl_seconds,
     )?;
@@ -2352,8 +2381,8 @@ async fn enduser_token(
     let token = issue_access_token(
         &state.paseto_keys,
         &end_user.id,
-        &project_row.id,
-        &env_row.id,
+        &req.project,
+        &req.env,
         &end_user.roles,
         ttl_seconds,
     )?;
@@ -2422,8 +2451,8 @@ async fn enduser_logout(
 fn issue_access_token(
     keys: &[PasetoKey],
     user_id: &str,
-    project_id: &str,
-    env_id: &str,
+    project: &str,
+    env: &str,
     roles: &[String],
     ttl_seconds: i64,
 ) -> Result<String> {
@@ -2435,23 +2464,16 @@ fn issue_access_token(
     let exp = now + Duration::seconds(ttl_seconds);
     let jti = ulid::Ulid::new().to_string();
 
-    let footer_json = key
-        .kid
-        .as_ref()
-        .map(|kid| serde_json::json!({ "kid": kid }).to_string());
     let paseto_key = PasetoSymmetricKey::<V4, Local>::from(Key::from(key.key));
     let mut builder = PasetoBuilder::<V4, Local>::default();
-    if let Some(ref json) = footer_json {
-        builder.set_footer(Footer::from(json.as_str()));
-    }
 
     let token = builder
         .set_claim(SubjectClaim::from(user_id))
         .set_claim(IssuedAtClaim::try_from(now.to_rfc3339()).map_err(|e| HubError::Internal(e.to_string()))?)
         .set_claim(ExpirationClaim::try_from(exp.to_rfc3339()).map_err(|e| HubError::Internal(e.to_string()))?)
         .set_claim(TokenIdentifierClaim::from(jti.as_str()))
-        .set_claim(CustomClaim::try_from(("project_id", project_id)).map_err(|e| HubError::Internal(e.to_string()))?)
-        .set_claim(CustomClaim::try_from(("env_id", env_id)).map_err(|e| HubError::Internal(e.to_string()))?)
+        .set_claim(CustomClaim::try_from(("project_id", project)).map_err(|e| HubError::Internal(e.to_string()))?)
+        .set_claim(CustomClaim::try_from(("env_id", env)).map_err(|e| HubError::Internal(e.to_string()))?)
         .set_claim(CustomClaim::try_from(("roles", roles.to_vec())).map_err(|e| HubError::Internal(e.to_string()))?)
         .build(&paseto_key)
         .map_err(|e| HubError::Internal(e.to_string()))?;
@@ -2494,6 +2516,7 @@ fn parse_refresh_token(token: &str) -> Option<(String, String)> {
 
 fn release_to_json(r: &ReleaseRow) -> serde_json::Value {
     serde_json::json!({
+        "id": r.id,
         "release_id": r.id,
         "project": r.project_id,
         "env": r.env_id,
@@ -2746,6 +2769,21 @@ fn oidc_callback_url(provider: &str) -> String {
     let base = std::env::var("STK_HUB_PUBLIC_URL")
         .unwrap_or_else(|_| "http://localhost:4000".to_string());
     format!("{}/oidc/{}/callback", base.trim_end_matches('/'), provider)
+}
+
+fn resolve_project_env_from_headers(headers: &HeaderMap) -> Result<(String, String)> {
+    let project = header_string(headers, "x-santokit-project")
+        .ok_or_else(|| HubError::BadRequest("Missing project".to_string()))?;
+    let env =
+        header_string(headers, "x-santokit-env").ok_or_else(|| HubError::BadRequest("Missing env".to_string()))?;
+    Ok((project, env))
+}
+
+fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_string())
 }
 
 #[derive(Deserialize)]

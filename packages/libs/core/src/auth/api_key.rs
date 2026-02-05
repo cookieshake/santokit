@@ -47,6 +47,14 @@ pub struct ApiKey {
     /// 바인딩된 환경 ID
     pub env_id: String,
 
+    /// 프로젝트 이름 (옵션)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
+
+    /// 환경 이름 (옵션)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub env_name: Option<String>,
+
     /// 부여된 role 목록
     pub roles: Vec<String>,
 
@@ -145,6 +153,8 @@ mod tests {
             name: "Production Key".to_string(),
             project_id: "proj_abc".to_string(),
             env_id: "prod".to_string(),
+            project_name: None,
+            env_name: None,
             roles: vec!["admin".to_string()],
             status: ApiKeyStatus::Active,
             created_at: chrono::Utc::now(),

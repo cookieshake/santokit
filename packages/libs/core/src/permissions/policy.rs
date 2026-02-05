@@ -62,14 +62,12 @@ impl Default for OperationPermission {
 }
 
 /// Role 요구사항
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoleRequirement {
     /// 인증 없이 허용
-    #[serde(rename = "public")]
     Public,
 
     /// 인증된 사용자만 허용
-    #[serde(rename = "authenticated")]
     Authenticated,
 
     /// 특정 role 필요
@@ -94,6 +92,19 @@ impl RoleRequirement {
     /// authenticated 여부
     pub fn is_authenticated(&self) -> bool {
         matches!(self, RoleRequirement::Authenticated)
+    }
+}
+
+impl Serialize for RoleRequirement {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            RoleRequirement::Public => serializer.serialize_str("public"),
+            RoleRequirement::Authenticated => serializer.serialize_str("authenticated"),
+            RoleRequirement::Role(role) => serializer.serialize_str(role),
+        }
     }
 }
 

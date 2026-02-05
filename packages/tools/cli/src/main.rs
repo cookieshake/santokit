@@ -274,7 +274,13 @@ enum SchemaAction {
 
 #[derive(Subcommand)]
 enum OidcAction {
+    /// Manage OIDC providers
+    Provider {
+        #[command(subcommand)]
+        action: OidcProviderAction,
+    },
     /// Create or update an OIDC provider
+    #[command(hide = true)]
     ProviderSet {
         #[arg(long)]
         name: String,
@@ -294,9 +300,41 @@ enum OidcAction {
         redirect_uri: Vec<String>,
     },
     /// List OIDC providers
+    #[command(hide = true)]
     ProviderList,
     /// Delete an OIDC provider
+    #[command(hide = true)]
     ProviderDelete {
+        #[arg(long)]
+        name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum OidcProviderAction {
+    /// Create or update an OIDC provider
+    Set {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        issuer: String,
+        #[arg(long)]
+        auth_url: String,
+        #[arg(long)]
+        token_url: String,
+        #[arg(long)]
+        userinfo_url: Option<String>,
+        #[arg(long)]
+        client_id: String,
+        #[arg(long)]
+        client_secret: String,
+        #[arg(long)]
+        redirect_uri: Vec<String>,
+    },
+    /// List OIDC providers
+    List,
+    /// Delete an OIDC provider
+    Delete {
         #[arg(long)]
         name: String,
     },
@@ -445,6 +483,38 @@ async fn main() -> anyhow::Result<()> {
         },
 
         Commands::Oidc { action } => match action {
+            OidcAction::Provider { action } => match action {
+                OidcProviderAction::Set {
+                    name,
+                    issuer,
+                    auth_url,
+                    token_url,
+                    userinfo_url,
+                    client_id,
+                    client_secret,
+                    redirect_uri,
+                } => {
+                    commands::oidc::set_provider(
+                        &config,
+                        &effective_context,
+                        &name,
+                        &issuer,
+                        &auth_url,
+                        &token_url,
+                        userinfo_url.as_deref(),
+                        &client_id,
+                        &client_secret,
+                        redirect_uri,
+                    )
+                    .await
+                }
+                OidcProviderAction::List => {
+                    commands::oidc::list_providers(&config, &effective_context).await
+                }
+                OidcProviderAction::Delete { name } => {
+                    commands::oidc::delete_provider(&config, &effective_context, &name).await
+                }
+            },
             OidcAction::ProviderSet {
                 name,
                 issuer,

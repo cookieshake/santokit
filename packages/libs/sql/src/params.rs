@@ -35,7 +35,7 @@ pub struct CrudParams {
     pub offset: Option<u64>,
 
     /// INSERT/UPDATE 데이터
-    #[serde(default)]
+    #[serde(default, alias = "values")]
     pub data: Option<HashMap<String, Value>>,
 }
 

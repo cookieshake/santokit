@@ -1,10 +1,10 @@
-FROM rust:1.85-slim AS builder
+FROM rust:bookworm AS builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 COPY packages ./packages
 
-RUN cargo build --release -p stk-hub
+RUN cargo build --release -p stk-hub --locked
 
 FROM debian:bookworm-slim
 RUN apt-get update \
@@ -12,6 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/hub /usr/local/bin/hub
+RUN mkdir -p /data
 
 ENV STK_HUB_PORT=4000
 EXPOSE 4000

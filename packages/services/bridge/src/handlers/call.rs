@@ -196,17 +196,24 @@ async fn authenticate(
         TokenKind::ApiKey { key_id, secret } => {
             let key = verify_api_key(state, &key_id.0, &secret).await?;
 
-            if let Some(hint) = &context_hint {
-                if !key.matches_context(&hint.project, &hint.env) {
+            let context = if let Some(hint) = &context_hint {
+                let matches_id = key.matches_context(&hint.project, &hint.env);
+                let matches_name = key.project_name.as_deref() == Some(&hint.project)
+                    && key.env_name.as_deref() == Some(&hint.env);
+                if !matches_id && !matches_name {
                     return Err(BridgeError::Forbidden {
                         message: "API key context mismatch".to_string(),
                     });
                 }
-            }
-
-            let context = RequestContext {
-                project: key.project_id.clone(),
-                env: key.env_id.clone(),
+                RequestContext {
+                    project: hint.project.clone(),
+                    env: hint.env.clone(),
+                }
+            } else {
+                RequestContext {
+                    project: key.project_name.clone().unwrap_or_else(|| key.project_id.clone()),
+                    env: key.env_name.clone().unwrap_or_else(|| key.env_id.clone()),
+                }
             };
 
             Ok(AuthOutcome {
