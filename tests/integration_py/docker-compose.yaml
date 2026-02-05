@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stk
+      POSTGRES_PASSWORD: stk
+      POSTGRES_DB: stk
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stk"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  hub:
+    build:
+      context: ../..
+      dockerfile: packages/services/hub/Dockerfile
+    environment:
+      STK_HUB_DB_URL: sqlite:///data/hub.db
+      STK_HUB_PORT: "4000"
+      STK_SECRET_KEY: dev-secret-key-32bytes-long!!!!!
+      STK_PASETO_KEYS: kid1:dev-secret-key-32bytes-long!!!!!
+    volumes:
+      - hub-data:/data
+    ports:
+      - "4000:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  bridge:
+    build:
+      context: ../..
+      dockerfile: packages/services/bridge/Dockerfile
+    environment:
+      STK_BRIDGE_PORT: "3000"
+      STK_HUB_URL: http://hub:4000
+      STK_PASETO_KEYS: kid1:dev-secret-key-32bytes-long!!!!!
+      STK_DISABLE_AUTH: "false"
+    ports:
+      - "3000:3000"
+    depends_on:
+      hub:
+        condition: service_started
+
+  cli:
+    build:
+      context: ../..
+      dockerfile: packages/tools/cli/Dockerfile
+    environment:
+      STK_HUB_URL: http://hub:4000
+    volumes:
+      - ../..:/workspace:ro
+    working_dir: /workspace
+    command: ["sleep", "infinity"]
+    depends_on:
+      hub:
+        condition: service_started
+
+  oidc-debugger:
+    image: leplusorg/openid-connect-provider-debugger:1.27.1
+    profiles: ["oidc"]
+    ports:
+      - "8080:80"
+
+volumes:
+  hub-data:

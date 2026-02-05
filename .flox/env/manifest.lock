@@ -3,6 +3,9 @@
   "manifest": {
     "version": 1,
     "install": {
+      "cargo": {
+        "pkg-path": "cargo"
+      },
       "go": {
         "pkg-path": "go"
       },
@@ -14,6 +17,15 @@
       },
       "pnpm": {
         "pkg-path": "pnpm"
+      },
+      "python313": {
+        "pkg-path": "python313"
+      },
+      "rustc": {
+        "pkg-path": "rustc"
+      },
+      "uv": {
+        "pkg-path": "uv"
       }
     },
     "hook": {},
@@ -29,19 +41,135 @@
   },
   "packages": [
     {
+      "attr_path": "cargo",
+      "broken": false,
+      "derivation": "/nix/store/smqakq8ly0wv3q2jvhvcihx2qd4bmi9i-cargo-1.92.0.drv",
+      "description": "Downloads your Rust project's dependencies and builds your project",
+      "install_id": "cargo",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "cargo-1.92.0",
+      "pname": "cargo",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:35:47.079638Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/v4bvnkm0p5x41fhybskr0cf2zvkgyrvv-cargo-1.92.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "cargo",
+      "broken": false,
+      "derivation": "/nix/store/y2jp95g3j7vprw96lllsxliklvxh4icv-cargo-1.92.0.drv",
+      "description": "Downloads your Rust project's dependencies and builds your project",
+      "install_id": "cargo",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "cargo-1.92.0",
+      "pname": "cargo",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:05:02.411917Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/piiqs6x2m8gv0n3z3pys8scn0y673piy-cargo-1.92.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "cargo",
+      "broken": false,
+      "derivation": "/nix/store/60bc9hzhvc4bl212dnj4450y58hwmaaw-cargo-1.92.0.drv",
+      "description": "Downloads your Rust project's dependencies and builds your project",
+      "install_id": "cargo",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "cargo-1.92.0",
+      "pname": "cargo",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:32:50.991368Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/wf6279pgydd1nny4s5nx1msian6dbf9p-cargo-1.92.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "cargo",
+      "broken": false,
+      "derivation": "/nix/store/3gdr50smf0vcnv3v8slv9v3dd4splibj-cargo-1.92.0.drv",
+      "description": "Downloads your Rust project's dependencies and builds your project",
+      "install_id": "cargo",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "cargo-1.92.0",
+      "pname": "cargo",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:06:17.520874Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/yqcsaywfvcyy9wmbzb5fawp29icgi7cb-cargo-1.92.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
       "attr_path": "go",
       "broken": false,
       "derivation": "/nix/store/h19kjqi10ynjk0i6scllhv82gx45p58w-go-1.25.5.drv",
       "description": "Go Programming language",
       "install_id": "go",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "go-1.25.5",
       "pname": "go",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T04:35:13.563455Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:35:48.267906Z",
       "stabilities": [
         "unstable"
       ],
@@ -64,13 +192,13 @@
       "description": "Go Programming language",
       "install_id": "go",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "go-1.25.5",
       "pname": "go",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:16:59.460254Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:05:04.470101Z",
       "stabilities": [
         "unstable"
       ],
@@ -93,13 +221,13 @@
       "description": "Go Programming language",
       "install_id": "go",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "go-1.25.5",
       "pname": "go",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:56:07.260633Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:32:52.129468Z",
       "stabilities": [
         "unstable"
       ],
@@ -122,13 +250,13 @@
       "description": "Go Programming language",
       "install_id": "go",
       "license": "BSD-3-Clause",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "go-1.25.5",
       "pname": "go",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T06:51:09.344245Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:06:19.781095Z",
       "stabilities": [
         "unstable"
       ],
@@ -151,13 +279,13 @@
       "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
       "install_id": "moon",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "moon-1.41.8",
       "pname": "moon",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T04:35:35.236920Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:36:08.298910Z",
       "stabilities": [
         "unstable"
       ],
@@ -180,13 +308,13 @@
       "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
       "install_id": "moon",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "moon-1.41.8",
       "pname": "moon",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:17:31.214867Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:05:35.210677Z",
       "stabilities": [
         "unstable"
       ],
@@ -209,13 +337,13 @@
       "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
       "install_id": "moon",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "moon-1.41.8",
       "pname": "moon",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:56:27.430043Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:33:12.907903Z",
       "stabilities": [
         "unstable"
       ],
@@ -238,13 +366,13 @@
       "description": "Task runner and repo management tool for the web ecosystem, written in Rust",
       "install_id": "moon",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "moon-1.41.8",
       "pname": "moon",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T06:51:43.632983Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:06:55.061021Z",
       "stabilities": [
         "unstable"
       ],
@@ -267,13 +395,13 @@
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs_24",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "nodejs-24.13.0",
       "pname": "nodejs_24",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T04:35:37.384339Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:36:10.374548Z",
       "stabilities": [
         "unstable"
       ],
@@ -298,13 +426,13 @@
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs_24",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "nodejs-24.13.0",
       "pname": "nodejs_24",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:17:34.379272Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:05:38.199893Z",
       "stabilities": [
         "unstable"
       ],
@@ -329,13 +457,13 @@
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs_24",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "nodejs-24.13.0",
       "pname": "nodejs_24",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:56:29.518937Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:33:15.067896Z",
       "stabilities": [
         "unstable"
       ],
@@ -360,13 +488,13 @@
       "description": "Event-driven I/O framework for the V8 JavaScript engine",
       "install_id": "nodejs_24",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "nodejs-24.13.0",
       "pname": "nodejs_24",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T06:51:46.928987Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:06:58.459700Z",
       "stabilities": [
         "unstable"
       ],
@@ -391,13 +519,13 @@
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T04:35:51.267494Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:36:23.686274Z",
       "stabilities": [
         "unstable"
       ],
@@ -420,13 +548,13 @@
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:17:53.283044Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:05:56.436116Z",
       "stabilities": [
         "unstable"
       ],
@@ -449,13 +577,13 @@
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T05:56:42.610398Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:33:29.254162Z",
       "stabilities": [
         "unstable"
       ],
@@ -478,13 +606,13 @@
       "description": "Fast, disk space efficient package manager for JavaScript",
       "install_id": "pnpm",
       "license": "MIT",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=c5296fdd05cfa2c187990dd909864da9658df755",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
       "name": "pnpm-10.28.0",
       "pname": "pnpm",
-      "rev": "c5296fdd05cfa2c187990dd909864da9658df755",
-      "rev_count": 933481,
-      "rev_date": "2026-01-23T12:18:02Z",
-      "scrape_date": "2026-01-26T06:52:07.089420Z",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:07:19.315452Z",
       "stabilities": [
         "unstable"
       ],
@@ -495,6 +623,368 @@
       ],
       "outputs": {
         "out": "/nix/store/q182xhmnqzff17cdg90hcp44ljgvqqr7-pnpm-10.28.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python313",
+      "broken": false,
+      "derivation": "/nix/store/2f9f2hcw24ncf86i63v9apf9s0k2fgyz-python3-3.13.11.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python313",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "python3-3.13.11",
+      "pname": "python313",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:36:25.368105Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.13.11",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/qzgxkh5rnlswnj5ywhag0djwvn83kr3r-python3-3.13.11"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python313",
+      "broken": false,
+      "derivation": "/nix/store/cadmaxzh2h1i0id6zfa5zq0mjpr9qqda-python3-3.13.11.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python313",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "python3-3.13.11",
+      "pname": "python313",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:05:58.875194Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.13.11",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/bzb0vriv1a1kaz9zv6lzv62zkcvvm88r-python3-3.13.11-debug",
+        "out": "/nix/store/ygzfhw5nxrn7qqfqmz2s9p6cikcjqqkh-python3-3.13.11"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python313",
+      "broken": false,
+      "derivation": "/nix/store/dk525f5vnsqf4c5m90rhm2hazww34xmx-python3-3.13.11.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python313",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "python3-3.13.11",
+      "pname": "python313",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:33:31.053072Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.13.11",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/5wy2gaa1kaskq3j63zwl1jw6a0ffllx5-python3-3.13.11"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "python313",
+      "broken": false,
+      "derivation": "/nix/store/bmlsz2bfdg16dr10k8rm3hmkq09h06nr-python3-3.13.11.drv",
+      "description": "High-level dynamically-typed programming language",
+      "install_id": "python313",
+      "license": "Python-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "python3-3.13.11",
+      "pname": "python313",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:07:22.146511Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "python3-3.13.11",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/gvhg8py0jr9v83ysqb86rr2s1yidppca-python3-3.13.11-debug",
+        "out": "/nix/store/slhpx9glq7vl99bwi93bgrhn3syv98s1-python3-3.13.11"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "rustc",
+      "broken": false,
+      "derivation": "/nix/store/cn0lz3fcyjn5208k0l0wcsrks0dr1cbn-rustc-wrapper-1.92.0.drv",
+      "description": "Safe, concurrent, practical language (wrapper script)",
+      "install_id": "rustc",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "rustc-wrapper-1.92.0",
+      "pname": "rustc",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:37:12.849004Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/09yhz82jqxwbmn4dbjy7p9hrvbr4g0mn-rustc-wrapper-1.92.0-doc",
+        "man": "/nix/store/ch54xfkz0dlqvhbinzlbkva2898nvihl-rustc-wrapper-1.92.0-man",
+        "out": "/nix/store/ymskl36napcfgl6wjz1xdjn0jd25inrv-rustc-wrapper-1.92.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "rustc",
+      "broken": false,
+      "derivation": "/nix/store/m43c677crygc100zvns1jh3kn84nxid2-rustc-wrapper-1.92.0.drv",
+      "description": "Safe, concurrent, practical language (wrapper script)",
+      "install_id": "rustc",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "rustc-wrapper-1.92.0",
+      "pname": "rustc",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:06:58.083752Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/camfpqmi94ssc1p8vkygp2s621ykq80m-rustc-wrapper-1.92.0-doc",
+        "man": "/nix/store/5ggpm5m3wkxj05si2id4b6sq4alf90qg-rustc-wrapper-1.92.0-man",
+        "out": "/nix/store/qnvqgfiqh8s08cqp452665l2b60a811h-rustc-wrapper-1.92.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "rustc",
+      "broken": false,
+      "derivation": "/nix/store/c1vlh5i24x1p7gnp1gbm0v78kdijj4jr-rustc-wrapper-1.92.0.drv",
+      "description": "Safe, concurrent, practical language (wrapper script)",
+      "install_id": "rustc",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "rustc-wrapper-1.92.0",
+      "pname": "rustc",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:34:22.521634Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/7271gqq93bbxrqb9rw3hf5b5x6wdm2cn-rustc-wrapper-1.92.0-doc",
+        "man": "/nix/store/2k3fdy9xjwkx06rlfwfn449w442vgk0i-rustc-wrapper-1.92.0-man",
+        "out": "/nix/store/zkcwgmgli06nsh0v8yv82gnh5whgcdyl-rustc-wrapper-1.92.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "rustc",
+      "broken": false,
+      "derivation": "/nix/store/xh6m92k61nzgxdssfhhigkbdwybdjdji-rustc-wrapper-1.92.0.drv",
+      "description": "Safe, concurrent, practical language (wrapper script)",
+      "install_id": "rustc",
+      "license": "[ MIT, Apache-2.0 ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "rustc-wrapper-1.92.0",
+      "pname": "rustc",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:08:27.867805Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.92.0",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/425gvb2xnhkwb1izjr97wpwdwndwi516-rustc-wrapper-1.92.0-doc",
+        "man": "/nix/store/n1d4093lcx7ljgks1j352fbrf5w551v9-rustc-wrapper-1.92.0-man",
+        "out": "/nix/store/qvpg842zrjkywv7sqgw2h05spdyzcj86-rustc-wrapper-1.92.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/v9837hla896n3pjv9hmx3ii4sk30p0r9-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T04:38:05.099501Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/rnci0wgac6r47gr09bhb6x5fyc507i43-uv-0.9.28"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/dlp3p1pzksliq0pli84ff5ifbvh13211-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:08:05.766037Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/r6g6avldk8dlj30dmk2p2971akkmw9h3-uv-0.9.28"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/1dxxxb7ia28b4fcvn00vvc2xmal3kamm-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T05:35:19.462644Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/vrzvbvds4vvj5989w838m562vavqzd4w-uv-0.9.28"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/b88x7x44g3gj9mfw2ql683lfcxqjil95-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=bf922a59c5c9998a6584645f7d0de689512e444c",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "bf922a59c5c9998a6584645f7d0de689512e444c",
+      "rev_count": 940107,
+      "rev_date": "2026-02-04T04:57:53Z",
+      "scrape_date": "2026-02-05T06:09:42.925406Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/jddcqyx0099mynb7gxr0dd66hkpqqs2r-uv-0.9.28"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
