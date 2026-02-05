@@ -82,7 +82,7 @@ impl IntoResponse for BridgeError {
             error: ErrorBody {
                 code: code.to_string(),
                 message,
-                request_id: None, // TODO: request ID 추적
+                request_id: None,
             },
         };
 

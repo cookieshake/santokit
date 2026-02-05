@@ -15,5 +15,6 @@ pub mod error;
 pub mod id;
 pub mod permissions;
 pub mod schema;
+pub mod storage;
 
 pub use error::{Error, Result};

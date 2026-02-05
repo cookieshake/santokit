@@ -3,8 +3,10 @@
 //! 요청에 대해 권한 정책을 평가합니다.
 
 use super::context::EvalContext;
-use super::policy::{Operation, OperationPermission, PermissionPolicy, RoleRequirement};
+use super::policy::{Operation, PermissionPolicy, RoleRequirement};
 use crate::error::{Error, Result};
+use cel_interpreter::{Context, Program};
+use cel_interpreter::objects::Value as CelValue;
 
 /// 권한 평가 결과
 #[derive(Debug, Clone)]
@@ -134,8 +136,6 @@ impl<'a> PermissionEvaluator<'a> {
 
     /// CEL 조건 평가
     ///
-    /// # TODO
-    /// 실제 CEL 엔진 연동은 후속 구현에서 진행합니다.
     /// 현재는 간단한 패턴만 지원합니다.
     fn evaluate_condition(&self, condition: &str, ctx: &EvalContext) -> Result<EvalResult> {
         // 간단한 owner 체크 패턴 인식
@@ -157,19 +157,19 @@ impl<'a> PermissionEvaluator<'a> {
             }
         }
 
-        // "true" 조건
-        if condition.trim() == "true" {
-            return Ok(EvalResult::allow());
+        // resource 기반 조건은 지원하지 않음
+        if condition.contains("resource.") {
+            return Err(Error::CelExpression {
+                message: "resource-based conditions require SQL translation".to_string(),
+            });
         }
 
-        // "false" 조건
-        if condition.trim() == "false" {
-            return Ok(EvalResult::deny("condition evaluated to false"));
+        let allowed = eval_cel_bool(condition, ctx)?;
+        if allowed {
+            Ok(EvalResult::allow())
+        } else {
+            Ok(EvalResult::deny("condition evaluated to false"))
         }
-
-        // 알 수 없는 조건은 일단 허용 (실제 CEL 엔진 연동 후 수정)
-        // TODO: cel-interpreter 연동
-        Ok(EvalResult::allow())
     }
 
     /// Owner 체크 조건에서 컬럼 이름 추출
@@ -195,7 +195,7 @@ impl<'a> PermissionEvaluator<'a> {
         table: &str,
         column: &str,
         op: Operation,
-        ctx: &EvalContext,
+        _ctx: &EvalContext,
     ) -> bool {
         let table_perms = match self.policy.tables.get(table) {
             Some(perms) => perms,
@@ -212,6 +212,61 @@ impl<'a> PermissionEvaluator<'a> {
             Operation::Insert => columns.allows_insert(column),
             Operation::Update => columns.allows_update(column),
             Operation::Delete => true, // DELETE는 컬럼 제한 없음
+        }
+    }
+}
+
+fn eval_cel_bool(condition: &str, ctx: &EvalContext) -> Result<bool> {
+    let mut cel_ctx = Context::default();
+    let vars = ctx.to_cel_variables();
+    for (name, value) in vars {
+        cel_ctx.add_variable_from_value(name, json_to_cel(value));
+    }
+
+    let program = Program::compile(condition).map_err(|e| Error::CelExpression {
+        message: e.to_string(),
+    })?;
+
+    let result = program.execute(&cel_ctx).map_err(|e| Error::CelExpression {
+        message: e.to_string(),
+    })?;
+
+    match result {
+        CelValue::Bool(b) => Ok(b),
+        _ => Err(Error::CelExpression {
+            message: "condition did not evaluate to bool".to_string(),
+        }),
+    }
+}
+
+fn json_to_cel(value: serde_json::Value) -> CelValue {
+    match value {
+        serde_json::Value::Null => CelValue::Null,
+        serde_json::Value::Bool(b) => CelValue::Bool(b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                CelValue::Int(i)
+            } else if let Some(u) = n.as_u64() {
+                CelValue::UInt(u)
+            } else if let Some(f) = n.as_f64() {
+                CelValue::Float(f)
+            } else {
+                CelValue::Null
+            }
+        }
+        serde_json::Value::String(s) => CelValue::String(s.into()),
+        serde_json::Value::Array(arr) => {
+            let values = arr.into_iter().map(json_to_cel).collect::<Vec<_>>();
+            CelValue::List(std::sync::Arc::new(values))
+        }
+        serde_json::Value::Object(map) => {
+            let mut obj = std::collections::HashMap::new();
+            for (k, v) in map {
+                obj.insert(cel_interpreter::objects::Key::from(k), json_to_cel(v));
+            }
+            CelValue::Map(cel_interpreter::objects::Map {
+                map: std::sync::Arc::new(obj),
+            })
         }
     }
 }

@@ -6,6 +6,8 @@ use crate::error::{Error, Result};
 
 use super::api_key::{ApiKey, ApiKeyId};
 use super::claims::AccessTokenClaims;
+use base64::{engine::general_purpose, Engine as _};
+use rusty_paseto::prelude::*;
 
 /// 토큰 종류
 #[derive(Debug, Clone)]
@@ -53,7 +55,6 @@ impl TokenKind {
 /// Bridge에서 토큰을 검증하고 컨텍스트를 추출합니다.
 pub struct TokenValidator {
     /// PASETO 복호화 키 (현재 + 이전 키들)
-    /// TODO: 실제 PASETO 키 타입으로 변경
     _symmetric_keys: Vec<String>,
 }
 
@@ -67,18 +68,65 @@ impl TokenValidator {
 
     /// Access Token 검증 및 Claims 추출
     ///
-    /// # TODO
-    /// 실제 PASETO 검증은 후속 구현에서 진행합니다.
+    /// 현재는 개발/로컬 환경에서 사용할 수 있는 간단한 디코딩 방식만 지원합니다.
+    /// - `json:<json>` 형식
+    /// - base64/base64url 인코딩된 JSON 문자열
     pub fn validate_access_token(&self, _token: &str) -> Result<AccessTokenClaims> {
-        // TODO: pasetors 크레이트로 실제 검증 구현
-        // 1. 토큰 복호화
-        // 2. kid로 적절한 키 선택
-        // 3. exp 검증
-        // 4. claims 반환
+        let token = _token.trim();
+
+        if !self._symmetric_keys.is_empty() {
+            if let Some(claims) = self.validate_paseto(token)? {
+                return Ok(claims);
+            }
+            return Err(Error::InvalidToken {
+                reason: "paseto validation failed".to_string(),
+            });
+        }
+
+        // 1) json: prefix (테스트/개발용)
+        if let Some(raw) = token.strip_prefix("json:") {
+            let claims: AccessTokenClaims = serde_json::from_str(raw)?;
+            return Ok(claims);
+        }
+
+        // 2) base64url (no padding) -> JSON
+        if let Ok(bytes) = general_purpose::URL_SAFE_NO_PAD.decode(token) {
+            if let Ok(claims) = serde_json::from_slice::<AccessTokenClaims>(&bytes) {
+                return Ok(claims);
+            }
+        }
+
+        // 3) base64 (standard) -> JSON
+        if let Ok(bytes) = general_purpose::STANDARD.decode(token) {
+            if let Ok(claims) = serde_json::from_slice::<AccessTokenClaims>(&bytes) {
+                return Ok(claims);
+            }
+        }
 
         Err(Error::InvalidToken {
-            reason: "token validation not yet implemented".to_string(),
+            reason: "unable to decode access token".to_string(),
         })
+    }
+
+    fn validate_paseto(&self, token: &str) -> Result<Option<AccessTokenClaims>> {
+        for key in &self._symmetric_keys {
+            let Some(key_bytes) = parse_key_material(key) else {
+                continue;
+            };
+
+            let key = PasetoSymmetricKey::<V4, Local>::from(Key::from(key_bytes));
+            let parsed = PasetoParser::<V4, Local>::default().parse(token, &key);
+
+            match parsed {
+                Ok(value) => {
+                    let claims: AccessTokenClaims = serde_json::from_value(value)?;
+                    return Ok(Some(claims));
+                }
+                Err(_) => continue,
+            }
+        }
+
+        Ok(None)
     }
 
     /// Access Token Claims를 컨텍스트와 대조 검증
@@ -104,9 +152,6 @@ impl TokenValidator {
     }
 
     /// API Key 검증
-    ///
-    /// # TODO
-    /// 실제 검증은 Hub API 호출 또는 캐시 조회로 수행합니다.
     pub fn verify_api_key(
         key: &ApiKey,
         expected_project: &str,
@@ -131,9 +176,53 @@ impl TokenValidator {
     }
 }
 
+fn parse_key_material(raw: &str) -> Option<[u8; 32]> {
+    let trimmed = raw.trim();
+
+    if trimmed.len() == 64 && trimmed.chars().all(|c| c.is_ascii_hexdigit()) {
+        let bytes = decode_hex(trimmed)?;
+        return bytes.as_slice().try_into().ok();
+    }
+
+    if let Ok(bytes) = general_purpose::URL_SAFE_NO_PAD.decode(trimmed) {
+        if bytes.len() == 32 {
+            return bytes.as_slice().try_into().ok();
+        }
+    }
+
+    if let Ok(bytes) = general_purpose::STANDARD.decode(trimmed) {
+        if bytes.len() == 32 {
+            return bytes.as_slice().try_into().ok();
+        }
+    }
+
+    let raw_bytes = trimmed.as_bytes();
+    if raw_bytes.len() == 32 {
+        return raw_bytes.try_into().ok();
+    }
+
+    None
+}
+
+fn decode_hex(input: &str) -> Option<Vec<u8>> {
+    if input.len() % 2 != 0 {
+        return None;
+    }
+
+    let mut bytes = Vec::with_capacity(input.len() / 2);
+    let mut chars = input.chars();
+    while let (Some(h), Some(l)) = (chars.next(), chars.next()) {
+        let hi = h.to_digit(16)?;
+        let lo = l.to_digit(16)?;
+        bytes.push(((hi << 4) | lo) as u8);
+    }
+    Some(bytes)
+}
+
 /// 인증된 주체
 ///
 /// 토큰 검증 후 확정된 호출자 정보입니다.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum AuthenticatedPrincipal {
     /// API Key로 인증된 서버/CI
@@ -153,6 +242,7 @@ pub enum AuthenticatedPrincipal {
     },
 }
 
+#[allow(dead_code)]
 impl AuthenticatedPrincipal {
     /// Subject ID (key_id 또는 user_id)
     pub fn subject(&self) -> &str {

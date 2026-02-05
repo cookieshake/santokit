@@ -2,6 +2,8 @@
 
 use crate::config::CliConfig;
 use crate::context::EffectiveContext;
+use crate::commands::http;
+use serde::{Deserialize, Serialize};
 
 pub async fn create(
     config: &CliConfig,
@@ -12,12 +14,44 @@ pub async fn create(
     let project = ctx.require_project()?;
     let env = ctx.require_env()?;
 
-    println!("Creating API key for {}/{}", project, env);
-    println!("  Name: {}", name);
-    println!("  Roles: {}", roles);
-    // TODO: Hub API 호출
-    // 성공 시 keyId와 apiKey 출력 (apiKey는 1회만)
-    println!("API key create - not yet implemented");
+    let hub_url = http::resolve_hub_url(config, ctx)?;
+    let client = http::client();
+
+    let role_list: Vec<String> = roles
+        .split(',')
+        .map(|r| r.trim().to_string())
+        .filter(|r| !r.is_empty())
+        .collect();
+
+    #[derive(Serialize)]
+    struct CreateRequest<'a> {
+        project: &'a str,
+        env: &'a str,
+        name: &'a str,
+        roles: Vec<String>,
+    }
+
+    #[derive(Deserialize)]
+    struct CreateResponse {
+        key_id: String,
+        api_key: String,
+        roles: Vec<String>,
+    }
+
+    let resp: CreateResponse = http::send_json(
+        http::with_auth(config, client.post(format!("{}/api/apikeys", hub_url)))?
+            .json(&CreateRequest {
+                project,
+                env,
+                name,
+                roles: role_list,
+            }),
+    )
+    .await?;
+
+    println!("Key ID: {}", resp.key_id);
+    println!("API Key (store securely): {}", resp.api_key);
+    println!("Roles: {}", resp.roles.join(", "));
     Ok(())
 }
 
@@ -25,10 +59,48 @@ pub async fn list(config: &CliConfig, ctx: &EffectiveContext) -> anyhow::Result<
     let project = ctx.require_project()?;
     let env = ctx.require_env()?;
 
-    println!("Listing API keys for {}/{}", project, env);
-    // TODO: Hub API 호출
-    // 테이블 출력: keyId, name, roles, status, createdAt, lastUsedAt
-    println!("API key list - not yet implemented");
+    let hub_url = http::resolve_hub_url(config, ctx)?;
+    let client = http::client();
+
+    #[derive(Deserialize)]
+    struct ApiKey {
+        id: stk_core::auth::ApiKeyId,
+        name: String,
+        roles: Vec<String>,
+        status: stk_core::auth::ApiKeyStatus,
+        created_at: chrono::DateTime<chrono::Utc>,
+        last_used_at: Option<chrono::DateTime<chrono::Utc>>,
+    }
+
+    let keys: Vec<ApiKey> = http::send_json(
+        http::with_auth(
+            config,
+            client.get(format!(
+                "{}/api/apikeys?project={}&env={}",
+                hub_url, project, env
+            )),
+        )?,
+    )
+    .await?;
+
+    if keys.is_empty() {
+        println!("No API keys.");
+        return Ok(());
+    }
+
+    for key in keys {
+        println!(
+            "{} ({}) roles={} status={:?} created={} last_used={}",
+            key.id.0,
+            key.name,
+            key.roles.join(","),
+            key.status,
+            key.created_at,
+            key.last_used_at
+                .map(|d| d.to_string())
+                .unwrap_or_else(|| "-".to_string())
+        );
+    }
     Ok(())
 }
 
@@ -40,8 +112,20 @@ pub async fn revoke(
     let project = ctx.require_project()?;
     let env = ctx.require_env()?;
 
-    println!("Revoking API key '{}' for {}/{}", key_id, project, env);
-    // TODO: Hub API 호출
-    println!("API key revoke - not yet implemented");
+    let hub_url = http::resolve_hub_url(config, ctx)?;
+    let client = http::client();
+
+    let _resp: serde_json::Value = http::send_json(
+        http::with_auth(
+            config,
+            client.delete(format!(
+                "{}/api/apikeys/{}?project={}&env={}",
+                hub_url, key_id, project, env
+            )),
+        )?,
+    )
+    .await?;
+
+    println!("API key revoked: {}", key_id);
     Ok(())
 }

@@ -71,6 +71,23 @@ pub enum ApiKeyStatus {
     Revoked,
 }
 
+impl ApiKeyStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ApiKeyStatus::Active => "active",
+            ApiKeyStatus::Revoked => "revoked",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(ApiKeyStatus::Active),
+            "revoked" => Some(ApiKeyStatus::Revoked),
+            _ => None,
+        }
+    }
+}
+
 impl ApiKey {
     /// 활성 상태인지 확인
     pub fn is_active(&self) -> bool {

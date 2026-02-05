@@ -147,8 +147,10 @@ impl RefreshTokenClaims {
 }
 
 /// 쿠키 이름 생성 헬퍼
+#[allow(dead_code)]
 pub struct CookieNames;
 
+#[allow(dead_code)]
 impl CookieNames {
     /// Access Token 쿠키 이름
     pub fn access(project: &str, env: &str) -> String {

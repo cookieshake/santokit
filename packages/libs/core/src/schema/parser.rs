@@ -59,7 +59,7 @@ impl SchemaParser {
 
         // 참조 검증
         let ref_errors = schema.validate_all_references();
-        if let Some((conn, error)) = ref_errors.first() {
+        if let Some((_conn, error)) = ref_errors.first() {
             match error {
                 super::ir::ReferenceError::TableNotFound {
                     from_table,
@@ -218,6 +218,7 @@ impl SchemaParser {
 #[derive(Debug, Deserialize)]
 struct RawSchema {
     #[serde(default = "default_version")]
+    #[allow(dead_code)]
     version: u32,
     tables: HashMap<String, RawTable>,
 }

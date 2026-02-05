@@ -30,6 +30,16 @@ serde_json = { workspace = true }
 # Auth
 pasetors = { workspace = true }
 
+# HTTP
+reqwest = { workspace = true }
+
+# Storage (S3)
+aws-config = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+
+# CEL
+cel-interpreter = { workspace = true }
+
 # Utilities
 thiserror = { workspace = true }
 anyhow = { workspace = true }

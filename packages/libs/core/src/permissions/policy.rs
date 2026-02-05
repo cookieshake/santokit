@@ -62,8 +62,7 @@ impl Default for OperationPermission {
 }
 
 /// Role 요구사항
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum RoleRequirement {
     /// 인증 없이 허용
     #[serde(rename = "public")]
@@ -95,6 +94,16 @@ impl RoleRequirement {
     /// authenticated 여부
     pub fn is_authenticated(&self) -> bool {
         matches!(self, RoleRequirement::Authenticated)
+    }
+}
+
+impl<'de> Deserialize<'de> for RoleRequirement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Ok(RoleRequirement::from_str(value.as_str()))
     }
 }
 

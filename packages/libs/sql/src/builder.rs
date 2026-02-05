@@ -3,13 +3,11 @@
 //! Schema IR과 CrudParams를 받아 SQL을 생성합니다.
 //! SeaQuery를 사용하여 SQL Injection을 방지합니다.
 
-use sea_query::{
-    Alias, Expr, Iden, Order, PostgresQueryBuilder, Query, SelectStatement,
-};
+use sea_query::{Expr, Iden, Order, PostgresQueryBuilder, Query, SelectStatement};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use stk_core::schema::{SchemaIr, Table};
+use stk_core::schema::Table;
 
 use crate::params::{CrudParams, SortOrder, WhereClause, WhereOperator};
 
@@ -25,14 +23,13 @@ impl Iden for DynIden {
 
 /// SELECT 쿼리 빌더
 pub struct SelectBuilder<'a> {
-    schema: &'a SchemaIr,
     table: &'a Table,
 }
 
 impl<'a> SelectBuilder<'a> {
     /// 새 빌더 생성
-    pub fn new(schema: &'a SchemaIr, table: &'a Table) -> Self {
-        Self { schema, table }
+    pub fn new(table: &'a Table) -> Self {
+        Self { table }
     }
 
     /// SQL 생성
@@ -260,9 +257,7 @@ impl<'a> InsertBuilder<'a> {
             values.push(value_to_expr(val).into());
         }
 
-        for col in &columns {
-            query.columns([col.clone()]);
-        }
+        query.columns(columns.clone());
         query.values_panic(values);
 
         // RETURNING
@@ -438,7 +433,7 @@ mod tests {
     fn test_select_builder_basic() {
         let schema = sample_schema();
         let table = schema.get_table("users").unwrap();
-        let builder = SelectBuilder::new(&schema, table);
+        let builder = SelectBuilder::new(table);
 
         let params = CrudParams {
             limit: Some(10),
@@ -455,7 +450,7 @@ mod tests {
     fn test_select_builder_with_where() {
         let schema = sample_schema();
         let table = schema.get_table("users").unwrap();
-        let builder = SelectBuilder::new(&schema, table);
+        let builder = SelectBuilder::new(table);
 
         let params = CrudParams {
             r#where: Some(WhereClause::empty().eq("status", Value::String("active".to_string()))),

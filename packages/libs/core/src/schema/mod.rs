@@ -20,7 +20,7 @@ mod table;
 mod types;
 
 pub use column::{Column, ColumnPrefix, Reference, ReferentialAction};
-pub use ir::SchemaIr;
+pub use ir::{ProjectSchema, SchemaIr};
 pub use parser::SchemaParser;
-pub use table::{IdColumn, Table};
+pub use table::{IdColumn, Index, Table};
 pub use types::ColumnType;

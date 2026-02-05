@@ -25,7 +25,7 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chrono", "uuid"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "json", "chrono", "uuid"] }
 sea-query = { version = "0.32", features = ["backend-postgres", "with-chrono", "with-json", "with-uuid"] }
 sea-query-binder = { version = "0.7", features = ["sqlx-postgres"] }
 
@@ -42,8 +42,10 @@ comfy-table = "7.1"
 
 # Auth & Crypto
 pasetors = "0.7"
+rusty_paseto = "0.8"
 argon2 = "0.5"
 rand = "0.8"
+chacha20poly1305 = "0.10"
 
 # CEL (Common Expression Language)
 cel-interpreter = "0.8"
@@ -51,6 +53,7 @@ cel-interpreter = "0.8"
 # Utilities
 thiserror = "2.0"
 anyhow = "1.0"
+futures = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -60,6 +63,8 @@ url = "2.5"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 base64 = "0.22"
 dotenvy = "0.15"
+aws-config = "1.5"
+aws-sdk-s3 = "1.60"
 
 # Internal crates
 stk-core = { path = "packages/libs/core" }

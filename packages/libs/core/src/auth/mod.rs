@@ -17,6 +17,6 @@ mod api_key;
 mod claims;
 mod token;
 
-pub use api_key::{ApiKey, ApiKeyId};
+pub use api_key::{ApiKey, ApiKeyFull, ApiKeyId, ApiKeyStatus};
 pub use claims::{AccessTokenClaims, RefreshTokenClaims};
 pub use token::{TokenKind, TokenValidator};

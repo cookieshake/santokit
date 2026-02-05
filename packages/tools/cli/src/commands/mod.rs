@@ -6,5 +6,6 @@ pub mod auth;
 pub mod connections;
 pub mod context;
 pub mod env;
+pub mod http;
 pub mod project;
 pub mod release;
