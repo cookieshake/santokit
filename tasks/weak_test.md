@@ -43,8 +43,8 @@
 | `where` 빈 상태 거부 | ✅ 필수 안전장치 | ✅ 테스트 완료 (`10-crud-advanced`) |
 | `expand` (FK 관계 로드) | ✅ 정의됨 | ✅ 테스트 완료 (`11-crud-expand`) |
 | `orderBy`, `limit`, `offset` | ✅ 정의됨 | ✅ 테스트 완료 (`12-crud-pagination-sorting`) |
-| CEL `condition` WHERE 주입 | ✅ 정의됨 | ❌ 미테스트 |
-| Column Prefix Rules | ✅ 정의됨 | ❌ 미테스트 |
+| CEL `condition` WHERE 주입 | ✅ 정의됨 | ✅ 테스트 완료 (`test_flow_13_cel_condition.py`) |
+| Column Prefix Rules | ✅ 정의됨 | ✅ 테스트 완료 (`test_flow_14_column_prefix.py`) |
 | `columns.select/update` 제한 | ✅ 정의됨 | ❌ 미테스트 |
 
 ### 2. Storage (`storage.md`)

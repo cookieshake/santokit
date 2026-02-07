@@ -1,0 +1,23 @@
+version: 1
+tables:
+  users:
+    connection: main
+    id:
+      name: id
+      generate: ulid
+    columns:
+      normal:
+        type: string
+        nullable: true
+      s_sensitive:
+        type: string
+        nullable: true
+      c_secret:
+        type: string
+        nullable: true
+      p_private:
+        type: string
+        nullable: true
+      _system:
+        type: string
+        nullable: true

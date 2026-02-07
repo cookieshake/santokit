@@ -1,0 +1,12 @@
+tables:
+  users:
+    select:
+      roles: [authenticated]
+      condition: "resource.id == request.auth.sub"
+    insert:
+      roles: [authenticated]
+    update:
+      roles: [authenticated]
+      condition: "resource.id == request.auth.sub"
+    delete:
+      roles: [admin]

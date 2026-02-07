@@ -401,11 +401,15 @@ async fn handle_auto_crud(
     }
 
     // 파라미터 파싱
-    let crud_params: CrudParams = serde_json::from_value(params).map_err(|e| {
-        BridgeError::BadRequest {
-            message: format!("Invalid params: {}", e),
-        }
-    })?;
+    let crud_params: CrudParams = if params.is_null() {
+        CrudParams::default()
+    } else {
+        serde_json::from_value(params).map_err(|e| {
+            BridgeError::BadRequest {
+                message: format!("Invalid params: {}", e),
+            }
+        })?
+    };
 
     // Column permissions 체크 (permissions.yaml의 columns 섹션 적용)
     // 명시적 select 요청 시 권한 체크
