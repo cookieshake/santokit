@@ -98,6 +98,8 @@ santokit/
 | `plan/flows/12-crud-pagination-sorting.md` | `tests/integration_py/tests/test_flow_12_crud_pagination_sorting.py` |
 | `plan/flows/13-cel-condition.md` | `tests/integration_py/tests/test_flow_13_cel_condition.py` |
 | `plan/flows/14-column-prefix.md` | `tests/integration_py/tests/test_flow_14_column_prefix.py` |
+| `plan/flows/16-column-permissions.md` | `tests/integration_py/tests/test_flow_16_column_permissions.py` |
+
 
 **규칙:**
 - Flow 문서를 추가하면 해당 테스트 파일도 반드시 추가해야 합니다.

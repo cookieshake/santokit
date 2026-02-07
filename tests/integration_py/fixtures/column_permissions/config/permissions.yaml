@@ -1,0 +1,14 @@
+tables:
+  users:
+    select:
+      roles: [authenticated]
+    insert:
+      roles: [authenticated]
+    update:
+      roles: [authenticated]
+    delete:
+      roles: [authenticated]
+    columns:
+      select: ["*", "!c_*"]
+      insert: ["name", "email", "avatar_url", "bio"]
+      update: ["name", "avatar_url"]

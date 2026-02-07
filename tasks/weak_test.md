@@ -45,7 +45,7 @@
 | `orderBy`, `limit`, `offset` | ✅ 정의됨 | ✅ 테스트 완료 (`12-crud-pagination-sorting`) |
 | CEL `condition` WHERE 주입 | ✅ 정의됨 | ✅ 테스트 완료 (`test_flow_13_cel_condition.py`) |
 | Column Prefix Rules | ✅ 정의됨 | ✅ 테스트 완료 (`test_flow_14_column_prefix.py`) |
-| `columns.select/update` 제한 | ✅ 정의됨 | ❌ 미테스트 |
+| `columns.select/update` 제한 | ✅ 정의됨 | ✅ 테스트 완료 (`test_flow_16_column_permissions.py`) |
 
 ### 2. Storage (`storage.md`)
 
