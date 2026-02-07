@@ -1,0 +1,17 @@
+version: 1
+tables:
+  items:
+    connection: main
+    id:
+      name: id
+      generate: client
+    columns:
+      name:
+        type: string
+        nullable: false
+      price:
+        type: int
+        nullable: false
+      owner_id:
+        type: string
+        nullable: true

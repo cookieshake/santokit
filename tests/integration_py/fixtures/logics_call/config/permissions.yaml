@@ -1,0 +1,10 @@
+tables:
+  items:
+    select:
+      roles: [authenticated]
+    insert:
+      roles: [authenticated]
+    update:
+      roles: [authenticated]
+    delete:
+      roles: [authenticated]
