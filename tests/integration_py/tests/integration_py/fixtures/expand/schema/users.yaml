@@ -1,0 +1,9 @@
+
+version: 1
+tables:
+  users:
+    connection: main
+    id: { name: id, generate: ulid }
+    columns:
+      email: { type: string, nullable: false, unique: true }
+      name: { type: string, nullable: true }

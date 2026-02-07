@@ -1,0 +1,15 @@
+
+version: 1
+tables:
+  posts:
+    connection: main
+    id: { name: id, generate: ulid }
+    columns:
+      title: { type: string, nullable: false }
+      user_id:
+        type: string
+        nullable: false
+        references:
+          table: users
+          as: user
+          onDelete: cascade

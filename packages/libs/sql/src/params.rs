@@ -23,7 +23,7 @@ pub struct CrudParams {
     pub expand: Option<Vec<String>>,
 
     /// 정렬
-    #[serde(default)]
+    #[serde(default, alias = "orderBy")]
     pub order_by: Option<HashMap<String, SortOrder>>,
 
     /// 제한

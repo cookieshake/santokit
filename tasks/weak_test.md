@@ -41,8 +41,8 @@
 | `update` 작업 | ✅ 정의됨 | ✅ 테스트 완료 (`10-crud-advanced`) |
 | `delete` 작업 | ✅ 정의됨 | ✅ 테스트 완료 (`10-crud-advanced`) |
 | `where` 빈 상태 거부 | ✅ 필수 안전장치 | ✅ 테스트 완료 (`10-crud-advanced`) |
-| `expand` (FK 관계 로드) | ✅ 정의됨 | ❌ 미테스트 |
-| `orderBy`, `limit`, `offset` | ✅ 정의됨 | ⚠️ limit만 사용 |
+| `expand` (FK 관계 로드) | ✅ 정의됨 | ✅ 테스트 완료 (`11-crud-expand`) |
+| `orderBy`, `limit`, `offset` | ✅ 정의됨 | ✅ 테스트 완료 (`12-crud-pagination-sorting`) |
 | CEL `condition` WHERE 주입 | ✅ 정의됨 | ❌ 미테스트 |
 | Column Prefix Rules | ✅ 정의됨 | ❌ 미테스트 |
 | `columns.select/update` 제한 | ✅ 정의됨 | ❌ 미테스트 |
