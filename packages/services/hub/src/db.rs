@@ -1137,7 +1137,7 @@ impl HubDb {
 
         self.get_oidc_provider(project_id, env_id, name)
             .await?
-            .ok_or_else(|| anyhow::anyhow!("oidc provider missing"))?
+            .ok_or_else(|| anyhow::anyhow!("oidc provider missing"))
     }
 
     pub async fn get_oidc_provider(

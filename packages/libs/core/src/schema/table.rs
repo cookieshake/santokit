@@ -120,6 +120,66 @@ impl Table {
     pub fn writable_columns(&self) -> impl Iterator<Item = &Column> {
         self.columns.iter().filter(|c| c.allows_write())
     }
+
+    /// expand 이름으로 FK 참조 정보 찾기
+    ///
+    /// expand 이름은 references.alias 또는 참조 테이블 이름과 매칭됩니다.
+    pub fn find_reference_by_expand_name(&self, expand_name: &str) -> Option<ExpandInfo> {
+        for column in &self.columns {
+            if let Some(ref reference) = column.references {
+                // alias가 있으면 alias로 매칭, 없으면 테이블 이름으로 매칭
+                let matches = reference
+                    .alias
+                    .as_ref()
+                    .map(|alias| alias == expand_name)
+                    .unwrap_or_else(|| reference.table == expand_name);
+
+                if matches {
+                    return Some(ExpandInfo {
+                        relation_name: reference
+                            .alias
+                            .clone()
+                            .unwrap_or_else(|| reference.table.clone()),
+                        fk_column: column.name.clone(),
+                        target_table: reference.table.clone(),
+                        target_column: reference.column.clone(),
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// 모든 expand 가능한 관계 목록
+    pub fn all_expand_infos(&self) -> Vec<ExpandInfo> {
+        self.columns
+            .iter()
+            .filter_map(|column| {
+                column.references.as_ref().map(|reference| ExpandInfo {
+                    relation_name: reference
+                        .alias
+                        .clone()
+                        .unwrap_or_else(|| reference.table.clone()),
+                    fk_column: column.name.clone(),
+                    target_table: reference.table.clone(),
+                    target_column: reference.column.clone(),
+                })
+            })
+            .collect()
+    }
+}
+
+/// expand 쿼리 정보
+#[derive(Debug, Clone)]
+pub struct ExpandInfo {
+    /// 결과에 포함될 관계 이름 (alias 또는 테이블명)
+    pub relation_name: String,
+    /// 현재 테이블의 FK 컬럼 이름
+    pub fk_column: String,
+    /// 참조 대상 테이블 이름
+    pub target_table: String,
+    /// 참조 대상 컬럼 이름 (None이면 대상 테이블의 PK)
+    pub target_column: Option<String>,
 }
 
 #[cfg(test)]
@@ -166,5 +226,100 @@ mod tests {
         let writable: Vec<_> = table.writable_columns().collect();
         assert_eq!(writable.len(), 1);
         assert_eq!(writable[0].name, "email");
+    }
+
+    fn table_with_references() -> Table {
+        use super::super::column::Reference;
+
+        Table {
+            name: "posts".to_string(),
+            connection: "main".to_string(),
+            id: IdColumn::default(),
+            columns: vec![
+                Column {
+                    name: "title".to_string(),
+                    column_type: super::super::types::ColumnType::String,
+                    nullable: false,
+                    unique: false,
+                    default: None,
+                    references: None,
+                },
+                Column {
+                    name: "author_id".to_string(),
+                    column_type: super::super::types::ColumnType::String,
+                    nullable: false,
+                    unique: false,
+                    default: None,
+                    references: Some(Reference {
+                        table: "users".to_string(),
+                        column: None,
+                        alias: Some("author".to_string()),
+                        on_delete: super::super::column::ReferentialAction::Restrict,
+                        on_update: super::super::column::ReferentialAction::Restrict,
+                    }),
+                },
+                Column {
+                    name: "category_id".to_string(),
+                    column_type: super::super::types::ColumnType::String,
+                    nullable: true,
+                    unique: false,
+                    default: None,
+                    references: Some(Reference {
+                        table: "categories".to_string(),
+                        column: None,
+                        alias: None, // alias 없음 - 테이블명으로 매칭
+                        on_delete: super::super::column::ReferentialAction::SetNull,
+                        on_update: super::super::column::ReferentialAction::Restrict,
+                    }),
+                },
+            ],
+            indexes: vec![],
+        }
+    }
+
+    #[test]
+    fn test_find_reference_by_alias() {
+        let table = table_with_references();
+
+        // alias로 찾기
+        let author = table.find_reference_by_expand_name("author");
+        assert!(author.is_some());
+        let info = author.unwrap();
+        assert_eq!(info.relation_name, "author");
+        assert_eq!(info.fk_column, "author_id");
+        assert_eq!(info.target_table, "users");
+    }
+
+    #[test]
+    fn test_find_reference_by_table_name() {
+        let table = table_with_references();
+
+        // 테이블명으로 찾기 (alias 없는 경우)
+        let category = table.find_reference_by_expand_name("categories");
+        assert!(category.is_some());
+        let info = category.unwrap();
+        assert_eq!(info.relation_name, "categories");
+        assert_eq!(info.fk_column, "category_id");
+        assert_eq!(info.target_table, "categories");
+    }
+
+    #[test]
+    fn test_find_reference_not_found() {
+        let table = table_with_references();
+
+        let unknown = table.find_reference_by_expand_name("unknown");
+        assert!(unknown.is_none());
+    }
+
+    #[test]
+    fn test_all_expand_infos() {
+        let table = table_with_references();
+
+        let infos = table.all_expand_infos();
+        assert_eq!(infos.len(), 2);
+
+        let names: Vec<_> = infos.iter().map(|i| i.relation_name.as_str()).collect();
+        assert!(names.contains(&"author"));
+        assert!(names.contains(&"categories"));
     }
 }

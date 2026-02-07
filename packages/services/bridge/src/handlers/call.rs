@@ -407,6 +407,62 @@ async fn handle_auto_crud(
         }
     })?;
 
+    // Column permissions 체크 (permissions.yaml의 columns 섹션 적용)
+    // 명시적 select 요청 시 권한 체크
+    if let Some(stk_sql::params::SelectColumns::Columns(ref cols)) = crud_params.select {
+        for col_name in cols {
+            if !evaluator.check_column_access(table, col_name, stk_core::permissions::Operation::Select, &eval_ctx) {
+                return Err(BridgeError::Forbidden {
+                    message: format!("Column '{}' is not allowed for select", col_name),
+                });
+            }
+        }
+    }
+
+    // Insert 시 컬럼 권한 체크
+    if matches!(operation, CrudOperation::Insert) {
+        if let Some(ref data) = crud_params.data {
+            for col_name in data.keys() {
+                // System 컬럼(_) 쓰기 금지는 여전히 스키마 레벨에서 체크
+                if let Some(col) = table_def.find_column(col_name) {
+                    if !col.allows_write() {
+                        return Err(BridgeError::BadRequest {
+                            message: format!("Column '{}' is read-only (system column)", col_name),
+                        });
+                    }
+                }
+                // permissions.yaml의 columns.insert 체크
+                if !evaluator.check_column_access(table, col_name, stk_core::permissions::Operation::Insert, &eval_ctx) {
+                    return Err(BridgeError::Forbidden {
+                        message: format!("Column '{}' is not allowed for insert", col_name),
+                    });
+                }
+            }
+        }
+    }
+
+    // Update 시 컬럼 권한 체크
+    if matches!(operation, CrudOperation::Update) {
+        if let Some(ref data) = crud_params.data {
+            for col_name in data.keys() {
+                // System 컬럼(_) 쓰기 금지
+                if let Some(col) = table_def.find_column(col_name) {
+                    if !col.allows_write() {
+                        return Err(BridgeError::BadRequest {
+                            message: format!("Column '{}' is read-only (system column)", col_name),
+                        });
+                    }
+                }
+                // permissions.yaml의 columns.update 체크
+                if !evaluator.check_column_access(table, col_name, stk_core::permissions::Operation::Update, &eval_ctx) {
+                    return Err(BridgeError::Forbidden {
+                        message: format!("Column '{}' is not allowed for update", col_name),
+                    });
+                }
+            }
+        }
+    }
+
     if release
         .schema
         .get_connection(&table_def.connection)
@@ -439,7 +495,104 @@ async fn handle_auto_crud(
                 .fetch_all(&pool)
                 .await
                 .map_err(BridgeError::Database)?;
-            let data = rows_to_json(rows);
+            let mut data = rows_to_json(rows);
+
+            // expand 처리
+            if let Some(expand_names) = &crud_params.expand {
+                for expand_name in expand_names {
+                    // 1. expand 정보 조회
+                    let expand_info = table_def.find_reference_by_expand_name(expand_name)
+                        .ok_or_else(|| BridgeError::BadRequest {
+                            message: format!("Unknown expand relation: {}", expand_name),
+                        })?;
+
+                    // 2. 대상 테이블 조회
+                    let target_table = release.schema.find_table(&expand_info.target_table)
+                        .ok_or_else(|| BridgeError::NotFound {
+                            message: format!("Expand target table not found: {}", expand_info.target_table),
+                        })?;
+
+                    // 3. Cross-connection expand 금지
+                    if target_table.connection != table_def.connection {
+                        return Err(BridgeError::BadRequest {
+                            message: format!(
+                                "Cross-connection expand not allowed: {} -> {}",
+                                table_def.connection, target_table.connection
+                            ),
+                        });
+                    }
+
+                    // 4. expand 대상 테이블에 대한 select 권한 체크
+                    let expand_eval = evaluator.evaluate(&expand_info.target_table, stk_core::permissions::Operation::Select, &eval_ctx)
+                        .map_err(BridgeError::Core)?;
+                    if !expand_eval.allowed {
+                        return Err(BridgeError::Forbidden {
+                            message: format!(
+                                "No select permission on expanded table: {}",
+                                expand_info.target_table
+                            ),
+                        });
+                    }
+
+                    // 5. FK 값들 수집
+                    let fk_values: Vec<String> = data.iter()
+                        .filter_map(|row| {
+                            row.get(&expand_info.fk_column)
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .collect();
+
+                    if fk_values.is_empty() {
+                        continue;
+                    }
+
+                    // 6. 대상 테이블의 PK 컬럼명
+                    let target_pk = expand_info.target_column
+                        .as_ref()
+                        .unwrap_or(&target_table.id.name);
+
+                    // 7. IN 쿼리로 관계 데이터 조회
+                    let placeholders: Vec<String> = fk_values.iter().enumerate()
+                        .map(|(i, _)| format!("${}", i + 1))
+                        .collect();
+                    let expand_sql = format!(
+                        "SELECT * FROM \"{}\" WHERE \"{}\" IN ({})",
+                        target_table.name,
+                        target_pk,
+                        placeholders.join(", ")
+                    );
+
+                    let mut query = sqlx::query(&expand_sql);
+                    for val in &fk_values {
+                        query = query.bind(val);
+                    }
+                    let expand_rows = query.fetch_all(&pool).await.map_err(BridgeError::Database)?;
+                    let expand_data = rows_to_json(expand_rows);
+
+                    // 8. PK로 인덱싱
+                    let expand_map: std::collections::HashMap<String, Value> = expand_data
+                        .into_iter()
+                        .filter_map(|row| {
+                            row.get(target_pk)
+                                .and_then(|v| v.as_str())
+                                .map(|pk| (pk.to_string(), row.clone()))
+                        })
+                        .collect();
+
+                    // 9. 메인 결과에 병합
+                    for row in data.iter_mut() {
+                        if let Some(fk_val) = row.get(&expand_info.fk_column).and_then(|v| v.as_str()) {
+                            if let Some(related) = expand_map.get(fk_val) {
+                                if let Value::Object(obj) = row {
+                                    obj.insert(expand_info.relation_name.clone(), related.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             serde_json::json!({ "data": data, "values": values })
         }
         CrudOperation::Insert => {
