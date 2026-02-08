@@ -125,38 +125,85 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 - 단순 role 체크를 넘어선 동적 조건을 정의한다.
 - 구글 CEL(Common Expression Language) 표준을 사용한다.
 
-테이블/컬럼 레벨 권한:
-- `select|insert|update|delete`에 대해 허용 주체를 지정한다.
-- `columns`로 select/insert/update 가능한 컬럼을 제한할 수 있다.
+### 4.1) Defaults Section
 
-예(스케치):
+전역 기본값을 커스터마이징할 수 있다:
+
+```yaml
+defaults:
+  select_star_exclude: ["c_*", "p_*"]    # SELECT * 시 자동 제외할 컬럼 패턴
+  readonly_prefixes: ["_*"]               # insert/update 불가 컬럼 패턴
+```
+
+- `select_star_exclude`: `select: ["*"]` 또는 명시하지 않았을 때 기본적으로 제외할 컬럼 패턴 (glob 지원)
+- `readonly_prefixes`: insert/update 작업에서 허용하지 않을 컬럼 패턴 (glob 지원)
+
+이 값들을 설정하지 않으면 시스템 기본값이 적용된다 (Section 5 참조).
+
+### 4.2) Rule-Based Permissions
+
+각 operation(`select|insert|update|delete`)에 대해 **ordered rule array**를 정의한다:
+
 ```yaml
 tables:
   users:
     select:
-      roles: [authenticated]
-      # 'resource'는 현재 row, 'request.auth'는 토큰 정보를 담는다.
-      condition: "resource.id == request.auth.sub"
+      - roles: [admin]
+        columns: ["*"]                    # admin은 모든 컬럼 접근
+      - roles: [authenticated]
+        condition: "resource.id == request.auth.sub"
+        columns: ["id", "name", "email", "avatar_url"]  # 일반 사용자는 제한된 컬럼만
     insert:
-      roles: [public]
+      - roles: [authenticated]
+        columns: ["name", "email", "avatar_url"]
     update:
-      roles: [authenticated]
-      condition: "resource.id == request.auth.sub"
-    columns:
-      select: ["*", "!c_*", "!p_*"]
-      update: ["name", "avatar_url"]
+      - roles: [admin]
+        columns: ["*"]
+      - roles: [authenticated]
+        condition: "resource.id == request.auth.sub"
+        columns: ["name", "avatar_url"]
+    delete:
+      - roles: [admin]
+```
+
+**Rule 구조**:
+- `roles`: string[] (필수) - 이 규칙이 적용될 role 목록
+- `condition`: string (선택) - CEL 표현식으로 추가 조건 명시
+- `columns`: string[] (선택) - 접근 가능한 컬럼 목록
+
+**평가 규칙 (First Role Match Wins)**:
+1. 배열을 위에서 아래로 순회한다.
+2. 요청자의 role이 rule의 `roles`에 포함되면 해당 rule을 적용한다.
+3. `condition`이 있으면 CEL 표현식을 평가한다 (`true`여야 허용).
+4. 첫 번째로 매칭된 rule을 적용하고 평가를 중단한다.
+5. 매칭되는 rule이 없으면 접근 거부 (`403`).
+
+**Columns 필드 동작**:
+- `columns`가 **명시된 경우**: 해당 리스트만 허용 (prefix 기본값 무시)
+  - `["*"]`는 모든 컬럼 허용 (prefix 기본값도 무시)
+- `columns`가 **없는 경우**: `defaults.select_star_exclude` 적용 (select) 또는 스키마의 모든 컬럼 허용 (insert/update, readonly_prefixes 제외)
+
+**하위 호환 (Shorthand)**:
+단일 object 형식도 지원 (배열 없이 작성 가능):
+
+```yaml
+tables:
+  posts:
+    select:
+      roles: [public]
+```
+
+이는 다음과 동등하다:
+```yaml
+tables:
+  posts:
+    select:
+      - roles: [public]
 ```
 
 멀티 connection 규칙:
 - 권한 정책은 table 단위로 평가한다(`tables.<name>`).
 - table의 connection은 schema에서 결정한다(= permissions.yaml에 connection을 쓰지 않는다).
-
-평가 규칙:
-- `public`: credential 없이 허용
-- `authenticated`: End User access token 필요
-- `{role}`: API key roles 또는 End User roles에 포함되어야 함
-- `condition`: CEL 표현식이 `true`로 평가되어야 함.
-  - Bridge는 이를 `WHERE` 절에 주입하여 DB 레벨에서 필터링한다(RLS).
 
 변수(Context):
 - `request.auth.sub`: End User ID
@@ -169,14 +216,49 @@ tables:
 ## 5) Column Prefix Rules
 
 컬럼명 prefix로 민감도/기본 노출을 자동 적용한다:
-- `s_` (Sensitive): owner/admin 중심
-- `c_` (Critical): admin only, 기본적으로 결과에서 제외
-- `p_` (Private): admin only, 기본적으로 결과에서 제외
-- `_` (System): read-only, insert/update 불가(자동 생성)
 
-`select="*"`의 기본 동작:
-- `c_`, `p_`는 자동 제외
-- `s_`는 요청자 권한이 허용될 때만 포함
+**지원하는 Prefix**:
+- `c_` (Critical): 기본적으로 SELECT * 결과에서 제외, 명시적 컬럼 리스트에서만 접근 가능
+- `p_` (Private): 기본적으로 SELECT * 결과에서 제외, 명시적 컬럼 리스트에서만 접근 가능
+- `_` (System/Internal): read-only, insert/update 작업에서 허용하지 않음 (자동 생성/관리 컬럼)
+
+**기본 동작**:
+
+`SELECT` 작업:
+- `select: ["*"]` 또는 컬럼 명시 없음: `defaults.select_star_exclude` 패턴 적용
+  - 시스템 기본값: `["c_*", "p_*"]` 제외
+- rule-level `columns`가 명시된 경우: prefix 기본값 **완전 대체** (merge 아님)
+  - `columns: ["*"]`: 모든 컬럼 포함 (prefix 제외 규칙 무시)
+  - `columns: ["id", "name", "c_secret"]`: 명시된 컬럼만 접근 (`c_secret` 포함 가능)
+
+`INSERT/UPDATE` 작업:
+- `defaults.readonly_prefixes` 패턴은 항상 거부됨
+  - 시스템 기본값: `["_*"]` 패턴
+- rule-level `columns`가 없으면: 스키마의 모든 컬럼 허용 (readonly 제외)
+- rule-level `columns`가 있으면: 명시된 컬럼만 허용 (readonly는 여전히 거부)
+
+**커스터마이징**:
+
+`defaults` 섹션으로 기본값을 변경할 수 있다:
+
+```yaml
+defaults:
+  select_star_exclude: ["p_*", "internal_*"]  # c_* 포함, p_* 및 internal_* 제외
+  readonly_prefixes: ["_*", "sys_*"]          # _ 및 sys_ prefix는 insert/update 불가
+
+tables:
+  users:
+    select:
+      - roles: [public]
+        # columns 없음 → defaults.select_star_exclude 적용
+      - roles: [admin]
+        columns: ["*"]  # 모든 컬럼 (p_*, internal_* 포함)
+    insert:
+      - roles: [authenticated]
+        columns: ["name", "email"]  # _created_at, sys_version 자동 거부
+```
+
+**중요**: `s_` prefix는 제거되었다. Role별로 다른 컬럼 접근을 허용하려면 rule-level `columns`를 사용한다.
 
 ---
 
