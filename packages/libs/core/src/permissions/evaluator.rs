@@ -19,6 +19,9 @@ pub struct EvalResult {
 
     /// 거부 사유 (allowed=false인 경우)
     pub reason: Option<String>,
+
+    /// 허용되는 컬럼 목록 (None = 기본값, Some([...]) = 명시적 목록)
+    pub columns: Option<Vec<String>>,
 }
 
 impl EvalResult {
@@ -28,6 +31,17 @@ impl EvalResult {
             allowed: true,
             where_clause: None,
             reason: None,
+            columns: None,
+        }
+    }
+
+    /// 컬럼 지정 허용 결과 생성
+    pub fn allow_with_columns(columns: Vec<String>) -> Self {
+        Self {
+            allowed: true,
+            where_clause: None,
+            reason: None,
+            columns: Some(columns),
         }
     }
 
@@ -37,6 +51,17 @@ impl EvalResult {
             allowed: true,
             where_clause: Some(where_clause),
             reason: None,
+            columns: None,
+        }
+    }
+
+    /// 조건 + 컬럼 허용 결과 생성
+    pub fn allow_with_condition_and_columns(where_clause: String, columns: Vec<String>) -> Self {
+        Self {
+            allowed: true,
+            where_clause: Some(where_clause),
+            reason: None,
+            columns: Some(columns),
         }
     }
 
@@ -46,6 +71,7 @@ impl EvalResult {
             allowed: false,
             where_clause: None,
             reason: Some(reason.into()),
+            columns: None,
         }
     }
 }
@@ -63,7 +89,7 @@ impl<'a> PermissionEvaluator<'a> {
         Self { policy }
     }
 
-    /// 테이블 작업 권한 평가
+    /// 테이블 작업 권한 평가 (First Role Match Wins)
     ///
     /// # Arguments
     /// * `table` - 테이블 이름
@@ -84,8 +110,8 @@ impl<'a> PermissionEvaluator<'a> {
         };
 
         // 작업별 권한 조회
-        let op_perm = match table_perms.get_operation(op) {
-            Some(perm) => perm,
+        let op_rules = match table_perms.get_operation(op) {
+            Some(rules) => rules,
             None => {
                 // 작업 권한이 없으면 기본적으로 인증된 사용자만 허용
                 if ctx.is_authenticated() {
@@ -96,17 +122,33 @@ impl<'a> PermissionEvaluator<'a> {
             }
         };
 
-        // Role 체크
-        if !self.check_roles(&op_perm.roles, ctx) {
-            return Ok(EvalResult::deny("insufficient roles"));
+        // First Role Match Wins: 규칙 순회
+        for rule in &op_rules.rules {
+            // Role 체크
+            if !self.check_roles(&rule.roles, ctx) {
+                continue; // 다음 규칙으로
+            }
+
+            // 매칭! 조건 평가
+            if let Some(condition) = &rule.condition {
+                // 조건 평가 후 컬럼 병합
+                let mut result = self.evaluate_condition(condition, ctx)?;
+                if result.allowed {
+                    result.columns = rule.columns.clone();
+                }
+                return Ok(result);
+            } else {
+                // 조건 없음 → 즉시 허용 + 컬럼
+                return Ok(if let Some(cols) = &rule.columns {
+                    EvalResult::allow_with_columns(cols.clone())
+                } else {
+                    EvalResult::allow()
+                });
+            }
         }
 
-        // CEL 조건 평가
-        if let Some(condition) = &op_perm.condition {
-            return self.evaluate_condition(condition, ctx);
-        }
-
-        Ok(EvalResult::allow())
+        // 매칭되는 규칙 없음 → 거부
+        Ok(EvalResult::deny("no matching permission rule"))
     }
 
     /// Role 체크
@@ -189,29 +231,19 @@ impl<'a> PermissionEvaluator<'a> {
         None
     }
 
-    /// 컬럼 접근 권한 체크
-    pub fn check_column_access(
-        &self,
-        table: &str,
-        column: &str,
-        op: Operation,
-        _ctx: &EvalContext,
-    ) -> bool {
-        let table_perms = match self.policy.tables.get(table) {
-            Some(perms) => perms,
-            None => return true, // 정책 없으면 허용
-        };
-
-        let columns = match &table_perms.columns {
-            Some(cols) => cols,
-            None => return true, // 컬럼 정책 없으면 허용
-        };
-
-        match op {
-            Operation::Select => columns.allows_select(column),
-            Operation::Insert => columns.allows_insert(column),
-            Operation::Update => columns.allows_update(column),
-            Operation::Delete => true, // DELETE는 컬럼 제한 없음
+    /// 컬럼 목록 결정
+    ///
+    /// # Arguments
+    /// * `eval_result` - evaluate() 결과
+    ///
+    /// # Returns
+    /// * `None` - 모든 컬럼 허용
+    /// * `Some([...])` - 명시적 컬럼 목록
+    pub fn resolve_columns(&self, eval_result: &EvalResult) -> Option<Vec<String>> {
+        match &eval_result.columns {
+            Some(cols) if cols == &["*"] => None, // 모든 컬럼
+            Some(cols) => Some(cols.clone()),      // 명시 목록
+            None => None,                          // 모든 컬럼
         }
     }
 }
@@ -281,23 +313,25 @@ mod tests {
 tables:
   users:
     select:
-      roles: [authenticated]
-      condition: "resource.id == request.auth.sub"
+      - roles: [admin]
+        columns: ["*"]
+      - roles: [authenticated]
+        condition: "resource.id == request.auth.sub"
+        columns: ["id", "name", "email"]
     insert:
-      roles: [public]
+      - roles: [public]
+        columns: ["name", "email"]
     update:
-      roles: [authenticated]
-      condition: "resource.id == request.auth.sub"
+      - roles: [authenticated]
+        condition: "resource.id == request.auth.sub"
+        columns: ["name", "avatar_url"]
     delete:
-      roles: [admin]
-    columns:
-      select: ["*", "!c_*"]
-      update: ["name", "avatar_url"]
+      - roles: [admin]
   posts:
     select:
-      roles: [public]
+      - roles: [public]
     insert:
-      roles: [authenticated]
+      - roles: [authenticated]
 "#;
         serde_yaml::from_str(yaml).unwrap()
     }
@@ -357,17 +391,48 @@ tables:
     }
 
     #[test]
-    fn test_column_access() {
+    fn test_resolve_columns() {
         let policy = sample_policy();
         let evaluator = PermissionEvaluator::new(&policy);
-        let ctx = EvalContext::new();
 
-        // select는 c_* 제외
-        assert!(evaluator.check_column_access("users", "email", Operation::Select, &ctx));
-        assert!(!evaluator.check_column_access("users", "c_secret", Operation::Select, &ctx));
+        // columns = ["*"] → None (모든 컬럼)
+        let eval_result = EvalResult::allow_with_columns(vec!["*".to_string()]);
+        let resolved = evaluator.resolve_columns(&eval_result);
+        assert_eq!(resolved, None);
 
-        // update는 name, avatar_url만
-        assert!(evaluator.check_column_access("users", "name", Operation::Update, &ctx));
-        assert!(!evaluator.check_column_access("users", "email", Operation::Update, &ctx));
+        // columns = ["name", "email"] → 명시적 목록
+        let eval_result = EvalResult::allow_with_columns(vec!["name".to_string(), "email".to_string()]);
+        let resolved = evaluator.resolve_columns(&eval_result);
+        assert_eq!(resolved, Some(vec!["name", "email"].iter().map(|s| s.to_string()).collect()));
+
+        // columns = None → None (모든 컬럼)
+        let eval_result = EvalResult::allow();
+        let resolved = evaluator.resolve_columns(&eval_result);
+        assert_eq!(resolved, None);
+    }
+
+    #[test]
+    fn test_first_role_match_wins() {
+        let policy = sample_policy();
+        let evaluator = PermissionEvaluator::new(&policy);
+
+        // admin 매칭 → 첫 번째 규칙 (모든 컬럼)
+        let ctx = EvalContext::new().with_auth(AuthContext::new(
+            "user_123".to_string(),
+            vec!["admin".to_string()],
+        ));
+        let result = evaluator.evaluate("users", Operation::Select, &ctx).unwrap();
+        assert!(result.allowed);
+        assert_eq!(result.columns, Some(vec!["*".to_string()]));
+        assert_eq!(evaluator.resolve_columns(&result), None); // "*" resolves to None
+
+        // authenticated (non-admin) 매칭 → 두 번째 규칙 (제한된 컬럼)
+        let ctx = EvalContext::new().with_auth(AuthContext::new(
+            "user_456".to_string(),
+            vec![],
+        ));
+        let result = evaluator.evaluate("users", Operation::Select, &ctx).unwrap();
+        assert!(result.allowed);
+        assert_eq!(result.columns, Some(vec!["id", "name", "email"].iter().map(|s| s.to_string()).collect::<Vec<_>>()));
     }
 }

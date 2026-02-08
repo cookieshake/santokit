@@ -1,10 +1,15 @@
 tables:
   users:
     select:
-      roles: [authenticated]
+      - roles: [admin]
+        columns: ["*"]
+      - roles: [authenticated]
+        columns: ["id", "normal", "s_sensitive"]
     insert:
-      roles: [authenticated]
+      - roles: [authenticated]
+        columns: ["normal", "s_sensitive"]
     update:
-      roles: [authenticated]
+      - roles: [authenticated]
+        columns: ["normal", "s_sensitive"]
     delete:
-      roles: [authenticated]
+      - roles: [authenticated]

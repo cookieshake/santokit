@@ -34,9 +34,19 @@ impl<'a> SelectBuilder<'a> {
 
     /// SQL 생성
     ///
+    /// # Arguments
+    /// * `params` - CRUD 파라미터
+    /// * `extra_where` - 추가 WHERE 조건 (권한 조건)
+    /// * `allowed_columns` - 허용된 컬럼 목록 (None = 모든 컬럼)
+    ///
     /// # Returns
     /// (SQL 문자열, 바인딩할 값들)
-    pub fn build(&self, params: &CrudParams, extra_where: Option<&str>) -> (String, Vec<Value>) {
+    pub fn build(
+        &self,
+        params: &CrudParams,
+        extra_where: Option<&str>,
+        allowed_columns: Option<&[String]>,
+    ) -> (String, Vec<Value>) {
         let mut query = Query::select();
         let table_iden = DynIden(self.table.name.clone());
 
@@ -44,7 +54,7 @@ impl<'a> SelectBuilder<'a> {
         query.from(table_iden.clone());
 
         // SELECT columns
-        self.build_select_columns(&mut query, params);
+        self.build_select_columns(&mut query, params, allowed_columns);
 
         // WHERE
         let mut values = Vec::new();
@@ -74,16 +84,30 @@ impl<'a> SelectBuilder<'a> {
         (sql, values)
     }
 
-    fn build_select_columns(&self, query: &mut SelectStatement, params: &CrudParams) {
+    fn build_select_columns(
+        &self,
+        query: &mut SelectStatement,
+        params: &CrudParams,
+        allowed_columns: Option<&[String]>,
+    ) {
         let columns: Vec<&str> = match &params.select {
             Some(crate::params::SelectColumns::Columns(cols)) => {
+                // 명시적 컬럼 목록 (caller가 이미 검증했음)
                 cols.iter().map(|s| s.as_str()).collect()
             }
             _ => {
-                // "*" 또는 None: 기본 컬럼들
-                let mut cols = vec![self.table.id.name.as_str()];
-                cols.extend(self.table.selectable_columns().map(|c| c.name.as_str()));
-                cols
+                // "*" 또는 None
+                if let Some(allowed) = allowed_columns {
+                    // allowed_columns 있으면 사용 (id는 항상 포함)
+                    let mut cols = vec![self.table.id.name.as_str()];
+                    cols.extend(allowed.iter().map(|s| s.as_str()));
+                    cols
+                } else {
+                    // allowed_columns 없으면 기존 로직 (selectable_columns)
+                    let mut cols = vec![self.table.id.name.as_str()];
+                    cols.extend(self.table.selectable_columns().map(|c| c.name.as_str()));
+                    cols
+                }
             }
         };
 
@@ -440,7 +464,7 @@ mod tests {
             ..Default::default()
         };
 
-        let (sql, _) = builder.build(&params, None);
+        let (sql, _) = builder.build(&params, None, None);
         assert!(sql.contains("SELECT"));
         assert!(sql.contains("FROM \"users\""));
         assert!(sql.contains("LIMIT 10"));
@@ -457,7 +481,7 @@ mod tests {
             ..Default::default()
         };
 
-        let (sql, _) = builder.build(&params, None);
+        let (sql, _) = builder.build(&params, None, None);
         assert!(sql.contains("WHERE"));
         assert!(sql.contains("\"status\" = 'active'"));
     }

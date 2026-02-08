@@ -111,14 +111,9 @@ impl Table {
         self.columns.iter().filter(|c| c.references.is_some())
     }
 
-    /// SELECT * 시 반환할 컬럼들
+    /// SELECT * 시 반환할 컬럼들 (모든 컬럼)
     pub fn selectable_columns(&self) -> impl Iterator<Item = &Column> {
-        self.columns.iter().filter(|c| c.included_in_select_all())
-    }
-
-    /// Insert/Update 가능한 컬럼들
-    pub fn writable_columns(&self) -> impl Iterator<Item = &Column> {
-        self.columns.iter().filter(|c| c.allows_write())
+        self.columns.iter()
     }
 
     /// expand 이름으로 FK 참조 정보 찾기
@@ -220,13 +215,6 @@ mod tests {
         assert_eq!(names, vec!["id", "email", "_created_at"]);
     }
 
-    #[test]
-    fn test_writable_columns() {
-        let table = sample_table();
-        let writable: Vec<_> = table.writable_columns().collect();
-        assert_eq!(writable.len(), 1);
-        assert_eq!(writable[0].name, "email");
-    }
 
     fn table_with_references() -> Table {
         use super::super::column::Reference;

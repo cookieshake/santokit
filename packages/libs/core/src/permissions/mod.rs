@@ -16,7 +16,8 @@ mod evaluator;
 mod policy;
 
 pub use context::{AuthContext, EvalContext};
-pub use evaluator::PermissionEvaluator;
+pub use evaluator::{EvalResult, PermissionEvaluator};
 pub use policy::{
-    ColumnPermissions, Operation, PermissionPolicy, RoleRequirement, TablePermissions,
+    Operation, OperationRules, PermissionPolicy, PermissionRule,
+    RoleRequirement, TablePermissions,
 };

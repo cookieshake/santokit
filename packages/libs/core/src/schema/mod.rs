@@ -19,7 +19,7 @@ mod parser;
 mod table;
 mod types;
 
-pub use column::{Column, ColumnPrefix, Reference, ReferentialAction};
+pub use column::{Column, Reference, ReferentialAction};
 pub use ir::{ProjectSchema, SchemaIr};
 pub use parser::SchemaParser;
 pub use table::{ExpandInfo, IdColumn, Index, Table};

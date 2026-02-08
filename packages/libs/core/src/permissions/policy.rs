@@ -16,50 +16,89 @@ pub struct PermissionPolicy {
     pub tables: HashMap<String, TablePermissions>,
 }
 
+/// 권한 규칙 (하나의 role 매칭 + 조건)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionRule {
+    /// 허용되는 role 목록
+    pub roles: Vec<RoleRequirement>,
+
+    /// CEL 조건식 (추가 필터)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub condition: Option<String>,
+
+    /// 허용되는 컬럼 목록 (None = 기본값 적용, Some(["*"]) = 모든 컬럼, Some([...]) = 명시적 목록)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub columns: Option<Vec<String>>,
+}
+
+/// Operation별 규칙 목록 (ordered array)
+#[derive(Debug, Clone, Serialize)]
+pub struct OperationRules {
+    pub rules: Vec<PermissionRule>,
+}
+
+/// OperationRules의 custom deserializer (shorthand 호환)
+impl<'de> Deserialize<'de> for OperationRules {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::{self, Visitor};
+
+        struct OperationRulesVisitor;
+
+        impl<'de> Visitor<'de> for OperationRulesVisitor {
+            type Value = OperationRules;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a sequence of permission rules or a single permission rule object")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let mut rules = Vec::new();
+                while let Some(rule) = seq.next_element::<PermissionRule>()? {
+                    rules.push(rule);
+                }
+                Ok(OperationRules { rules })
+            }
+
+            fn visit_map<M>(self, map: M) -> Result<Self::Value, M::Error>
+            where
+                M: de::MapAccess<'de>,
+            {
+                // Shorthand: 단일 object → Vec<PermissionRule>
+                let rule = PermissionRule::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(OperationRules { rules: vec![rule] })
+            }
+        }
+
+        deserializer.deserialize_any(OperationRulesVisitor)
+    }
+}
+
 /// 테이블 권한 정책
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TablePermissions {
     /// SELECT 권한
     #[serde(default)]
-    pub select: Option<OperationPermission>,
+    pub select: Option<OperationRules>,
 
     /// INSERT 권한
     #[serde(default)]
-    pub insert: Option<OperationPermission>,
+    pub insert: Option<OperationRules>,
 
     /// UPDATE 권한
     #[serde(default)]
-    pub update: Option<OperationPermission>,
+    pub update: Option<OperationRules>,
 
     /// DELETE 권한
     #[serde(default)]
-    pub delete: Option<OperationPermission>,
-
-    /// 컬럼별 세부 권한
-    #[serde(default)]
-    pub columns: Option<ColumnPermissions>,
+    pub delete: Option<OperationRules>,
 }
 
-/// 작업(Operation)별 권한 설정
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OperationPermission {
-    /// 허용되는 role 목록
-    #[serde(default)]
-    pub roles: Vec<RoleRequirement>,
-
-    /// CEL 조건식 (추가 필터)
-    #[serde(default)]
-    pub condition: Option<String>,
-}
-
-impl Default for OperationPermission {
-    fn default() -> Self {
-        Self {
-            roles: vec![RoleRequirement::Authenticated],
-            condition: None,
-        }
-    }
-}
 
 /// Role 요구사항
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,83 +157,6 @@ impl<'de> Deserialize<'de> for RoleRequirement {
     }
 }
 
-/// 컬럼별 권한 설정
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ColumnPermissions {
-    /// SELECT 가능한 컬럼 목록
-    ///
-    /// - `["*"]`: 모든 컬럼
-    /// - `["*", "!c_*", "!p_*"]`: 모든 컬럼에서 c_, p_ prefix 제외
-    /// - `["email", "name"]`: 특정 컬럼만
-    #[serde(default)]
-    pub select: Vec<String>,
-
-    /// INSERT 가능한 컬럼 목록
-    #[serde(default)]
-    pub insert: Vec<String>,
-
-    /// UPDATE 가능한 컬럼 목록
-    #[serde(default)]
-    pub update: Vec<String>,
-}
-
-impl ColumnPermissions {
-    /// 특정 컬럼이 SELECT에 허용되는지 확인
-    pub fn allows_select(&self, column_name: &str) -> bool {
-        Self::matches_column_rules(&self.select, column_name)
-    }
-
-    /// 특정 컬럼이 INSERT에 허용되는지 확인
-    pub fn allows_insert(&self, column_name: &str) -> bool {
-        Self::matches_column_rules(&self.insert, column_name)
-    }
-
-    /// 특정 컬럼이 UPDATE에 허용되는지 확인
-    pub fn allows_update(&self, column_name: &str) -> bool {
-        Self::matches_column_rules(&self.update, column_name)
-    }
-
-    /// 컬럼 규칙 매칭
-    fn matches_column_rules(rules: &[String], column_name: &str) -> bool {
-        if rules.is_empty() {
-            return true; // 규칙 없으면 허용
-        }
-
-        let mut allowed = false;
-
-        for rule in rules {
-            if rule == "*" {
-                allowed = true;
-            } else if let Some(pattern) = rule.strip_prefix('!') {
-                // 제외 패턴
-                if Self::matches_pattern(pattern, column_name) {
-                    allowed = false;
-                }
-            } else {
-                // 포함 패턴
-                if Self::matches_pattern(rule, column_name) {
-                    allowed = true;
-                }
-            }
-        }
-
-        allowed
-    }
-
-    /// 간단한 와일드카드 패턴 매칭 (prefix_*)
-    fn matches_pattern(pattern: &str, name: &str) -> bool {
-        if pattern == "*" {
-            return true;
-        }
-
-        if let Some(prefix) = pattern.strip_suffix('*') {
-            return name.starts_with(prefix);
-        }
-
-        pattern == name
-    }
-}
-
 /// CRUD 작업 타입
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation {
@@ -229,7 +191,7 @@ impl Operation {
 
 impl TablePermissions {
     /// 특정 작업의 권한 설정 가져오기
-    pub fn get_operation(&self, op: Operation) -> Option<&OperationPermission> {
+    pub fn get_operation(&self, op: Operation) -> Option<&OperationRules> {
         match op {
             Operation::Select => self.select.as_ref(),
             Operation::Insert => self.insert.as_ref(),
@@ -244,70 +206,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_column_permission_wildcard() {
-        let perms = ColumnPermissions {
-            select: vec!["*".to_string()],
-            insert: vec![],
-            update: vec![],
-        };
-
-        assert!(perms.allows_select("any_column"));
-        assert!(perms.allows_select("email"));
-    }
-
-    #[test]
-    fn test_column_permission_exclude() {
-        let perms = ColumnPermissions {
-            select: vec!["*".to_string(), "!c_*".to_string(), "!p_*".to_string()],
-            insert: vec![],
-            update: vec![],
-        };
-
-        assert!(perms.allows_select("email"));
-        assert!(!perms.allows_select("c_ssn"));
-        assert!(!perms.allows_select("p_internal"));
-    }
-
-    #[test]
-    fn test_column_permission_explicit() {
-        let perms = ColumnPermissions {
-            select: vec![],
-            insert: vec![],
-            update: vec!["name".to_string(), "avatar_url".to_string()],
-        };
-
-        assert!(perms.allows_update("name"));
-        assert!(perms.allows_update("avatar_url"));
-        assert!(!perms.allows_update("email"));
-    }
-
-    #[test]
-    fn test_parse_permissions_yaml() {
+    fn test_parse_permissions_yaml_new_format() {
         let yaml = r#"
 tables:
   users:
     select:
-      roles: [authenticated]
-      condition: "resource.id == request.auth.sub"
+      - roles: [authenticated]
+        condition: "resource.id == request.auth.sub"
+        columns: ["*"]
     insert:
-      roles: [public]
+      - roles: [public]
+        columns: ["name", "email"]
     update:
-      roles: [authenticated]
-      condition: "resource.id == request.auth.sub"
-    columns:
-      select: ["*", "!c_*", "!p_*"]
-      update: ["name", "avatar_url"]
+      - roles: [authenticated]
+        condition: "resource.id == request.auth.sub"
+        columns: ["name", "avatar_url"]
 "#;
 
         let policy: PermissionPolicy = serde_yaml::from_str(yaml).unwrap();
-        let users = policy.tables.get("users").unwrap();
 
+        let users = policy.tables.get("users").unwrap();
         assert!(users.select.is_some());
         assert!(users.insert.is_some());
-        assert!(users.columns.is_some());
 
-        let cols = users.columns.as_ref().unwrap();
-        assert!(cols.allows_select("email"));
-        assert!(!cols.allows_select("c_secret"));
+        let select_rules = users.select.as_ref().unwrap();
+        assert_eq!(select_rules.rules.len(), 1);
+        assert_eq!(select_rules.rules[0].roles.len(), 1);
+        assert_eq!(select_rules.rules[0].columns.as_ref().unwrap(), &vec!["*"]);
+    }
+
+    #[test]
+    fn test_parse_permissions_yaml_shorthand() {
+        // Shorthand format (backward compatibility)
+        let yaml = r#"
+tables:
+  posts:
+    select:
+      roles: [authenticated]
+      condition: "resource.owner_id == request.auth.sub"
+    insert:
+      roles: [public]
+"#;
+
+        let policy: PermissionPolicy = serde_yaml::from_str(yaml).unwrap();
+        let posts = policy.tables.get("posts").unwrap();
+
+        let select_rules = posts.select.as_ref().unwrap();
+        assert_eq!(select_rules.rules.len(), 1); // Shorthand converts to single rule
+        assert_eq!(select_rules.rules[0].roles.len(), 1);
+        assert!(select_rules.rules[0].condition.is_some());
     }
 }

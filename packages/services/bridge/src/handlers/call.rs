@@ -400,6 +400,9 @@ async fn handle_auto_crud(
         });
     }
 
+    // 컬럼 목록 결정
+    let resolved_columns = evaluator.resolve_columns(&eval_result);
+
     // 파라미터 파싱
     let crud_params: CrudParams = if params.is_null() {
         CrudParams::default()
@@ -411,14 +414,15 @@ async fn handle_auto_crud(
         })?
     };
 
-    // Column permissions 체크 (permissions.yaml의 columns 섹션 적용)
-    // 명시적 select 요청 시 권한 체크
+    // Column permissions 체크 (명시적 select 요청 시)
     if let Some(stk_sql::params::SelectColumns::Columns(ref cols)) = crud_params.select {
-        for col_name in cols {
-            if !evaluator.check_column_access(table, col_name, stk_core::permissions::Operation::Select, &eval_ctx) {
-                return Err(BridgeError::Forbidden {
-                    message: format!("Column '{}' is not allowed for select", col_name),
-                });
+        if let Some(ref allowed) = resolved_columns {
+            for col_name in cols {
+                if !allowed.contains(col_name) {
+                    return Err(BridgeError::Forbidden {
+                        message: format!("Column '{}' is not allowed for select", col_name),
+                    });
+                }
             }
         }
     }
@@ -427,19 +431,13 @@ async fn handle_auto_crud(
     if matches!(operation, CrudOperation::Insert) {
         if let Some(ref data) = crud_params.data {
             for col_name in data.keys() {
-                // System 컬럼(_) 쓰기 금지는 여전히 스키마 레벨에서 체크
-                if let Some(col) = table_def.find_column(col_name) {
-                    if !col.allows_write() {
-                        return Err(BridgeError::BadRequest {
-                            message: format!("Column '{}' is read-only (system column)", col_name),
+                // resolved_columns에 이미 readonly 필터링이 적용되어 있음
+                if let Some(ref allowed) = resolved_columns {
+                    if !allowed.contains(col_name) {
+                        return Err(BridgeError::Forbidden {
+                            message: format!("Column '{}' is not allowed for insert", col_name),
                         });
                     }
-                }
-                // permissions.yaml의 columns.insert 체크
-                if !evaluator.check_column_access(table, col_name, stk_core::permissions::Operation::Insert, &eval_ctx) {
-                    return Err(BridgeError::Forbidden {
-                        message: format!("Column '{}' is not allowed for insert", col_name),
-                    });
                 }
             }
         }
@@ -449,19 +447,13 @@ async fn handle_auto_crud(
     if matches!(operation, CrudOperation::Update) {
         if let Some(ref data) = crud_params.data {
             for col_name in data.keys() {
-                // System 컬럼(_) 쓰기 금지
-                if let Some(col) = table_def.find_column(col_name) {
-                    if !col.allows_write() {
-                        return Err(BridgeError::BadRequest {
-                            message: format!("Column '{}' is read-only (system column)", col_name),
+                // resolved_columns에 이미 readonly 필터링이 적용되어 있음
+                if let Some(ref allowed) = resolved_columns {
+                    if !allowed.contains(col_name) {
+                        return Err(BridgeError::Forbidden {
+                            message: format!("Column '{}' is not allowed for update", col_name),
                         });
                     }
-                }
-                // permissions.yaml의 columns.update 체크
-                if !evaluator.check_column_access(table, col_name, stk_core::permissions::Operation::Update, &eval_ctx) {
-                    return Err(BridgeError::Forbidden {
-                        message: format!("Column '{}' is not allowed for update", col_name),
-                    });
                 }
             }
         }
@@ -494,7 +486,11 @@ async fn handle_auto_crud(
     let response = match operation {
         CrudOperation::Select => {
             let builder = stk_sql::SelectBuilder::new(table_def);
-            let (sql, values) = builder.build(&crud_params, eval_result.where_clause.as_deref());
+            let (sql, values) = builder.build(
+                &crud_params,
+                eval_result.where_clause.as_deref(),
+                resolved_columns.as_deref(),
+            );
             let rows = sqlx::query(&sql)
                 .fetch_all(&pool)
                 .await
@@ -538,6 +534,9 @@ async fn handle_auto_crud(
                         });
                     }
 
+                    // 4-1. expand 대상 테이블의 컬럼 목록 결정
+                    let expand_resolved_columns = evaluator.resolve_columns(&expand_eval);
+
                     // 5. FK 값들 수집
                     let fk_values: Vec<String> = data.iter()
                         .filter_map(|row| {
@@ -560,8 +559,26 @@ async fn handle_auto_crud(
                     let placeholders: Vec<String> = fk_values.iter().enumerate()
                         .map(|(i, _)| format!("${}", i + 1))
                         .collect();
+
+                    // 컬럼 목록 결정 (resolved_columns 또는 기본값)
+                    let select_columns = if let Some(cols) = expand_resolved_columns.as_ref() {
+                        let mut col_names = vec![target_table.id.name.clone()];
+                        col_names.extend(cols.iter().cloned());
+                        col_names
+                    } else {
+                        let mut col_names = vec![target_table.id.name.clone()];
+                        col_names.extend(target_table.selectable_columns().map(|c| c.name.clone()));
+                        col_names
+                    };
+
+                    let columns_str = select_columns.iter()
+                        .map(|c| format!("\"{}\"", c))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+
                     let expand_sql = format!(
-                        "SELECT * FROM \"{}\" WHERE \"{}\" IN ({})",
+                        "SELECT {} FROM \"{}\" WHERE \"{}\" IN ({})",
+                        columns_str,
                         target_table.name,
                         target_pk,
                         placeholders.join(", ")
@@ -692,7 +709,7 @@ async fn handle_auto_crud(
                 ));
 
                 let builder = stk_sql::SelectBuilder::new(table_def);
-                let (select_sql, _) = builder.build(&select_params, eval_result.where_clause.as_deref());
+                let (select_sql, _) = builder.build(&select_params, eval_result.where_clause.as_deref(), None);
                 let rows = sqlx::query(&select_sql)
                     .fetch_all(&pool)
                     .await

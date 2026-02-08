@@ -9,7 +9,7 @@
 - 권한 주체: Project API key roles + End User access token roles/identity
 - 권한 모델: 테이블/컬럼 레벨 권한 + **CEL(Common Expression Language) 기반 Condition**
 - where: equality(AND) + 확장 표현식(and/or/in/like/비교 연산)
-- 컬럼 prefix 규칙으로 민감도/기본 노출을 자동 적용
+- 컬럼 접근 제어는 permissions.yaml에서 명시적으로 지정
 
 스키마 상세:
 - `plan/spec/schema.md`
@@ -83,16 +83,16 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
   해당 connection의 `schema_ir`을 선택한다.
 
 관계 로드(`expand`):
-- 목적: `posts.user_id` 같은 FK를 기반으로 “관련 row”를 같이 가져온다.
+- 목적: `posts.user_id` 같은 FK를 기반으로 "관련 row"를 같이 가져온다.
 - 전제: 스키마에서 `references`가 선언되어 있어야 한다.
 - 허용 범위:
   - 같은 connection 안에서만 허용한다(= cross-DB expand 금지).
   - 1-depth(단일 hop)만 지원한다(중첩 expand는 최종 스펙 범위 밖).
 - 권한:
   - expand 대상 테이블에 대한 `select` 권한이 없으면 `403`.
-  - 반환 컬럼은 expand 대상 테이블의 column permissions/prefix rules를 동일하게 적용한다.
+  - 반환 컬럼은 expand 대상 테이블의 column permissions를 동일하게 적용한다.
 - 참고:
-  - `onDelete/onUpdate`(cascade 등)는 DB 레벨 동작이며, Bridge는 이를 “추가로 구현”하지 않는다.
+  - `onDelete/onUpdate`(cascade 등)는 DB 레벨 동작이며, Bridge는 이를 "추가로 구현"하지 않는다.
 
 예:
 ```json
@@ -125,22 +125,7 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 - 단순 role 체크를 넘어선 동적 조건을 정의한다.
 - 구글 CEL(Common Expression Language) 표준을 사용한다.
 
-### 4.1) Defaults Section
-
-전역 기본값을 커스터마이징할 수 있다:
-
-```yaml
-defaults:
-  select_star_exclude: ["c_*", "p_*"]    # SELECT * 시 자동 제외할 컬럼 패턴
-  readonly_prefixes: ["_*"]               # insert/update 불가 컬럼 패턴
-```
-
-- `select_star_exclude`: `select: ["*"]` 또는 명시하지 않았을 때 기본적으로 제외할 컬럼 패턴 (glob 지원)
-- `readonly_prefixes`: insert/update 작업에서 허용하지 않을 컬럼 패턴 (glob 지원)
-
-이 값들을 설정하지 않으면 시스템 기본값이 적용된다 (Section 5 참조).
-
-### 4.2) Rule-Based Permissions
+### 4.1) Rule-Based Permissions
 
 각 operation(`select|insert|update|delete`)에 대해 **ordered rule array**를 정의한다:
 
@@ -179,9 +164,9 @@ tables:
 5. 매칭되는 rule이 없으면 접근 거부 (`403`).
 
 **Columns 필드 동작**:
-- `columns`가 **명시된 경우**: 해당 리스트만 허용 (prefix 기본값 무시)
-  - `["*"]`는 모든 컬럼 허용 (prefix 기본값도 무시)
-- `columns`가 **없는 경우**: `defaults.select_star_exclude` 적용 (select) 또는 스키마의 모든 컬럼 허용 (insert/update, readonly_prefixes 제외)
+- `columns`가 **명시된 경우**: 해당 리스트만 허용
+  - `["*"]`는 모든 컬럼 허용
+- `columns`가 **없는 경우**: 모든 컬럼 허용 (SELECT, INSERT, UPDATE 모두)
 
 **하위 호환 (Shorthand)**:
 단일 object 형식도 지원 (배열 없이 작성 가능):
@@ -213,52 +198,29 @@ tables:
 
 ---
 
-## 5) Column Prefix Rules
+## 5) Column Access Control
 
-컬럼명 prefix로 민감도/기본 노출을 자동 적용한다:
+컬럼 접근 제어는 `permissions.yaml`의 rule-level `columns` 필드로만 지정한다.
 
-**지원하는 Prefix**:
-- `c_` (Critical): 기본적으로 SELECT * 결과에서 제외, 명시적 컬럼 리스트에서만 접근 가능
-- `p_` (Private): 기본적으로 SELECT * 결과에서 제외, 명시적 컬럼 리스트에서만 접근 가능
-- `_` (System/Internal): read-only, insert/update 작업에서 허용하지 않음 (자동 생성/관리 컬럼)
-
-**기본 동작**:
-
-`SELECT` 작업:
-- `select: ["*"]` 또는 컬럼 명시 없음: `defaults.select_star_exclude` 패턴 적용
-  - 시스템 기본값: `["c_*", "p_*"]` 제외
-- rule-level `columns`가 명시된 경우: prefix 기본값 **완전 대체** (merge 아님)
-  - `columns: ["*"]`: 모든 컬럼 포함 (prefix 제외 규칙 무시)
-  - `columns: ["id", "name", "c_secret"]`: 명시된 컬럼만 접근 (`c_secret` 포함 가능)
-
-`INSERT/UPDATE` 작업:
-- `defaults.readonly_prefixes` 패턴은 항상 거부됨
-  - 시스템 기본값: `["_*"]` 패턴
-- rule-level `columns`가 없으면: 스키마의 모든 컬럼 허용 (readonly 제외)
-- rule-level `columns`가 있으면: 명시된 컬럼만 허용 (readonly는 여전히 거부)
-
-**커스터마이징**:
-
-`defaults` 섹션으로 기본값을 변경할 수 있다:
+**명시적 제어**:
+컬럼명 prefix에 특별한 의미가 없다. 모든 컬럼 접근 제어는 permissions.yaml에서 명시적으로 정의해야 한다.
 
 ```yaml
-defaults:
-  select_star_exclude: ["p_*", "internal_*"]  # c_* 포함, p_* 및 internal_* 제외
-  readonly_prefixes: ["_*", "sys_*"]          # _ 및 sys_ prefix는 insert/update 불가
-
 tables:
   users:
     select:
-      - roles: [public]
-        # columns 없음 → defaults.select_star_exclude 적용
       - roles: [admin]
-        columns: ["*"]  # 모든 컬럼 (p_*, internal_* 포함)
+        columns: ["*"]                    # 모든 컬럼 허용
+      - roles: [authenticated]
+        columns: ["id", "name", "email"]  # 제한된 컬럼만
     insert:
       - roles: [authenticated]
-        columns: ["name", "email"]  # _created_at, sys_version 자동 거부
+        columns: ["name", "email"]        # 명시적으로 허용된 컬럼만
 ```
 
-**중요**: `s_` prefix는 제거되었다. Role별로 다른 컬럼 접근을 허용하려면 rule-level `columns`를 사용한다.
+- `columns: ["*"]` 또는 `columns` 미지정: 모든 컬럼 허용
+- `columns: ["name", "email"]`: 명시된 컬럼만 허용
+- 컬럼 제한이 필요하면 반드시 `columns` 필드를 명시해야 한다
 
 ---
 
