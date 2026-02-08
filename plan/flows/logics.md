@@ -1,9 +1,11 @@
-# Flow 15: Custom Logics Call (`/call`)
+# Custom Logics Flows
 
-## Overview
+## Flow 15 — Custom Logics Call (`/call`)
+
+### Overview
 Tests the Custom Logics feature, which allows managing SQL functions as files and executing them via the `/call` API endpoint.
 
-## Fixture: `logics_call`
+### Fixture: `logics_call`
 - **Schema**: `items` table with `id`, `name`, `price`, `owner_id`
 - **Permissions**: All CRUD operations allowed for authenticated users
 - **Logics**:
@@ -14,9 +16,11 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
   - `admin_only.sql`: Role-restricted logic (`roles: [admin]`)
   - `default_params.sql`: Parameters with default values
 
-## Test Scenarios
+---
 
-### B1: whoami — System Variable Access
+### Test Scenarios
+
+#### B1: whoami — System Variable Access
 **Purpose**: Verify `:auth.sub` system variable is correctly injected
 
 **Steps**:
@@ -29,7 +33,7 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 
 ---
 
-### B2: public_hello — Public Auth Logic
+#### B2: public_hello — Public Auth Logic
 **Purpose**: Verify `auth: public` logic can be called by authenticated users
 
 **Note**: Although logic is marked `auth: public`, the Bridge's `authenticate()` gateway still requires credentials, so test uses authenticated user.
@@ -44,7 +48,7 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 
 ---
 
-### B3: insert_item — Execute-Only Logic
+#### B3: insert_item — Execute-Only Logic
 **Purpose**: Verify execute-only logic (INSERT without RETURNING) returns affected count
 
 **Steps**:
@@ -58,7 +62,7 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 
 ---
 
-### B4: get_items — Required Parameter Binding
+#### B4: get_items — Required Parameter Binding
 **Purpose**: Verify required parameter validation and SQL injection safety
 
 **Steps**:
@@ -72,7 +76,7 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 
 ---
 
-### B5: default_params — Default Parameter Values
+#### B5: default_params — Default Parameter Values
 **Purpose**: Verify default parameter behavior (full defaults, partial override, full override)
 
 **Steps**:
@@ -86,7 +90,7 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 
 ---
 
-### B6: admin_only — Role-Based Access Control
+#### B6: admin_only — Role-Based Access Control
 **Purpose**: Verify role restrictions on logic execution
 
 **Steps**:
@@ -99,7 +103,7 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 
 ---
 
-### B7: Error Cases
+#### B7: Error Cases
 **Purpose**: Verify proper error handling for common failure scenarios
 
 **Test Cases**:
@@ -114,29 +118,33 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 - `"Insufficient roles"` (for role mismatch)
 - `"Invalid type for param: owner_id"` (for type mismatch)
 
-## Implementation Notes
+---
 
-### Response Formats
+### Implementation Notes
+
+#### Response Formats
 - **Row-returning queries**: `{"data": {"data": [...]}}`
 - **Execute-only queries**: `{"data": {"affected": N}}`
 
-### Authentication & Authorization
+#### Authentication & Authorization
 - End user default role: `["user"]` (hub/src/main.rs:2241)
 - API key role: Set via CLI `--roles admin`
 - `auth: public` still requires credentials (Bridge gateway enforces authentication first)
 
-### Parameter Resolution
+#### Parameter Resolution
 1. Check required parameters present
 2. Apply default values for missing optional parameters
 3. Validate parameter types
 4. Bind to SQL query
 
-### System Variables
+#### System Variables
 - `:auth.sub`: User ID from JWT claims
 - `:auth.role`: User roles array
 - Available in all authenticated logics
 
-## References
+---
+
+### References
 - Handler: `packages/services/bridge/src/handlers/call.rs:737-806`
 - Parser: `packages/services/bridge/src/handlers/call.rs:918-949`
 - Auth: `packages/services/bridge/src/handlers/call.rs:951-972`

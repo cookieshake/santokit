@@ -78,32 +78,21 @@ santokit/
   ./scripts/run-integration-tests.sh
   ```
 
-### 4. Flow-Test 1:1 매칭 규칙
+### 4. 통합 테스트 구조
 
-**`plan/flows/`와 `tests/integration_py/tests/test_flow_*.py`는 1:1로 매칭되어야 합니다.**
+`plan/flows/`와 `tests/integration_py/tests/`는 카테고리별로 대응됩니다.
 
-| Flow 문서 | 테스트 파일 |
-|-----------|-------------|
-| `plan/flows/01-operator-bootstrap.md` | `tests/integration_py/tests/test_flow_01_operator_bootstrap.py` |
-| `plan/flows/02-operator-apikey.md` | `tests/integration_py/tests/test_flow_02_operator_apikey.py` |
-| `plan/flows/03-enduser-login-hub-issuer.md` | `tests/integration_py/tests/test_flow_03_enduser_login_hub_issuer.py` |
-| `plan/flows/04-enduser-login-external-oidc.md` | `tests/integration_py/tests/test_flow_04_enduser_login_external_oidc.py` |
-| `plan/flows/05-enduser-call-crud.md` | `tests/integration_py/tests/test_flow_05_enduser_call_crud.py` |
-| `plan/flows/06-operator-schema-change.md` | `tests/integration_py/tests/test_flow_06_operator_schema_change.py` |
-| `plan/flows/07-operator-permissions-change.md` | `tests/integration_py/tests/test_flow_07_operator_permissions_change.py` |
-| `plan/flows/08-release-promotion-rollback.md` | `tests/integration_py/tests/test_flow_08_release_promotion_rollback.py` |
-| `plan/flows/09-enduser-multi-project-login.md` | `tests/integration_py/tests/test_flow_09_enduser_multi_project_login.py` |
-| `plan/flows/10-crud-advanced.md` | `tests/integration_py/tests/test_flow_10_crud_advanced.py` |
-| `plan/flows/11-crud-expand.md` | `tests/integration_py/tests/test_flow_11_crud_expand.py` |
-| `plan/flows/12-crud-pagination-sorting.md` | `tests/integration_py/tests/test_flow_12_crud_pagination_sorting.py` |
-| `plan/flows/13-cel-condition.md` | `tests/integration_py/tests/test_flow_13_cel_condition.py` |
-| `plan/flows/14-column-prefix.md` | `tests/integration_py/tests/test_flow_14_column_prefix.py` |
-| `plan/flows/16-column-permissions.md` | `tests/integration_py/tests/test_flow_16_column_permissions.py` |
-
+| Flow 문서 | 테스트 파일 | 카테고리 |
+|-----------|------------|---------|
+| `plan/flows/operator.md` | `test_operator.py` | 부트스트랩, API key, 스키마/권한 변경, 릴리즈 |
+| `plan/flows/auth.md` | `test_auth.py` | End-user 로그인, 외부 OIDC, 멀티프로젝트 |
+| `plan/flows/crud.md` | `test_crud.py` | CRUD 기본/고급, FK expand, 페이지네이션/정렬 |
+| `plan/flows/security.md` | `test_security.py` | CEL 조건, 컬럼 prefix, 컬럼 권한 |
+| `plan/flows/logics.md` | `test_logics.py` | 커스텀 SQL 로직 |
 
 **규칙:**
-- Flow 문서를 추가하면 해당 테스트 파일도 반드시 추가해야 합니다.
-- 파일명 패턴: `{번호}-{kebab-case-name}.md` → `test_flow_{번호}_{snake_case_name}.py`
+- Flow 추가 시 해당 카테고리 파일에 섹션을 추가하고, 테스트 함수도 대응 파일에 추가합니다.
+- 공통 setup 헬퍼는 `dsl.py`에 정의: `bootstrap_project`, `create_api_key`, `api_key_headers`, `jwt_headers`, `signup_and_login`, `get_rows`
 
 ### 5. 빌드
 

@@ -130,3 +130,66 @@ def sanitize_db_name(name: str) -> str:
 def project_db_name(project: str) -> str:
     safe = sanitize_db_name(project)
     return sanitize_db_name(f"stk_{safe}")
+
+
+def create_api_key(env: "SantokitDsl", project: str, fixture_dir: str, name: str = "server", roles: str = "admin") -> str:
+    """API key 생성 후 키 문자열 반환"""
+    import re
+    create = env.runStkCli(
+        f"stk apikey create --project {project} --env dev --name {name} --roles {roles}",
+        workdir=fixture_dir,
+    )
+    match = re.search(r"API Key \(store securely\): (\S+)", create.output)
+    assert match, f"API key not found in output: {create.output}"
+    return match.group(1)
+
+
+def api_key_headers(api_key: str, project: str, env_name: str = "dev") -> dict:
+    return {
+        "X-Santokit-Api-Key": api_key,
+        "X-Santokit-Project": project,
+        "X-Santokit-Env": env_name,
+    }
+
+
+def jwt_headers(token: str, project: str, env_name: str = "dev") -> dict:
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Santokit-Project": project,
+        "X-Santokit-Env": env_name,
+    }
+
+
+def signup_and_login(env: "SantokitDsl", project: str, email: str, password: str, env_name: str = "dev") -> str:
+    """Signup + login, returns access_token"""
+    env.httpToHub("POST", "/api/endusers/signup",
+        json={"project": project, "env": env_name, "email": email, "password": password})
+    login = env.httpToHub("POST", "/api/endusers/login",
+        json={"project": project, "env": env_name, "email": email, "password": password})
+    assert login.status_code == 200
+    return login.json()["access_token"]
+
+
+def bootstrap_project(env: "SantokitDsl", fixture_dir: str, prefix: str, ref: str, env_name: str = "dev") -> str:
+    """공통 setup: project create → env create → DB → connection → apply. Returns project name."""
+    project = unique_project(prefix)
+    env.runStkCli(f"stk project create {project}", workdir=fixture_dir)
+    env.runStkCli(f"stk env create --project {project} {env_name}", workdir=fixture_dir)
+    db_url = env.ensure_project_db(project)
+    env.runStkCli(
+        f"stk connections set --project {project} --env {env_name} --name main --engine postgres --db-url {db_url}",
+        workdir=fixture_dir,
+    )
+    env.runStkCli(
+        f"stk apply --project {project} --env {env_name} --ref {ref}",
+        workdir=fixture_dir,
+    )
+    return project
+
+
+def get_rows(response_json: dict) -> list:
+    """응답에서 rows 추출 (pagination 구조 대응)"""
+    data = response_json.get("data", {})
+    if isinstance(data, dict):
+        return data.get("data", [])
+    return data
