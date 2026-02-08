@@ -1,10 +1,10 @@
 tables:
   items:
     select:
-      roles: [authenticated]
+      roles: [admin, authenticated]
     insert:
-      roles: [authenticated]
+      roles: [admin, authenticated]
     update:
-      roles: [authenticated]
+      roles: [admin, authenticated]
     delete:
-      roles: [authenticated]
+      roles: [admin, authenticated]
