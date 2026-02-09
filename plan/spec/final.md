@@ -167,10 +167,6 @@ Promotion (dev → prod):
     - `stk release current --project <project> --env dev`
     - `stk release list --project <project> --env dev`
 
-Rollback (prod):
-- `stk release rollback --project <project> --env prod --to <previousReleaseId>`
-  - 의미: prod의 “현재 릴리즈” 포인터를 이전 릴리즈로 되돌린다.
-
 ---
 
 ## 6) Runtime API (Bridge / Data Plane)

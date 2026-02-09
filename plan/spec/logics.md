@@ -95,3 +95,28 @@ SQL Injection 방지:
 - 기본적으로 **Raw SQL**이므로 DB 엔진에 종속적이다.
 - 복잡한 로직(분기 처리, 루프 등)은 DB의 stored procedure(PL/pgSQL 등)를 호출하거나, SQL 내에서 해결해야 한다.
 - JavaScript/Python 스크립트 실행은 지원하지 않는다(보안/성능 이슈).
+
+---
+
+## 5) Transaction & Error Handling
+
+명시적 트랜잭션:
+- SQL 본문에 `BEGIN;` ... `COMMIT;` 또는 `ROLLBACK;`을 포함할 수 있음
+- Bridge는 SQL을 있는 그대로 실행 (트랜잭션 블록 포함)
+- Multi-statement 실행 지원
+
+암묵적 트랜잭션:
+- 단일 statement는 DB 드라이버의 기본 트랜잭션 정책 따름 (보통 auto-commit)
+
+에러 처리:
+- SQL 실행 실패 시 Bridge는 에러를 캐치하고 `500 INTERNAL_ERROR` 반환
+- 에러 메시지는 로그에만 기록 (클라이언트에는 일반 에러 메시지)
+- 보안: SQL 에러 세부사항을 클라이언트에 노출하지 않음
+
+Timeout:
+- Logic 실행은 Bridge의 전역 timeout 설정을 따름
+- 장시간 실행 쿼리는 타임아웃 후 자동 취소
+
+Connection Pooling:
+- Logic은 해당 connection의 pool에서 connection 획득
+- 실행 완료 후 자동 반환

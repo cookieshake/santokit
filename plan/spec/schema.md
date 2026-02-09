@@ -210,6 +210,22 @@ CLI (최종 표면):
 - 데이터 변환 로직이 필요한 형변환 (예: `text` → `int`)
 - Santokit은 마이그레이션 스크립트를 실행하지 않으므로, 사용자가 (1) 컬럼을 drop하고 다시 만들거나 (2) 수동으로 데이터를 정리해야 한다.
 
+### Rollback 정책
+
+원칙:
+- **스키마 rollback은 지원하지 않음** (by design)
+- 이유: 데이터 손실 위험 및 복잡도
+
+대신:
+- **Forward-only migration** 정책
+- 문제 발생 시: 새로운 마이그레이션으로 수정 (hotfix)
+- 예: 컬럼 추가 실수 → 컬럼 삭제 마이그레이션 생성 (`--force`)
+
+권장 사항:
+- Production 반영 전 dev/staging에서 충분히 검증
+- 파괴적 변경은 반드시 `--dry-run`으로 preview 확인
+- Critical 데이터는 apply 전 백업
+
 ---
 
 ## 5) Drift Policy (Release Gate)

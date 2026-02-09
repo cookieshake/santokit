@@ -69,6 +69,15 @@ where 확장:
 안전장치(필수):
 - `where` 없는 `update/delete`는 기본적으로 금지
 
+### 2.1) Array 타입 검증
+
+Insert/Update 시 `type: array` 컬럼의 검증:
+- `items` 타입과 모든 배열 요소가 일치해야 함
+- 예: `tags: { type: array, items: string }`이면 `["foo", "bar"]`는 허용, `["foo", 123]`은 거부
+- 중첩 배열도 재귀적으로 검증
+- 빈 배열 `[]`은 허용
+- 타입 불일치 시 `400 BAD_REQUEST` 반환
+
 ---
 
 ## 3) Schema Dependency
@@ -123,11 +132,26 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 - `authenticated` (End User access token 필요)
 - `{role}` (API key roles 또는 End User roles에 매칭)
 
-**Condition (CEL)**:
+**Condition (CEL) - 현재 제한사항**:
 - 단순 role 체크를 넘어선 동적 조건을 정의한다.
 - 구글 CEL(Common Expression Language) 표준을 사용한다.
-- 현재 `resource.* == request.auth.sub` 형태의 owner 필터 패턴은 SQL 필터로 안전하게 변환된다.
-- 그 외 `resource.*` 기반 일반식은 아직 SQL 변환을 지원하지 않으며 요청은 에러로 실패한다.
+
+지원되는 패턴:
+1. **Owner Check (SQL 변환 지원)**:
+   - `resource.id == request.auth.sub`
+   - `resource.user_id == request.auth.sub`
+   - 패턴: `resource.<column> == request.auth.sub`
+   - 이 패턴은 SQL WHERE 절로 안전하게 변환됨
+
+2. **Request Context (CEL 평가)**:
+   - `request.auth.roles`에 기반한 조건
+   - `request.params.*`에 기반한 조건
+   - CEL 엔진으로 평가됨 (SQL 변환 없음)
+
+제한사항:
+- 일반적인 `resource.*` 조건 (예: `resource.status == "active"`)은 **현재 미지원**
+- 향후 릴리즈에서 추가 예정
+- 미지원 패턴 사용 시 명확한 에러 메시지 반환
 
 ### 4.1) Rule-Based Permissions
 

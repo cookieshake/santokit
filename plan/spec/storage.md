@@ -120,7 +120,6 @@ CEL Context 변수:
 ## 5) Limitation
 
 - Bridge는 파일 스트림을 직접 처리하지 않는다 (Proxy 모드 미지원).
-- Bridge는 파일 스트림을 직접 처리하지 않는다 (Proxy 모드 미지원).
 - Multipart Upload(대용량 분할 업로드)를 위한 복잡한 Sign Flow는 v1에서 제외한다.
 
 ---
@@ -132,6 +131,8 @@ CEL Context 변수:
 - `onDelete: cascade`:
   - Bridge는 해당 컬럼을 가진 Row가 `DELETE` 될 때, `params`로 전달된 ID 등을 이용해 삭제 전 데이터를 조회한다.
   - 조회된 파일 경로를 이용해 S3 `DeleteObject`를 비동기(Background)로 요청한다.
-  - 실패 시 에러 로그를 남기지만, 트랜잭션을 롤백하지는 않는다(Best Effort).
+  - **Best Effort 정책**: 실패 시 에러 로그를 남기지만, 트랜잭션을 롤백하지는 않는다.
+  - **주의**: 네트워크 장애나 S3 오류로 인해 orphan 파일이 남을 수 있음
+  - 정기적인 orphan 파일 정리 작업(S3 lifecycle policy 등) 권장
 - `onDelete: preserve`:
   - 아무 동작도 하지 않는다. (기본값)
