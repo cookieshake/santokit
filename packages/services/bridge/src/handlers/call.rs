@@ -1245,7 +1245,14 @@ async fn check_rate_limit(state: &AppState, ip: Option<&str>) -> bool {
     let now = std::time::Instant::now();
     let window = std::time::Duration::from_secs(window_secs);
 
-    let mut limits = state.rate_limits.write().unwrap();
+    let mut limits = state.rate_limits.write().unwrap_or_else(|e| e.into_inner());
+
+    // Periodic cleanup (approx every 1000 calls to this handler per instance)
+    // or when the map gets too large.
+    if limits.len() > 1000 {
+        limits.retain(|_, v| now.duration_since(v.window_start) <= window);
+    }
+
     let entry = limits.entry(key).or_insert(crate::state::RateLimitState {
         window_start: now,
         count: 0,

@@ -28,6 +28,9 @@ pub struct Config {
 
     /// Rate limit store (sqlite URL)
     pub rate_limit_db: Option<String>,
+
+    /// DB Pool max connections
+    pub db_pool_max: u32,
 }
 
 impl Config {
@@ -72,6 +75,11 @@ impl Config {
                 .unwrap_or(60),
 
             rate_limit_db: env::var("STK_RATE_LIMIT_DB").ok(),
+
+            db_pool_max: env::var("STK_DB_POOL_MAX")
+                .unwrap_or_else(|_| "5".to_string())
+                .parse()
+                .unwrap_or(5),
         })
     }
 }

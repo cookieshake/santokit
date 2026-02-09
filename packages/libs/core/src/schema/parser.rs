@@ -368,7 +368,7 @@ tables:
             ColumnType::Array { items } => {
                 assert!(matches!(items.as_ref(), ColumnType::String));
             }
-            _ => panic!("Expected array type"),
+            _ => assert!(false, "Expected array type"),
         }
     }
 

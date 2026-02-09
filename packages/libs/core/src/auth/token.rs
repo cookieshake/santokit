@@ -360,7 +360,7 @@ mod tests {
         let kind = TokenKind::from_headers(None, Some("Bearer mytoken"));
         match kind {
             Some(TokenKind::AccessToken(token)) => assert_eq!(token, "mytoken"),
-            _ => panic!("Expected AccessToken"),
+            _ => assert!(false, "Expected AccessToken"),
         }
 
         // Neither

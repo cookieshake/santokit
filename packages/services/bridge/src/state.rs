@@ -28,6 +28,9 @@ pub struct AppState {
 
     /// Rate limit persistent store (optional)
     pub rate_limit_db: Option<sqlx::SqlitePool>,
+
+    /// HTTP Client
+    pub http_client: reqwest::Client,
 }
 
 #[derive(Debug, Clone)]
@@ -85,12 +88,17 @@ impl AppState {
             None
         };
 
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()?;
+
         Ok(Self {
             config: config.clone(),
             release_cache: RwLock::new(HashMap::new()),
             db_pools: RwLock::new(HashMap::new()),
             rate_limits: RwLock::new(HashMap::new()),
             rate_limit_db,
+            http_client,
         })
     }
 
@@ -105,7 +113,7 @@ impl AppState {
 
         // 캐시 조회
         {
-            let cache = self.release_cache.read().unwrap();
+            let cache = self.release_cache.read().unwrap_or_else(|e| e.into_inner());
             if let Some(release) = cache.get(&key) {
                 // TTL 체크
                 let elapsed = chrono::Utc::now() - release.cached_at;
@@ -121,7 +129,7 @@ impl AppState {
             self.config.hub_url, project, env
         );
 
-        let response = reqwest::get(url).await.ok()?;
+        let response = self.http_client.get(url).send().await.ok()?;
         if !response.status().is_success() {
             return None;
         }
@@ -146,7 +154,7 @@ impl AppState {
     /// 릴리즈 캐시 갱신
     pub fn update_release_cache(&self, project: &str, env: &str, release: CachedRelease) {
         let key = Self::cache_key(project, env);
-        let mut cache = self.release_cache.write().unwrap();
+        let mut cache = self.release_cache.write().unwrap_or_else(|e| e.into_inner());
         cache.insert(key, release);
     }
 
@@ -161,18 +169,18 @@ impl AppState {
         let pool_key = format!("{}:{}", conn.engine, conn.db_url);
 
         {
-            let pools = self.db_pools.read().unwrap();
+            let pools = self.db_pools.read().unwrap_or_else(|e| e.into_inner());
             if let Some(pool) = pools.get(&pool_key) {
                 return Ok(pool.clone());
             }
         }
 
         let pool = sqlx::postgres::PgPoolOptions::new()
-            .max_connections(5)
+            .max_connections(self.config.db_pool_max)
             .connect(&conn.db_url)
             .await?;
 
-        let mut pools = self.db_pools.write().unwrap();
+        let mut pools = self.db_pools.write().unwrap_or_else(|e| e.into_inner());
         pools.insert(pool_key, pool.clone());
 
         Ok(pool)
