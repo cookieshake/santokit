@@ -3,13 +3,13 @@ tables:
     select:
       - roles: [admin]
         columns: ["*"]
-      - roles: [authenticated]
+      - roles: [viewer]
         columns: ["id", "normal", "s_sensitive"]
     insert:
-      - roles: [authenticated]
+      - roles: [admin]
         columns: ["normal", "s_sensitive"]
     update:
-      - roles: [authenticated]
+      - roles: [admin]
         columns: ["normal", "s_sensitive"]
     delete:
-      - roles: [authenticated]
+      - roles: [admin]

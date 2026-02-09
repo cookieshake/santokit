@@ -46,6 +46,19 @@ pub struct AuthContext {
 
     /// 환경 ID
     pub env_id: Option<String>,
+
+    /// 인증 주체 타입
+    #[serde(default)]
+    pub principal_type: PrincipalType,
+}
+
+/// 인증 주체 타입
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PrincipalType {
+    #[default]
+    EndUser,
+    ApiKey,
 }
 
 impl EvalContext {
@@ -80,6 +93,11 @@ impl EvalContext {
     /// 인증되었는지 확인
     pub fn is_authenticated(&self) -> bool {
         self.auth.sub.is_some()
+    }
+
+    /// End User 인증인지 확인 (`authenticated` role requirement 용도)
+    pub fn is_end_user_authenticated(&self) -> bool {
+        self.auth.sub.is_some() && self.auth.principal_type == PrincipalType::EndUser
     }
 
     /// CEL 평가를 위한 Map으로 변환
@@ -128,6 +146,29 @@ impl AuthContext {
             roles,
             project_id: None,
             env_id: None,
+            principal_type: PrincipalType::EndUser,
+        }
+    }
+
+    /// API Key 인증 컨텍스트 생성
+    pub fn api_key(key_id: String, roles: Vec<String>) -> Self {
+        Self {
+            sub: Some(key_id),
+            roles,
+            project_id: None,
+            env_id: None,
+            principal_type: PrincipalType::ApiKey,
+        }
+    }
+
+    /// End User 인증 컨텍스트 생성
+    pub fn end_user(sub: String, roles: Vec<String>) -> Self {
+        Self {
+            sub: Some(sub),
+            roles,
+            project_id: None,
+            env_id: None,
+            principal_type: PrincipalType::EndUser,
         }
     }
 
@@ -138,6 +179,7 @@ impl AuthContext {
             roles,
             project_id: Some(project_id),
             env_id: Some(env_id),
+            principal_type: PrincipalType::ApiKey,
         }
     }
 
@@ -148,6 +190,7 @@ impl AuthContext {
             roles,
             project_id: Some(project_id),
             env_id: Some(env_id),
+            principal_type: PrincipalType::EndUser,
         }
     }
 

@@ -74,7 +74,7 @@ def test_operator_apikey(compose_env):
         json={"path": "db/users/select", "params": {"limit": 1}},
         headers=headers,
     )
-    assert resp.status_code in (200, 403)
+    assert resp.status_code == 200
 
 
 def test_operator_schema_change(compose_env):

@@ -7,6 +7,7 @@ use sea_query::{Expr, Iden, Order, PostgresQueryBuilder, Query, SelectStatement}
 use serde_json::Value;
 use std::collections::HashMap;
 
+use stk_core::permissions::{PermissionFilter, PermissionFilterOp};
 use stk_core::schema::Table;
 
 use crate::params::{CrudParams, SortOrder, WhereClause, WhereOperator};
@@ -44,7 +45,7 @@ impl<'a> SelectBuilder<'a> {
     pub fn build(
         &self,
         params: &CrudParams,
-        extra_where: Option<&str>,
+        extra_filters: Option<&[PermissionFilter]>,
         allowed_columns: Option<&[String]>,
     ) -> (String, Vec<Value>) {
         let mut query = Query::select();
@@ -63,8 +64,8 @@ impl<'a> SelectBuilder<'a> {
         }
 
         // Extra WHERE (권한 조건)
-        if let Some(extra) = extra_where {
-            query.and_where(Expr::cust(extra));
+        if let Some(filters) = extra_filters {
+            self.build_permission_filters(&mut query, filters);
         }
 
         // ORDER BY
@@ -120,14 +121,9 @@ impl<'a> SelectBuilder<'a> {
         &self,
         query: &mut SelectStatement,
         where_clause: &WhereClause,
-        values: &mut Vec<Value>,
+        _values: &mut Vec<Value>,
     ) {
         for (column, value) in &where_clause.0 {
-            // 논리 연산자 ($and, $or) 처리는 생략 (후속 구현)
-            if column.starts_with('$') {
-                continue;
-            }
-
             let col_iden = (DynIden(self.table.name.clone()), DynIden(column.clone()));
 
             match value {
@@ -150,7 +146,7 @@ impl<'a> SelectBuilder<'a> {
                 }
                 // 연산자 객체
                 Value::Object(obj) => {
-                    self.build_operator_condition(query, column, obj, values);
+                    self.build_operator_condition(query, column, obj);
                 }
                 _ => {}
             }
@@ -162,7 +158,6 @@ impl<'a> SelectBuilder<'a> {
         query: &mut SelectStatement,
         column: &str,
         obj: &serde_json::Map<String, Value>,
-        _values: &mut Vec<Value>,
     ) {
         let col_iden = (DynIden(self.table.name.clone()), DynIden(column.to_string()));
 
@@ -173,19 +168,17 @@ impl<'a> SelectBuilder<'a> {
 
             match op {
                 WhereOperator::Eq => {
-                    if let Value::String(s) = op_value {
-                        query.and_where(Expr::col(col_iden.clone()).eq(s.as_str()));
-                    }
+                    self.build_eq_condition(query, &col_iden, op_value);
                 }
                 WhereOperator::Ne => {
-                    if let Value::String(s) = op_value {
-                        query.and_where(Expr::col(col_iden.clone()).ne(s.as_str()));
-                    }
+                    self.build_ne_condition(query, &col_iden, op_value);
                 }
                 WhereOperator::Gt => {
                     if let Value::Number(n) = op_value {
                         if let Some(i) = n.as_i64() {
                             query.and_where(Expr::col(col_iden.clone()).gt(i));
+                        } else if let Some(f) = n.as_f64() {
+                            query.and_where(Expr::col(col_iden.clone()).gt(f));
                         }
                     }
                 }
@@ -193,6 +186,8 @@ impl<'a> SelectBuilder<'a> {
                     if let Value::Number(n) = op_value {
                         if let Some(i) = n.as_i64() {
                             query.and_where(Expr::col(col_iden.clone()).gte(i));
+                        } else if let Some(f) = n.as_f64() {
+                            query.and_where(Expr::col(col_iden.clone()).gte(f));
                         }
                     }
                 }
@@ -200,6 +195,8 @@ impl<'a> SelectBuilder<'a> {
                     if let Value::Number(n) = op_value {
                         if let Some(i) = n.as_i64() {
                             query.and_where(Expr::col(col_iden.clone()).lt(i));
+                        } else if let Some(f) = n.as_f64() {
+                            query.and_where(Expr::col(col_iden.clone()).lt(f));
                         }
                     }
                 }
@@ -207,17 +204,22 @@ impl<'a> SelectBuilder<'a> {
                     if let Value::Number(n) = op_value {
                         if let Some(i) = n.as_i64() {
                             query.and_where(Expr::col(col_iden.clone()).lte(i));
+                        } else if let Some(f) = n.as_f64() {
+                            query.and_where(Expr::col(col_iden.clone()).lte(f));
                         }
                     }
                 }
                 WhereOperator::In => {
                     if let Value::Array(arr) = op_value {
-                        let strings: Vec<String> = arr
-                            .iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                            .collect();
-                        if !strings.is_empty() {
-                            query.and_where(Expr::col(col_iden.clone()).is_in(strings));
+                        if let Some(values) = scalar_array_to_strings(arr) {
+                            query.and_where(Expr::col(col_iden.clone()).is_in(values));
+                        }
+                    }
+                }
+                WhereOperator::NotIn => {
+                    if let Value::Array(arr) = op_value {
+                        if let Some(values) = scalar_array_to_strings(arr) {
+                            query.and_where(Expr::col(col_iden.clone()).is_not_in(values));
                         }
                     }
                 }
@@ -232,7 +234,73 @@ impl<'a> SelectBuilder<'a> {
                 WhereOperator::IsNotNull => {
                     query.and_where(Expr::col(col_iden.clone()).is_not_null());
                 }
-                _ => {}
+            }
+        }
+    }
+
+    fn build_eq_condition(
+        &self,
+        query: &mut SelectStatement,
+        col_iden: &(DynIden, DynIden),
+        value: &Value,
+    ) {
+        match value {
+            Value::String(s) => {
+                query.and_where(Expr::col(col_iden.clone()).eq(s.as_str()));
+            }
+            Value::Bool(b) => {
+                query.and_where(Expr::col(col_iden.clone()).eq(*b));
+            }
+            Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    query.and_where(Expr::col(col_iden.clone()).eq(i));
+                } else if let Some(f) = n.as_f64() {
+                    query.and_where(Expr::col(col_iden.clone()).eq(f));
+                }
+            }
+            Value::Null => {
+                query.and_where(Expr::col(col_iden.clone()).is_null());
+            }
+            _ => {}
+        }
+    }
+
+    fn build_ne_condition(
+        &self,
+        query: &mut SelectStatement,
+        col_iden: &(DynIden, DynIden),
+        value: &Value,
+    ) {
+        match value {
+            Value::String(s) => {
+                query.and_where(Expr::col(col_iden.clone()).ne(s.as_str()));
+            }
+            Value::Bool(b) => {
+                query.and_where(Expr::col(col_iden.clone()).ne(*b));
+            }
+            Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    query.and_where(Expr::col(col_iden.clone()).ne(i));
+                } else if let Some(f) = n.as_f64() {
+                    query.and_where(Expr::col(col_iden.clone()).ne(f));
+                }
+            }
+            Value::Null => {
+                query.and_where(Expr::col(col_iden.clone()).is_not_null());
+            }
+            _ => {}
+        }
+    }
+
+    fn build_permission_filters(
+        &self,
+        query: &mut SelectStatement,
+        filters: &[PermissionFilter],
+    ) {
+        for filter in filters {
+            let col_iden = (DynIden(self.table.name.clone()), DynIden(filter.column.clone()));
+            match filter.op {
+                PermissionFilterOp::Eq => self.build_eq_condition(query, &col_iden, &filter.value),
             }
         }
     }
@@ -306,7 +374,7 @@ impl<'a> UpdateBuilder<'a> {
         &self,
         data: &HashMap<String, Value>,
         where_clause: &WhereClause,
-        extra_where: Option<&str>,
+        extra_filters: Option<&[PermissionFilter]>,
     ) -> String {
         let table_iden = DynIden(self.table.name.clone());
         let mut query = Query::update();
@@ -319,10 +387,6 @@ impl<'a> UpdateBuilder<'a> {
 
         // WHERE 절
         for (column, value) in &where_clause.0 {
-            if column.starts_with('$') {
-                continue;
-            }
-
             let col_iden = (table_iden.clone(), DynIden(column.clone()));
             match value {
                 Value::String(s) => {
@@ -331,15 +395,26 @@ impl<'a> UpdateBuilder<'a> {
                 Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
                         query.and_where(Expr::col(col_iden).eq(i));
+                    } else if let Some(f) = n.as_f64() {
+                        query.and_where(Expr::col(col_iden).eq(f));
                     }
+                }
+                Value::Bool(b) => {
+                    query.and_where(Expr::col(col_iden).eq(*b));
+                }
+                Value::Null => {
+                    query.and_where(Expr::col(col_iden).is_null());
+                }
+                Value::Object(obj) => {
+                    apply_operator_condition_to_update(&mut query, table_iden.clone(), column, obj);
                 }
                 _ => {}
             }
         }
 
         // Extra WHERE (권한 조건)
-        if let Some(extra) = extra_where {
-            query.and_where(Expr::cust(extra));
+        if let Some(filters) = extra_filters {
+            apply_permission_filters_to_update(&mut query, table_iden.clone(), filters);
         }
 
         // RETURNING
@@ -360,17 +435,13 @@ impl<'a> DeleteBuilder<'a> {
     }
 
     /// SQL 생성
-    pub fn build(&self, where_clause: &WhereClause, extra_where: Option<&str>) -> String {
+    pub fn build(&self, where_clause: &WhereClause, extra_filters: Option<&[PermissionFilter]>) -> String {
         let table_iden = DynIden(self.table.name.clone());
         let mut query = Query::delete();
         query.from_table(table_iden.clone());
 
         // WHERE 절
         for (column, value) in &where_clause.0 {
-            if column.starts_with('$') {
-                continue;
-            }
-
             let col_iden = (table_iden.clone(), DynIden(column.clone()));
             match value {
                 Value::String(s) => {
@@ -379,15 +450,26 @@ impl<'a> DeleteBuilder<'a> {
                 Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
                         query.and_where(Expr::col(col_iden).eq(i));
+                    } else if let Some(f) = n.as_f64() {
+                        query.and_where(Expr::col(col_iden).eq(f));
                     }
+                }
+                Value::Bool(b) => {
+                    query.and_where(Expr::col(col_iden).eq(*b));
+                }
+                Value::Null => {
+                    query.and_where(Expr::col(col_iden).is_null());
+                }
+                Value::Object(obj) => {
+                    apply_operator_condition_to_delete(&mut query, table_iden.clone(), column, obj);
                 }
                 _ => {}
             }
         }
 
         // Extra WHERE (권한 조건)
-        if let Some(extra) = extra_where {
-            query.and_where(Expr::cust(extra));
+        if let Some(filters) = extra_filters {
+            apply_permission_filters_to_delete(&mut query, table_iden.clone(), filters);
         }
 
         // RETURNING
@@ -415,6 +497,341 @@ fn value_to_expr(value: &Value) -> sea_query::SimpleExpr {
         Value::Array(_) | Value::Object(_) => {
             // JSON 타입으로 직렬화
             Expr::val(value.to_string()).into()
+        }
+    }
+}
+
+fn scalar_array_to_strings(values: &[Value]) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    for value in values {
+        match value {
+            Value::String(s) => out.push(s.clone()),
+            Value::Number(n) => out.push(n.to_string()),
+            Value::Bool(b) => out.push(b.to_string()),
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+fn apply_operator_condition_to_update(
+    query: &mut sea_query::UpdateStatement,
+    table_iden: DynIden,
+    column: &str,
+    obj: &serde_json::Map<String, Value>,
+) {
+    let col_iden = (table_iden, DynIden(column.to_string()));
+    for (op_key, op_value) in obj {
+        let Some(op) = WhereOperator::from_str(op_key) else {
+            continue;
+        };
+        apply_where_operator_update(query, &col_iden, op, op_value);
+    }
+}
+
+fn apply_operator_condition_to_delete(
+    query: &mut sea_query::DeleteStatement,
+    table_iden: DynIden,
+    column: &str,
+    obj: &serde_json::Map<String, Value>,
+) {
+    let col_iden = (table_iden, DynIden(column.to_string()));
+    for (op_key, op_value) in obj {
+        let Some(op) = WhereOperator::from_str(op_key) else {
+            continue;
+        };
+        apply_where_operator_delete(query, &col_iden, op, op_value);
+    }
+}
+
+fn apply_permission_filters_to_update(
+    query: &mut sea_query::UpdateStatement,
+    table_iden: DynIden,
+    filters: &[PermissionFilter],
+) {
+    for filter in filters {
+        let col_iden = (table_iden.clone(), DynIden(filter.column.clone()));
+        if filter.op == PermissionFilterOp::Eq {
+            apply_eq_update(query, &col_iden, &filter.value);
+        }
+    }
+}
+
+fn apply_permission_filters_to_delete(
+    query: &mut sea_query::DeleteStatement,
+    table_iden: DynIden,
+    filters: &[PermissionFilter],
+) {
+    for filter in filters {
+        let col_iden = (table_iden.clone(), DynIden(filter.column.clone()));
+        if filter.op == PermissionFilterOp::Eq {
+            apply_eq_delete(query, &col_iden, &filter.value);
+        }
+    }
+}
+
+fn apply_where_operator_update(
+    query: &mut sea_query::UpdateStatement,
+    col_iden: &(DynIden, DynIden),
+    op: WhereOperator,
+    value: &Value,
+) {
+    match op {
+        WhereOperator::Eq => apply_eq_update(query, col_iden, value),
+        WhereOperator::Ne => apply_ne_update(query, col_iden, value),
+        WhereOperator::Gt => apply_numeric_update(query, col_iden, value, "gt"),
+        WhereOperator::Gte => apply_numeric_update(query, col_iden, value, "gte"),
+        WhereOperator::Lt => apply_numeric_update(query, col_iden, value, "lt"),
+        WhereOperator::Lte => apply_numeric_update(query, col_iden, value, "lte"),
+        WhereOperator::In => apply_set_update(query, col_iden, value, true),
+        WhereOperator::NotIn => apply_set_update(query, col_iden, value, false),
+        WhereOperator::Like => {
+            if let Value::String(s) = value {
+                query.and_where(Expr::col(col_iden.clone()).like(s.as_str()));
+            }
+        }
+        WhereOperator::IsNull => {
+            query.and_where(Expr::col(col_iden.clone()).is_null());
+        }
+        WhereOperator::IsNotNull => {
+            query.and_where(Expr::col(col_iden.clone()).is_not_null());
+        }
+    }
+}
+
+fn apply_where_operator_delete(
+    query: &mut sea_query::DeleteStatement,
+    col_iden: &(DynIden, DynIden),
+    op: WhereOperator,
+    value: &Value,
+) {
+    match op {
+        WhereOperator::Eq => apply_eq_delete(query, col_iden, value),
+        WhereOperator::Ne => apply_ne_delete(query, col_iden, value),
+        WhereOperator::Gt => apply_numeric_delete(query, col_iden, value, "gt"),
+        WhereOperator::Gte => apply_numeric_delete(query, col_iden, value, "gte"),
+        WhereOperator::Lt => apply_numeric_delete(query, col_iden, value, "lt"),
+        WhereOperator::Lte => apply_numeric_delete(query, col_iden, value, "lte"),
+        WhereOperator::In => apply_set_delete(query, col_iden, value, true),
+        WhereOperator::NotIn => apply_set_delete(query, col_iden, value, false),
+        WhereOperator::Like => {
+            if let Value::String(s) = value {
+                query.and_where(Expr::col(col_iden.clone()).like(s.as_str()));
+            }
+        }
+        WhereOperator::IsNull => {
+            query.and_where(Expr::col(col_iden.clone()).is_null());
+        }
+        WhereOperator::IsNotNull => {
+            query.and_where(Expr::col(col_iden.clone()).is_not_null());
+        }
+    }
+}
+
+fn apply_eq_update(query: &mut sea_query::UpdateStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+    match value {
+        Value::String(s) => {
+            query.and_where(Expr::col(col_iden.clone()).eq(s.as_str()));
+        }
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                query.and_where(Expr::col(col_iden.clone()).eq(i));
+            } else if let Some(f) = n.as_f64() {
+                query.and_where(Expr::col(col_iden.clone()).eq(f));
+            }
+        }
+        Value::Bool(b) => {
+            query.and_where(Expr::col(col_iden.clone()).eq(*b));
+        }
+        Value::Null => {
+            query.and_where(Expr::col(col_iden.clone()).is_null());
+        }
+        _ => {}
+    }
+}
+
+fn apply_ne_update(query: &mut sea_query::UpdateStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+    match value {
+        Value::String(s) => {
+            query.and_where(Expr::col(col_iden.clone()).ne(s.as_str()));
+        }
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                query.and_where(Expr::col(col_iden.clone()).ne(i));
+            } else if let Some(f) = n.as_f64() {
+                query.and_where(Expr::col(col_iden.clone()).ne(f));
+            }
+        }
+        Value::Bool(b) => {
+            query.and_where(Expr::col(col_iden.clone()).ne(*b));
+        }
+        Value::Null => {
+            query.and_where(Expr::col(col_iden.clone()).is_not_null());
+        }
+        _ => {}
+    }
+}
+
+fn apply_eq_delete(query: &mut sea_query::DeleteStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+    match value {
+        Value::String(s) => {
+            query.and_where(Expr::col(col_iden.clone()).eq(s.as_str()));
+        }
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                query.and_where(Expr::col(col_iden.clone()).eq(i));
+            } else if let Some(f) = n.as_f64() {
+                query.and_where(Expr::col(col_iden.clone()).eq(f));
+            }
+        }
+        Value::Bool(b) => {
+            query.and_where(Expr::col(col_iden.clone()).eq(*b));
+        }
+        Value::Null => {
+            query.and_where(Expr::col(col_iden.clone()).is_null());
+        }
+        _ => {}
+    }
+}
+
+fn apply_ne_delete(query: &mut sea_query::DeleteStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+    match value {
+        Value::String(s) => {
+            query.and_where(Expr::col(col_iden.clone()).ne(s.as_str()));
+        }
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                query.and_where(Expr::col(col_iden.clone()).ne(i));
+            } else if let Some(f) = n.as_f64() {
+                query.and_where(Expr::col(col_iden.clone()).ne(f));
+            }
+        }
+        Value::Bool(b) => {
+            query.and_where(Expr::col(col_iden.clone()).ne(*b));
+        }
+        Value::Null => {
+            query.and_where(Expr::col(col_iden.clone()).is_not_null());
+        }
+        _ => {}
+    }
+}
+
+fn apply_numeric_update(
+    query: &mut sea_query::UpdateStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+    op: &str,
+) {
+    if let Value::Number(n) = value {
+        if let Some(i) = n.as_i64() {
+            match op {
+                "gt" => {
+                    query.and_where(Expr::col(col_iden.clone()).gt(i));
+                }
+                "gte" => {
+                    query.and_where(Expr::col(col_iden.clone()).gte(i));
+                }
+                "lt" => {
+                    query.and_where(Expr::col(col_iden.clone()).lt(i));
+                }
+                "lte" => {
+                    query.and_where(Expr::col(col_iden.clone()).lte(i));
+                }
+                _ => {}
+            }
+        } else if let Some(f) = n.as_f64() {
+            match op {
+                "gt" => {
+                    query.and_where(Expr::col(col_iden.clone()).gt(f));
+                }
+                "gte" => {
+                    query.and_where(Expr::col(col_iden.clone()).gte(f));
+                }
+                "lt" => {
+                    query.and_where(Expr::col(col_iden.clone()).lt(f));
+                }
+                "lte" => {
+                    query.and_where(Expr::col(col_iden.clone()).lte(f));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn apply_numeric_delete(
+    query: &mut sea_query::DeleteStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+    op: &str,
+) {
+    if let Value::Number(n) = value {
+        if let Some(i) = n.as_i64() {
+            match op {
+                "gt" => {
+                    query.and_where(Expr::col(col_iden.clone()).gt(i));
+                }
+                "gte" => {
+                    query.and_where(Expr::col(col_iden.clone()).gte(i));
+                }
+                "lt" => {
+                    query.and_where(Expr::col(col_iden.clone()).lt(i));
+                }
+                "lte" => {
+                    query.and_where(Expr::col(col_iden.clone()).lte(i));
+                }
+                _ => {}
+            }
+        } else if let Some(f) = n.as_f64() {
+            match op {
+                "gt" => {
+                    query.and_where(Expr::col(col_iden.clone()).gt(f));
+                }
+                "gte" => {
+                    query.and_where(Expr::col(col_iden.clone()).gte(f));
+                }
+                "lt" => {
+                    query.and_where(Expr::col(col_iden.clone()).lt(f));
+                }
+                "lte" => {
+                    query.and_where(Expr::col(col_iden.clone()).lte(f));
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+fn apply_set_update(
+    query: &mut sea_query::UpdateStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+    is_in: bool,
+) {
+    if let Value::Array(arr) = value {
+        if let Some(values) = scalar_array_to_strings(arr) {
+            if is_in {
+                query.and_where(Expr::col(col_iden.clone()).is_in(values));
+            } else {
+                query.and_where(Expr::col(col_iden.clone()).is_not_in(values));
+            }
+        }
+    }
+}
+
+fn apply_set_delete(
+    query: &mut sea_query::DeleteStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+    is_in: bool,
+) {
+    if let Value::Array(arr) = value {
+        if let Some(values) = scalar_array_to_strings(arr) {
+            if is_in {
+                query.and_where(Expr::col(col_iden.clone()).is_in(values));
+            } else {
+                query.and_where(Expr::col(col_iden.clone()).is_not_in(values));
+            }
         }
     }
 }

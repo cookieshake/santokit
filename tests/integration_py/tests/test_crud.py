@@ -236,7 +236,7 @@ def test_crud_pagination_sorting(compose_env):
     select_sorted = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/select", "params": {"orderBy": [{"field": "email", "direction": "asc"}], "limit": 5}},
+        json={"path": "db/users/select", "params": {"orderBy": {"email": "asc"}, "limit": 5}},
         headers=headers,
     )
     assert select_sorted.status_code == 200

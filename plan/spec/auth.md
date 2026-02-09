@@ -174,11 +174,12 @@ Auto CRUD 권한 체크에 사용한다.
 ## 6) How Logic Declares Auth
 
 로직 메타(프론트매터 또는 twin metadata)에서:
-- `auth: public` (default)
-- `auth: roles: [admin, ...]` (API key roles 또는 user.roles에 적용)
+- `auth: authenticated` (default)
+- `auth: public`
+- `roles: [admin, ...]` (API key roles 또는 user.roles에 적용)
 
 Bridge 처리:
-- `public`: credential 없이 허용(권장하지 않음; 운영에서는 기본 비활성)
+- `public`: 로직 레벨의 추가 인증 요구는 없음. 단, Bridge 공통 인증 게이트웨이는 credential을 요구한다.
 - `roles`: (API key 또는 JWT) 필요 + role 포함 필요
 
 ---

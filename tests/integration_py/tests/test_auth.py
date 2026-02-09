@@ -31,7 +31,7 @@ def test_enduser_login_hub_issuer(compose_env):
         json={"path": "db/users/select", "params": {"limit": 1}},
         headers=jwt_headers(access_token, project),
     )
-    assert resp.status_code in (200, 403)
+    assert resp.status_code == 403
 
 
 def test_enduser_login_external_oidc(compose_env):
@@ -46,13 +46,18 @@ def test_enduser_login_external_oidc(compose_env):
 
     resp = env.httpToHub(
         "POST",
-        "/api/oidc-providers",
+        "/api/oidc/providers",
         json={
             "project": project,
             "env": "dev",
             "name": "test-oidc",
             "issuer": "https://accounts.google.com",
+            "auth_url": "https://accounts.google.com/o/oauth2/v2/auth",
+            "token_url": "https://oauth2.googleapis.com/token",
+            "userinfo_url": "https://openidconnect.googleapis.com/v1/userinfo",
             "client_id": "fake-client-id",
+            "client_secret": "fake-client-secret",
+            "redirect_uris": ["https://example.com/callback"],
         },
         headers={"Authorization": f"Bearer {env._auth_token}"},
     )
@@ -79,7 +84,7 @@ def test_enduser_multi_project_login(compose_env):
         json={"path": "db/users/select", "params": {"limit": 1}},
         headers=jwt_headers(token_a, project_a),
     )
-    assert resp_a.status_code in (200, 403)
+    assert resp_a.status_code == 403
 
     resp_b = env.httpToBridge(
         "POST",
@@ -87,4 +92,4 @@ def test_enduser_multi_project_login(compose_env):
         json={"path": "db/users/select", "params": {"limit": 1}},
         headers=jwt_headers(token_b, project_b),
     )
-    assert resp_b.status_code in (200, 403)
+    assert resp_b.status_code == 403

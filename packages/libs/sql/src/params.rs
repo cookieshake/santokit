@@ -100,15 +100,14 @@ impl WhereClause {
     ///
     /// Schema IR의 컬럼 정보와 대조하여 유효성을 검사합니다.
     pub fn validate(&self, allowed_columns: &[&str]) -> Result<(), WhereValidationError> {
-        for key in self.0.keys() {
-            // 논리 연산자는 스킵
+        for (key, value) in &self.0 {
             if key.starts_with('$') {
-                continue;
+                return Err(WhereValidationError::InvalidOperator(key.clone()));
             }
-
             if !allowed_columns.contains(&key.as_str()) {
                 return Err(WhereValidationError::UnknownColumn(key.clone()));
             }
+            validate_condition_value(key, value)?;
         }
 
         Ok(())
@@ -126,6 +125,9 @@ pub enum WhereValidationError {
 
     #[error("type mismatch for column {column}: expected {expected}")]
     TypeMismatch { column: String, expected: String },
+
+    #[error("invalid where clause shape for column {column}: expected {expected}")]
+    InvalidShape { column: String, expected: String },
 }
 
 /// WHERE 조건 연산자
@@ -175,6 +177,90 @@ impl WhereOperator {
     }
 }
 
+fn validate_condition_value(column: &str, value: &Value) -> Result<(), WhereValidationError> {
+    match value {
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => Ok(()),
+        Value::Object(obj) => {
+            for (op, op_value) in obj {
+                let Some(operator) = WhereOperator::from_str(op) else {
+                    return Err(WhereValidationError::InvalidOperator(op.clone()));
+                };
+                validate_operator_value(column, operator, op_value)?;
+            }
+            Ok(())
+        }
+        Value::Array(_) => Err(WhereValidationError::InvalidShape {
+            column: column.to_string(),
+            expected: "scalar or operator object".to_string(),
+        }),
+    }
+}
+
+fn validate_operator_value(
+    column: &str,
+    operator: WhereOperator,
+    value: &Value,
+) -> Result<(), WhereValidationError> {
+    match operator {
+        WhereOperator::Eq | WhereOperator::Ne => {
+            if matches!(value, Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_)) {
+                Ok(())
+            } else {
+                Err(WhereValidationError::TypeMismatch {
+                    column: column.to_string(),
+                    expected: "scalar (null/bool/number/string)".to_string(),
+                })
+            }
+        }
+        WhereOperator::Gt | WhereOperator::Gte | WhereOperator::Lt | WhereOperator::Lte => {
+            if value.is_number() {
+                Ok(())
+            } else {
+                Err(WhereValidationError::TypeMismatch {
+                    column: column.to_string(),
+                    expected: "number".to_string(),
+                })
+            }
+        }
+        WhereOperator::In | WhereOperator::NotIn => match value {
+            Value::Array(items) if !items.is_empty() => {
+                if items.iter().all(|v| matches!(v, Value::Bool(_) | Value::Number(_) | Value::String(_))) {
+                    Ok(())
+                } else {
+                    Err(WhereValidationError::TypeMismatch {
+                        column: column.to_string(),
+                        expected: "non-empty scalar array (bool/number/string)".to_string(),
+                    })
+                }
+            }
+            _ => Err(WhereValidationError::TypeMismatch {
+                column: column.to_string(),
+                expected: "non-empty scalar array (bool/number/string)".to_string(),
+            }),
+        },
+        WhereOperator::Like => {
+            if value.is_string() {
+                Ok(())
+            } else {
+                Err(WhereValidationError::TypeMismatch {
+                    column: column.to_string(),
+                    expected: "string".to_string(),
+                })
+            }
+        }
+        WhereOperator::IsNull | WhereOperator::IsNotNull => {
+            if matches!(value, Value::Bool(_) | Value::Null) {
+                Ok(())
+            } else {
+                Err(WhereValidationError::TypeMismatch {
+                    column: column.to_string(),
+                    expected: "bool or null".to_string(),
+                })
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,6 +284,32 @@ mod tests {
         assert_eq!(WhereOperator::from_str("$gt"), Some(WhereOperator::Gt));
         assert_eq!(WhereOperator::from_str("$in"), Some(WhereOperator::In));
         assert_eq!(WhereOperator::from_str("$unknown"), None);
+    }
+
+    #[test]
+    fn test_where_clause_rejects_unsupported_operator() {
+        let where_clause = WhereClause::empty().eq(
+            "age",
+            serde_json::json!({ "$unsupported": 1 }),
+        );
+        let allowed = vec!["age"];
+        assert!(matches!(
+            where_clause.validate(&allowed),
+            Err(WhereValidationError::InvalidOperator(op)) if op == "$unsupported"
+        ));
+    }
+
+    #[test]
+    fn test_where_clause_rejects_type_mismatch() {
+        let where_clause = WhereClause::empty().eq(
+            "age",
+            serde_json::json!({ "$gt": "not-a-number" }),
+        );
+        let allowed = vec!["age"];
+        assert!(matches!(
+            where_clause.validate(&allowed),
+            Err(WhereValidationError::TypeMismatch { .. })
+        ));
     }
 
     #[test]

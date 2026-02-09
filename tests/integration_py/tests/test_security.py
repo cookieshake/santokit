@@ -140,7 +140,7 @@ def test_column_prefix(compose_env):
     insert_resp = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/insert", "params": {"values": {"email": "secret@example.com", "name": "John Doe"}}},
+        json={"path": "db/users/insert", "params": {"values": {"normal": "John Doe", "s_sensitive": "s1"}}},
         headers=admin_headers,
     )
     assert insert_resp.status_code == 200
@@ -148,7 +148,7 @@ def test_column_prefix(compose_env):
     select_admin = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/select", "params": {"where": {"email": "secret@example.com"}}},
+        json={"path": "db/users/select", "params": {"where": {"normal": "John Doe"}}},
         headers=admin_headers,
     )
     assert select_admin.status_code == 200
@@ -158,10 +158,17 @@ def test_column_prefix(compose_env):
     select_viewer = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/select", "params": {"where": {"email": "secret@example.com"}}},
+        json={"path": "db/users/select", "params": {"where": {"normal": "John Doe"}}},
         headers=viewer_headers,
     )
-    assert select_viewer.status_code in (200, 403)
+    assert select_viewer.status_code == 200
+    rows_viewer = get_rows(select_viewer.json())
+    assert len(rows_viewer) == 1
+    assert "normal" in rows_viewer[0]
+    assert "s_sensitive" in rows_viewer[0]
+    assert "c_secret" not in rows_viewer[0]
+    assert "p_private" not in rows_viewer[0]
+    assert "_system" not in rows_viewer[0]
 
 
 def test_column_permissions(compose_env):
@@ -206,3 +213,5 @@ def test_column_permissions(compose_env):
     assert select_basic.status_code == 200
     rows_basic = get_rows(select_basic.json())
     assert len(rows_basic) >= 1
+    assert "email" not in rows_basic[0]
+    assert "name" in rows_basic[0]

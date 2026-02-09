@@ -8,14 +8,28 @@ use crate::error::{Error, Result};
 use cel_interpreter::{Context, Program};
 use cel_interpreter::objects::Value as CelValue;
 
+/// 권한 조건 필터
+#[derive(Debug, Clone)]
+pub struct PermissionFilter {
+    pub column: String,
+    pub op: PermissionFilterOp,
+    pub value: serde_json::Value,
+}
+
+/// 권한 조건 연산자
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermissionFilterOp {
+    Eq,
+}
+
 /// 권한 평가 결과
 #[derive(Debug, Clone)]
 pub struct EvalResult {
     /// 허용 여부
     pub allowed: bool,
 
-    /// SQL WHERE 절에 추가할 조건 (CEL → SQL 변환 결과)
-    pub where_clause: Option<String>,
+    /// SQL WHERE 절에 추가할 조건 (CEL → 안전한 필터 변환 결과)
+    pub filters: Vec<PermissionFilter>,
 
     /// 거부 사유 (allowed=false인 경우)
     pub reason: Option<String>,
@@ -29,7 +43,7 @@ impl EvalResult {
     pub fn allow() -> Self {
         Self {
             allowed: true,
-            where_clause: None,
+            filters: Vec::new(),
             reason: None,
             columns: None,
         }
@@ -39,27 +53,27 @@ impl EvalResult {
     pub fn allow_with_columns(columns: Vec<String>) -> Self {
         Self {
             allowed: true,
-            where_clause: None,
+            filters: Vec::new(),
             reason: None,
             columns: Some(columns),
         }
     }
 
     /// 조건부 허용 결과 생성
-    pub fn allow_with_condition(where_clause: String) -> Self {
+    pub fn allow_with_filter(filter: PermissionFilter) -> Self {
         Self {
             allowed: true,
-            where_clause: Some(where_clause),
+            filters: vec![filter],
             reason: None,
             columns: None,
         }
     }
 
     /// 조건 + 컬럼 허용 결과 생성
-    pub fn allow_with_condition_and_columns(where_clause: String, columns: Vec<String>) -> Self {
+    pub fn allow_with_filter_and_columns(filter: PermissionFilter, columns: Vec<String>) -> Self {
         Self {
             allowed: true,
-            where_clause: Some(where_clause),
+            filters: vec![filter],
             reason: None,
             columns: Some(columns),
         }
@@ -69,7 +83,7 @@ impl EvalResult {
     pub fn deny(reason: impl Into<String>) -> Self {
         Self {
             allowed: false,
-            where_clause: None,
+            filters: Vec::new(),
             reason: Some(reason.into()),
             columns: None,
         }
@@ -99,27 +113,13 @@ impl<'a> PermissionEvaluator<'a> {
         // 테이블 권한 조회
         let table_perms = match self.policy.tables.get(table) {
             Some(perms) => perms,
-            None => {
-                // 정책이 없으면 기본적으로 인증된 사용자만 허용
-                if ctx.is_authenticated() {
-                    return Ok(EvalResult::allow());
-                } else {
-                    return Ok(EvalResult::deny("authentication required"));
-                }
-            }
+            None => return Ok(EvalResult::deny("no matching permission rule")),
         };
 
         // 작업별 권한 조회
         let op_rules = match table_perms.get_operation(op) {
             Some(rules) => rules,
-            None => {
-                // 작업 권한이 없으면 기본적으로 인증된 사용자만 허용
-                if ctx.is_authenticated() {
-                    return Ok(EvalResult::allow());
-                } else {
-                    return Ok(EvalResult::deny("authentication required"));
-                }
-            }
+            None => return Ok(EvalResult::deny("no matching permission rule")),
         };
 
         // First Role Match Wins: 규칙 순회
@@ -161,7 +161,7 @@ impl<'a> PermissionEvaluator<'a> {
             match req {
                 RoleRequirement::Public => return true,
                 RoleRequirement::Authenticated => {
-                    if ctx.is_authenticated() {
+                    if ctx.is_end_user_authenticated() {
                         return true;
                     }
                 }
@@ -193,9 +193,11 @@ impl<'a> PermissionEvaluator<'a> {
             let column = self.extract_owner_column(condition);
 
             if let Some(col) = column {
-                // SQL WHERE 절 생성
-                let where_clause = format!("{} = '{}'", col, sub);
-                return Ok(EvalResult::allow_with_condition(where_clause));
+                return Ok(EvalResult::allow_with_filter(PermissionFilter {
+                    column: col,
+                    op: PermissionFilterOp::Eq,
+                    value: serde_json::Value::String(sub.to_string()),
+                }));
             }
         }
 
@@ -306,7 +308,7 @@ fn json_to_cel(value: serde_json::Value) -> CelValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::permissions::context::AuthContext;
+    use crate::permissions::context::{AuthContext, PrincipalType};
 
     fn sample_policy() -> PermissionPolicy {
         let yaml = r#"
@@ -364,8 +366,9 @@ tables:
         // users.select는 authenticated + condition
         let result = evaluator.evaluate("users", Operation::Select, &ctx).unwrap();
         assert!(result.allowed);
-        assert!(result.where_clause.is_some());
-        assert!(result.where_clause.unwrap().contains("user_123"));
+        assert_eq!(result.filters.len(), 1);
+        assert_eq!(result.filters[0].column, "id");
+        assert_eq!(result.filters[0].value, serde_json::Value::String("user_123".to_string()));
     }
 
     #[test]
@@ -434,5 +437,42 @@ tables:
         let result = evaluator.evaluate("users", Operation::Select, &ctx).unwrap();
         assert!(result.allowed);
         assert_eq!(result.columns, Some(vec!["id", "name", "email"].iter().map(|s| s.to_string()).collect::<Vec<_>>()));
+    }
+
+    #[test]
+    fn test_no_matching_policy_is_denied() {
+        let policy = sample_policy();
+        let evaluator = PermissionEvaluator::new(&policy);
+
+        let ctx = EvalContext::new().with_auth(AuthContext::new(
+            "user_123".to_string(),
+            vec!["admin".to_string()],
+        ));
+        let result = evaluator.evaluate("unknown_table", Operation::Select, &ctx).unwrap();
+        assert!(!result.allowed);
+        assert_eq!(result.reason, Some("no matching permission rule".to_string()));
+    }
+
+    #[test]
+    fn test_authenticated_role_requires_end_user() {
+        let policy = sample_policy();
+        let evaluator = PermissionEvaluator::new(&policy);
+
+        let api_key_ctx = EvalContext::new().with_auth(AuthContext {
+            sub: Some("key_123".to_string()),
+            roles: vec![],
+            project_id: None,
+            env_id: None,
+            principal_type: PrincipalType::ApiKey,
+        });
+        let result = evaluator.evaluate("users", Operation::Select, &api_key_ctx).unwrap();
+        assert!(!result.allowed);
+
+        let end_user_ctx = EvalContext::new().with_auth(AuthContext::end_user(
+            "user_123".to_string(),
+            vec![],
+        ));
+        let result = evaluator.evaluate("users", Operation::Select, &end_user_ctx).unwrap();
+        assert!(result.allowed);
     }
 }

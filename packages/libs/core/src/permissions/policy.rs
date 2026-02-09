@@ -32,9 +32,20 @@ pub struct PermissionRule {
 }
 
 /// Operation별 규칙 목록 (ordered array)
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct OperationRules {
     pub rules: Vec<PermissionRule>,
+}
+
+impl Serialize for OperationRules {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Persist as plain rule array so stored YAML can be parsed back
+        // by the custom deserializer (seq or single-map shorthand).
+        self.rules.serialize(serializer)
+    }
 }
 
 /// OperationRules의 custom deserializer (shorthand 호환)
@@ -255,5 +266,27 @@ tables:
         assert_eq!(select_rules.rules.len(), 1); // Shorthand converts to single rule
         assert_eq!(select_rules.rules[0].roles.len(), 1);
         assert!(select_rules.rules[0].condition.is_some());
+    }
+
+    #[test]
+    fn test_operation_rules_serialize_round_trip() {
+        let yaml = r#"
+tables:
+  users:
+    select:
+      roles: [admin]
+    insert:
+      - roles: [admin]
+      - roles: [authenticated]
+        condition: "request.auth.sub != ''"
+"#;
+
+        let policy: PermissionPolicy = serde_yaml::from_str(yaml).unwrap();
+        let dumped = serde_yaml::to_string(&policy).unwrap();
+        let reparsed: PermissionPolicy = serde_yaml::from_str(&dumped).unwrap();
+
+        let users = reparsed.tables.get("users").unwrap();
+        assert_eq!(users.select.as_ref().unwrap().rules.len(), 1);
+        assert_eq!(users.insert.as_ref().unwrap().rules.len(), 2);
     }
 }

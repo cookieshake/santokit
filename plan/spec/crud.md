@@ -8,7 +8,7 @@
 - DB 엔진: Postgres (기본)
 - 권한 주체: Project API key roles + End User access token roles/identity
 - 권한 모델: 테이블/컬럼 레벨 권한 + **CEL(Common Expression Language) 기반 Condition**
-- where: equality(AND) + 확장 표현식(and/or/in/like/비교 연산)
+- where: equality + 연산자 객체(`$eq/$ne/$gt/$gte/$lt/$lte/$in/$notIn/$like/$isNull/$isNotNull`)
 - 컬럼 접근 제어는 permissions.yaml에서 명시적으로 지정
 
 스키마 상세:
@@ -43,7 +43,9 @@ Auto CRUD는 `path` 컨벤션으로 라우팅된다:
 - `where`: object (표현식)
 
 where 확장:
-- `in` 연산자는 array 값을 받는다.
+- 논리 연산자(`$and`, `$or`)는 현재 지원하지 않는다.
+- `in`/`notIn` 연산자는 비어있지 않은 scalar array 값을 받는다.
+- 미지원 연산자/타입은 `400 BAD_REQUEST`로 실패한다(무시하지 않음).
 
 `select`:
 - `select`: string[] | "*" (default `"*"`)
@@ -124,6 +126,8 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 **Condition (CEL)**:
 - 단순 role 체크를 넘어선 동적 조건을 정의한다.
 - 구글 CEL(Common Expression Language) 표준을 사용한다.
+- 현재 `resource.* == request.auth.sub` 형태의 owner 필터 패턴은 SQL 필터로 안전하게 변환된다.
+- 그 외 `resource.*` 기반 일반식은 아직 SQL 변환을 지원하지 않으며 요청은 에러로 실패한다.
 
 ### 4.1) Rule-Based Permissions
 

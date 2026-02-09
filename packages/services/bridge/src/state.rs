@@ -20,7 +20,7 @@ pub struct AppState {
     /// 릴리즈 캐시 (project:env → Release)
     pub release_cache: RwLock<HashMap<String, CachedRelease>>,
 
-    /// DB Connection Pool 캐시 (connection_id → Pool)
+    /// DB Connection Pool 캐시 (engine+db_url → Pool)
     pub db_pools: RwLock<HashMap<String, sqlx::PgPool>>,
 
     /// Rate limit state (ip → window)
@@ -156,9 +156,13 @@ impl AppState {
             anyhow::bail!("unsupported connection engine: {}", conn.engine);
         }
 
+        // Connection name ("main") is reused across projects/envs.
+        // Cache key must include actual target DB identity.
+        let pool_key = format!("{}:{}", conn.engine, conn.db_url);
+
         {
             let pools = self.db_pools.read().unwrap();
-            if let Some(pool) = pools.get(&conn.name) {
+            if let Some(pool) = pools.get(&pool_key) {
                 return Ok(pool.clone());
             }
         }
@@ -169,7 +173,7 @@ impl AppState {
             .await?;
 
         let mut pools = self.db_pools.write().unwrap();
-        pools.insert(conn.name.clone(), pool.clone());
+        pools.insert(pool_key, pool.clone());
 
         Ok(pool)
     }

@@ -377,13 +377,13 @@ async fn handle_auto_crud(
     let eval_ctx = match principal {
         Principal::Anonymous => EvalContext::new(),
         Principal::ApiKey { key_id, roles } => {
-            EvalContext::new().with_auth(stk_core::permissions::AuthContext::new(
+            EvalContext::new().with_auth(stk_core::permissions::AuthContext::api_key(
                 key_id.clone(),
                 roles.clone(),
             ))
         }
         Principal::EndUser { user_id, roles } => {
-            EvalContext::new().with_auth(stk_core::permissions::AuthContext::new(
+            EvalContext::new().with_auth(stk_core::permissions::AuthContext::end_user(
                 user_id.clone(),
                 roles.clone(),
             ))
@@ -414,6 +414,37 @@ async fn handle_auto_crud(
         })?
     };
 
+    let all_columns = table_def.all_column_names();
+
+    // 명시적 select 컬럼 유효성 체크
+    if let Some(stk_sql::params::SelectColumns::Columns(ref cols)) = crud_params.select {
+        for col_name in cols {
+            if !all_columns.contains(&col_name.as_str()) {
+                return Err(BridgeError::BadRequest {
+                    message: format!("Unknown column in select: {}", col_name),
+                });
+            }
+        }
+    }
+
+    // where 유효성 체크
+    if let Some(where_clause) = crud_params.r#where.as_ref() {
+        where_clause.validate(&all_columns).map_err(|e| BridgeError::BadRequest {
+            message: format!("Invalid where clause: {}", e),
+        })?;
+    }
+
+    // orderBy 유효성 체크
+    if let Some(order_by) = crud_params.order_by.as_ref() {
+        for col_name in order_by.keys() {
+            if !all_columns.contains(&col_name.as_str()) {
+                return Err(BridgeError::BadRequest {
+                    message: format!("Unknown column in orderBy: {}", col_name),
+                });
+            }
+        }
+    }
+
     // Column permissions 체크 (명시적 select 요청 시)
     if let Some(stk_sql::params::SelectColumns::Columns(ref cols)) = crud_params.select {
         if let Some(ref allowed) = resolved_columns {
@@ -431,7 +462,11 @@ async fn handle_auto_crud(
     if matches!(operation, CrudOperation::Insert) {
         if let Some(ref data) = crud_params.data {
             for col_name in data.keys() {
-                // resolved_columns에 이미 readonly 필터링이 적용되어 있음
+                if !all_columns.contains(&col_name.as_str()) {
+                    return Err(BridgeError::BadRequest {
+                        message: format!("Unknown column in insert data: {}", col_name),
+                    });
+                }
                 if let Some(ref allowed) = resolved_columns {
                     if !allowed.contains(col_name) {
                         return Err(BridgeError::Forbidden {
@@ -447,7 +482,11 @@ async fn handle_auto_crud(
     if matches!(operation, CrudOperation::Update) {
         if let Some(ref data) = crud_params.data {
             for col_name in data.keys() {
-                // resolved_columns에 이미 readonly 필터링이 적용되어 있음
+                if !all_columns.contains(&col_name.as_str()) {
+                    return Err(BridgeError::BadRequest {
+                        message: format!("Unknown column in update data: {}", col_name),
+                    });
+                }
                 if let Some(ref allowed) = resolved_columns {
                     if !allowed.contains(col_name) {
                         return Err(BridgeError::Forbidden {
@@ -488,7 +527,7 @@ async fn handle_auto_crud(
             let builder = stk_sql::SelectBuilder::new(table_def);
             let (sql, values) = builder.build(
                 &crud_params,
-                eval_result.where_clause.as_deref(),
+                Some(&eval_result.filters),
                 resolved_columns.as_deref(),
             );
             let rows = sqlx::query(&sql)
@@ -538,12 +577,11 @@ async fn handle_auto_crud(
                     let expand_resolved_columns = evaluator.resolve_columns(&expand_eval);
 
                     // 5. FK 값들 수집
-                    let fk_values: Vec<String> = data.iter()
+                    let fk_values: Vec<Value> = data.iter()
                         .filter_map(|row| {
-                            row.get(&expand_info.fk_column)
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
+                            row.get(&expand_info.fk_column).cloned()
                         })
+                        .filter(|v| !v.is_null())
                         .collect();
 
                     if fk_values.is_empty() {
@@ -586,7 +624,7 @@ async fn handle_auto_crud(
 
                     let mut query = sqlx::query(&expand_sql);
                     for val in &fk_values {
-                        query = query.bind(val);
+                        query = bind_json_scalar(query, val);
                     }
                     let expand_rows = query.fetch_all(&pool).await.map_err(BridgeError::Database)?;
                     let expand_data = rows_to_json(expand_rows);
@@ -596,15 +634,15 @@ async fn handle_auto_crud(
                         .into_iter()
                         .filter_map(|row| {
                             row.get(target_pk)
-                                .and_then(|v| v.as_str())
-                                .map(|pk| (pk.to_string(), row.clone()))
+                                .and_then(value_key)
+                                .map(|pk| (pk, row.clone()))
                         })
                         .collect();
 
                     // 9. 메인 결과에 병합
                     for row in data.iter_mut() {
-                        if let Some(fk_val) = row.get(&expand_info.fk_column).and_then(|v| v.as_str()) {
-                            if let Some(related) = expand_map.get(fk_val) {
+                        if let Some(fk_key) = row.get(&expand_info.fk_column).and_then(value_key) {
+                            if let Some(related) = expand_map.get(&fk_key) {
                                 if let Value::Object(obj) = row {
                                     obj.insert(expand_info.relation_name.clone(), related.clone());
                                 }
@@ -664,7 +702,7 @@ async fn handle_auto_crud(
                 });
             }
             let builder = stk_sql::UpdateBuilder::new(table_def);
-            let sql = builder.build(&data, &where_clause, eval_result.where_clause.as_deref());
+            let sql = builder.build(&data, &where_clause, Some(&eval_result.filters));
             let rows = sqlx::query(&sql)
                 .fetch_all(&pool)
                 .await
@@ -709,7 +747,7 @@ async fn handle_auto_crud(
                 ));
 
                 let builder = stk_sql::SelectBuilder::new(table_def);
-                let (select_sql, _) = builder.build(&select_params, eval_result.where_clause.as_deref(), None);
+                let (select_sql, _) = builder.build(&select_params, Some(&eval_result.filters), None);
                 let rows = sqlx::query(&select_sql)
                     .fetch_all(&pool)
                     .await
@@ -727,7 +765,7 @@ async fn handle_auto_crud(
             }
 
             let builder = stk_sql::DeleteBuilder::new(table_def);
-            let sql = builder.build(&where_clause, eval_result.where_clause.as_deref());
+            let sql = builder.build(&where_clause, Some(&eval_result.filters));
             let rows = sqlx::query(&sql)
                 .fetch_all(&pool)
                 .await
@@ -1118,33 +1156,51 @@ fn extract_params(sql: &str) -> (String, Vec<String>) {
     (out, params)
 }
 
+fn bind_json_scalar<'a>(
+    mut query: Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
+    value: &Value,
+) -> Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
+    match value {
+        Value::Null => {
+            let v: Option<String> = None;
+            query = query.bind(v);
+        }
+        Value::Bool(b) => query = query.bind(*b),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                query = query.bind(i);
+            } else if let Some(f) = n.as_f64() {
+                query = query.bind(f);
+            } else {
+                query = query.bind(n.to_string());
+            }
+        }
+        Value::String(s) => query = query.bind(s.clone()),
+        Value::Array(_) | Value::Object(_) => {
+            query = query.bind(sqlx::types::Json(value.clone()));
+        }
+    }
+    query
+}
+
 fn bind_values<'a>(
     mut query: Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
     values: Vec<Value>,
 ) -> Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
     for value in values {
-        match value {
-            Value::Null => {
-                let v: Option<String> = None;
-                query = query.bind(v);
-            }
-            Value::Bool(b) => query = query.bind(b),
-            Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    query = query.bind(i);
-                } else if let Some(f) = n.as_f64() {
-                    query = query.bind(f);
-                } else {
-                    query = query.bind(n.to_string());
-                }
-            }
-            Value::String(s) => query = query.bind(s),
-            Value::Array(_) | Value::Object(_) => {
-                query = query.bind(sqlx::types::Json(value));
-            }
-        }
+        query = bind_json_scalar(query, &value);
     }
     query
+}
+
+fn value_key(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::Bool(v) => Some(format!("b:{}", v)),
+        Value::Number(v) => Some(format!("n:{}", v)),
+        Value::String(v) => Some(format!("s:{}", v)),
+        Value::Array(_) | Value::Object(_) => Some(format!("j:{}", value)),
+    }
 }
 
 async fn check_rate_limit(state: &AppState, ip: Option<&str>) -> bool {
@@ -1288,11 +1344,16 @@ fn row_to_json(row: sqlx::postgres::PgRow) -> Value {
                 .ok()
                 .flatten()
                 .map(|v| Value::String(v.to_string())),
-            "TIMESTAMPTZ" | "TIMESTAMP" => row
+            "TIMESTAMPTZ" => row
                 .try_get::<Option<chrono::DateTime<chrono::Utc>>, _>(name)
                 .ok()
                 .flatten()
                 .map(|v| Value::String(v.to_rfc3339())),
+            "TIMESTAMP" => row
+                .try_get::<Option<chrono::NaiveDateTime>, _>(name)
+                .ok()
+                .flatten()
+                .map(|v| Value::String(v.format("%Y-%m-%dT%H:%M:%S%.f").to_string())),
             _ => row
                 .try_get::<Option<String>, _>(name)
                 .ok()

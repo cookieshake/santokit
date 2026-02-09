@@ -45,7 +45,7 @@ pub struct ErrorResponse {
 pub struct ErrorBody {
     pub code: String,
     pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "requestId", skip_serializing_if = "Option::is_none")]
     pub request_id: Option<String>,
 }
 
