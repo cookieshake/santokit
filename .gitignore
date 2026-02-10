@@ -458,5 +458,4 @@ target/
 .stk/
 
 # Local dev tooling
-.flox/
 .superset/
