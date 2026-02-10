@@ -71,7 +71,7 @@ Encore 참고:
 - histogram은 `_bucket/_sum/_count`를 Prometheus 규약대로 노출한다.
 
 라벨(cardinality) 가이드:
-- 금지(고카디널): `request_id`, `user_id`, `token_sub`, SQL 문자열, raw URL 전체.
+- 금지(고카디널): `requestId`, `user_id`, `token_sub`, SQL 문자열, raw URL 전체.
 - 허용(저카디널): `project`, `env`, `status`, `connection`, `table`, `op`.
 - `path` 라벨은 raw `path` 문자열이 아니라, 템플릿/정규화된 값만 허용한다.
   - 예: `db/users/select`, `logics/admin/users`, `storage/public/upload_sign`
@@ -121,7 +121,7 @@ Histogram 버킷(초안):
 
 ### 3.2 Span Attributes (공통)
 
-- `stk.project`, `stk.env`, `stk.release_id`
+- `stk.project`, `stk.env`, `stk.releaseId`
 - `stk.auth.type` (`api_key` | `bearer` | `cookie` | `none`)
 - `stk.table`, `stk.operation` (CRUD의 경우)
 - `stk.logic.name` (Custom Logic의 경우)
@@ -146,7 +146,7 @@ Histogram 버킷(초안):
 
 허용 attribute:
 - `db.statement`: sanitize된 SQL 텍스트(placeholder 포함)
-- `stk.project`, `stk.env`, `stk.release_id`
+- `stk.project`, `stk.env`, `stk.releaseId`
 - `http.method`, `http.route`, `http.status_code`
 
 금지 attribute:
@@ -170,8 +170,8 @@ Histogram 버킷(초안):
   "method": "POST",
   "path": "/call",
   "status": 200,
-  "duration_ms": 12,
-  "request_id": "req_abc123"
+  "durationMs": 12,
+  "requestId": "req_abc123"
 }
 ```
 
@@ -184,17 +184,17 @@ Histogram 버킷(초안):
 - `ts`: RFC3339 timestamp
 - `level`: `error|warn|info|debug|trace`
 - `msg`: 짧은 메시지
-- `request_id`: 요청 식별자(트레이스 correlation에 사용)
+- `requestId`: 요청 식별자(트레이스 correlation에 사용)
 
 Bridge 권장 필드:
-- `project`, `env`, `release_id`
-- `method`, `path`, `status`, `duration_ms`
-- `auth_type` (`api_key|bearer|cookie|none`)
+- `project`, `env`, `releaseId`
+- `method`, `path`, `status`, `durationMs`
+- `authType` (`api_key|bearer|cookie|none`)
 - `table`, `op` 또는 `logic`
 
 Hub 권장 필드:
-- `method`, `path`, `status`, `duration_ms`
-- `actor_id`, `actor_type` (audit 연계)
+- `method`, `path`, `status`, `durationMs`
+- `actorId`, `actorType` (audit 연계)
 
 ### 4.2 민감정보 마스킹(필수)
 

@@ -84,7 +84,7 @@ Audit log는 "운영자가 Hub를 통해 수행하는 변경"과 "시스템이 �
 ```
 
 권장 출력 필드:
-- `ts`, `actor_id`, `action`, `project`, `env`, `request_id`(있으면), `detail` 요약
+- `ts`, `actorId`, `actorType`, `action`, `project`, `env`, `requestId`(있으면), `detail` 요약
 
 ### 4.2 API (초안)
 

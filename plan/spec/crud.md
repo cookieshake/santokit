@@ -51,9 +51,16 @@ where 확장:
 - 주의: 여기서 `select`는 `params.select`(반환 컬럼 선택) 필드를 의미하며, `op=select`(조회 연산)와는 별개다.
 - `select`: string[] | "*" (default `"*"`)
 - `expand`: string[] (optional; FK 기반 관계 로드)
-- `orderBy`: object (예: `{ created_at: "desc" }`)
+- `orderBy`: object (예: `{ "created_at": "desc" }`)
+  - key는 컬럼명(식별자)이며, 선언 스키마의 컬럼명을 그대로 사용한다.
+  - value는 정렬 방향: `"asc"` | `"desc"`
 - `limit`: number
 - `offset`: number
+
+표기 규칙:
+- 고정 필드(`orderBy`, `limit` 등)는 lowerCamelCase를 사용한다.
+- 컬럼명/테이블명은 식별자이므로 원본을 그대로 사용한다.
+  - 상세: `plan/spec/conventions.md`
 
 `insert`:
 - `data`: object

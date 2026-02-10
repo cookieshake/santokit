@@ -40,6 +40,7 @@
 ## Entry Points
 - `plan/spec/final.md`
 - `plan/spec/glossary.md`
+- `plan/spec/conventions.md`
 - `plan/spec/errors.md`
 - `plan/spec/audit-log.md`
 - `plan/spec/auth.md`

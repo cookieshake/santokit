@@ -98,6 +98,7 @@ deadLetter: true                  # 실패 메시지를 DLQ로 이동
 
 - `handler`는 Custom Logic(`logics/*.sql`)을 가리킨다.
 - 핸들러 SQL은 이벤트 페이로드를 `:event.orderId`, `:event.userId` 등으로 참조한다.
+  - 이벤트/크론 handler 컨텍스트 변수: `plan/spec/logics.md`
 
 ### 1.3.1 실행 semantics (MVP)
 

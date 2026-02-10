@@ -95,6 +95,27 @@ Frontmatter (`--- ... ---`):
 - `:auth.roles`: 유저 Role (JSON/Array)
 - `:client.ip`: 클라이언트 IP 등
 
+추가 컨텍스트(이벤트/크론 실행 시):
+- Custom Logic은 `/call`로 직접 호출될 수도 있고, Pub/Sub handler 또는 Cron job handler로 실행될 수도 있다.
+- 이 경우 아래 시스템 변수가 추가로 바인딩된다.
+
+Event handler variables:
+- `:event.id`: 이벤트 ID (ULID)
+- `:event.topic`: 토픽 이름
+- `:event.publishedAt`: RFC3339 timestamp
+- `:event.attempt`: 재시도 횟수(1부터 시작)
+
+Event payload variables:
+- 토픽 schema에 정의된 payload 필드는 `:event.<fieldName>`으로 바인딩된다.
+  - 예: topic schema에 `orderId`가 있으면 `:event.orderId`를 사용할 수 있다.
+
+Cron handler variables:
+- `:cron.name`: cron job 이름
+- `:cron.scheduledAt`: RFC3339 timestamp
+
+주의:
+- 위 변수들은 handler 실행 컨텍스트에서만 제공된다(일반 `/call` 호출에는 없음).
+
 SQL Injection 방지:
 - 절대 문자열 치환(String Interpolation)을 하지 않는다.
 - DB 드라이버의 **Parameter Binding** 기능(`$1`, `?` 등)만 사용한다.

@@ -34,6 +34,9 @@
 - End User: Bridge(Data Plane)의 `/call`을 호출하는 앱의 최종 사용자(사람)
   - 추가 용어 정의: `plan/spec/glossary.md`
 
+표기 규칙:
+- snake_case vs camelCase 규칙: `plan/spec/conventions.md`
+
 ---
 
 ## 2) Repository Layout

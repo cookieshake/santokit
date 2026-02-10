@@ -38,6 +38,10 @@ stk gen client --lang <language> --output <path> [--env <env>] [--tables <t1,t2>
 4. storage 메타데이터에서 버킷/정책 정보를 추출한다.
 5. 대상 언어의 템플릿으로 코드를 생성한다.
 
+구분:
+- SDK 생성(`stk gen client`)은 Hub(Control Plane)의 릴리즈 메타데이터를 사용한다.
+- 생성된 SDK의 런타임 호출은 Bridge(Data Plane) (`POST /call`)를 대상으로 한다.
+
 ---
 
 ## 1.1) 생성된 API 구조 (repo 구조 반영)
@@ -149,7 +153,7 @@ export class UsersTable {
 
   async select(params?: {
     where?: { id?: string; email?: string; /* ... */ };
-    orderBy?: { column: string; direction: 'asc' | 'desc' }[];
+    orderBy?: Record<string, 'asc' | 'desc'>; // key는 column name
     limit?: number;
     offset?: number;
     expand?: string[];
@@ -189,7 +193,7 @@ export class MyAppClient {
     [bucket: string]: unknown;
   };
 
-  constructor(config: { hubUrl: string; apiKey?: string; accessToken?: string }) {
+  constructor(config: { bridgeUrl: string; apiKey?: string; accessToken?: string }) {
     /* ... */
   }
 }
@@ -222,7 +226,7 @@ export interface SantokitError {
 
 ```typescript
 const client = new MyAppClient({
-  hubUrl: 'https://bridge.example.com',
+  bridgeUrl: 'https://bridge.example.com',
   apiKey: 'stk_key_...',          // 서버/CI용
   // 또는
   accessToken: 'stk_at_...',     // End User용

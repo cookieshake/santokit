@@ -97,21 +97,38 @@ Encore 참고:
 목적:
 - Bridge가 End User access token 검증에 필요한 키를 동기화한다.
 
-성공(200) 응답 예시:
+규칙:
+- 이 API는 Bridge가 End User access token 검증에 필요한 **키 소재**를 전달한다.
+- 이 엔드포인트는 `/internal/*` 네트워크 격리 + service token 인증을 전제로 한다.
+- 응답은 로깅/트레이싱 대상에서 제외해야 한다(민감정보).
+
+키 포맷(결정, MVP):
+- Santokit End User access token이 PASETO v4.local(대칭키)인 경우:
+  - Hub는 key bytes를 base64(RFC4648, no wrap)로 전달한다.
+  - Bridge는 메모리에만 보관하고 디스크에 저장하지 않는다.
+  - rotation을 위해 `current` + `previous`를 동시 제공한다.
+
+성공(200) 응답 예시(확정 구조):
 ```json
 {
   "project": "myapp",
   "env": "prod",
   "keys": [
-    { "kid": "k1", "status": "current", "createdAt": "2026-01-01T00:00:00Z" },
-    { "kid": "k0", "status": "previous", "createdAt": "2025-12-01T00:00:00Z" }
+    {
+      "kid": "k1",
+      "status": "current",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "k": "base64_key_bytes"
+    },
+    {
+      "kid": "k0",
+      "status": "previous",
+      "createdAt": "2025-12-01T00:00:00Z",
+      "k": "base64_key_bytes"
+    }
   ]
 }
 ```
-
-규칙:
-- 실제 키 소재(비밀값)는 이 API에서 전달하지 않는다.
-- Bridge가 검증에 필요한 형태(JWK, raw key bytes 등)는 별도 섹션에서 확정한다.
 
 prefix:
 - `/internal/` prefix는 외부 노출을 차단하며, 네트워크 정책 또는 reverse proxy로 격리한다.
