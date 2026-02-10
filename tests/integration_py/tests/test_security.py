@@ -1,7 +1,21 @@
 import re
-from dsl import unique_project, bootstrap_project, signup_and_login, jwt_headers, create_api_key, api_key_headers, get_rows
+from dsl import (
+    unique_project,
+    bootstrap_project,
+    signup_and_login,
+    jwt_headers,
+    create_api_key,
+    api_key_headers,
+    get_rows,
+)
 
 FIXTURE_DIR_CEL = "/workspace/tests/integration_py/fixtures/cel_condition"
+FIXTURE_DIR_CEL_LITERAL = (
+    "/workspace/tests/integration_py/fixtures/cel_condition_literal"
+)
+FIXTURE_DIR_CEL_UNSUPPORTED = (
+    "/workspace/tests/integration_py/fixtures/cel_condition_unsupported"
+)
 FIXTURE_DIR_PREFIX = "/workspace/tests/integration_py/fixtures/column_prefix"
 FIXTURE_DIR_COL_PERMS = "/workspace/tests/integration_py/fixtures/column_permissions"
 
@@ -69,7 +83,10 @@ def test_cel_condition(compose_env):
     insert_a = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/insert", "params": {"data": {"id": sub_a, "email": email_a, "name": "User A"}}},
+        json={
+            "path": "db/users/insert",
+            "params": {"data": {"id": sub_a, "email": email_a, "name": "User A"}},
+        },
         headers=jwt_headers(token_a, project),
     )
     assert insert_a.status_code == 200
@@ -77,7 +94,10 @@ def test_cel_condition(compose_env):
     insert_b = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/insert", "params": {"data": {"id": sub_b, "email": email_b, "name": "User B"}}},
+        json={
+            "path": "db/users/insert",
+            "params": {"data": {"id": sub_b, "email": email_b, "name": "User B"}},
+        },
         headers=jwt_headers(token_b, project),
     )
     assert insert_b.status_code == 200
@@ -89,7 +109,9 @@ def test_cel_condition(compose_env):
         headers=jwt_headers(token_a, project),
     )
     if select_all_a.status_code != 200:
-        print(f"DEBUG: select_all_a failed with {select_all_a.status_code}: {select_all_a.text}")
+        print(
+            f"DEBUG: select_all_a failed with {select_all_a.status_code}: {select_all_a.text}"
+        )
     assert select_all_a.status_code == 200
     data_a = select_all_a.json()["data"]["data"]
     assert len(data_a) == 1
@@ -108,7 +130,10 @@ def test_cel_condition(compose_env):
     update_b_by_a = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/update", "params": {"data": {"name": "Hacked"}, "where": {"id": sub_b}}},
+        json={
+            "path": "db/users/update",
+            "params": {"data": {"name": "Hacked"}, "where": {"id": sub_b}},
+        },
         headers=jwt_headers(token_a, project),
     )
     assert update_b_by_a.status_code == 200
@@ -124,6 +149,77 @@ def test_cel_condition(compose_env):
     assert select_b_by_b.json()["data"]["data"][0]["name"] == "User B"
 
 
+def test_cel_resource_literal_condition(compose_env):
+    """Flow 13 추가: resource literal equality 조건 필터"""
+    env = compose_env
+    env.login_operator("owner@example.com", "password")
+
+    project = bootstrap_project(env, FIXTURE_DIR_CEL_LITERAL, "cel_lit", "cel-lit-1")
+
+    token = signup_and_login(env, project, "literal@example.com", "pw123")
+    headers = jwt_headers(token, project)
+
+    insert_allow = env.httpToBridge(
+        "POST",
+        "/call",
+        json={
+            "path": "db/users/insert",
+            "params": {
+                "data": {"id": "u1", "email": "allow@example.com", "name": "Allowed"}
+            },
+        },
+        headers=headers,
+    )
+    assert insert_allow.status_code == 200
+
+    insert_deny = env.httpToBridge(
+        "POST",
+        "/call",
+        json={
+            "path": "db/users/insert",
+            "params": {
+                "data": {"id": "u2", "email": "deny@example.com", "name": "Denied"}
+            },
+        },
+        headers=headers,
+    )
+    assert insert_deny.status_code == 200
+
+    select_resp = env.httpToBridge(
+        "POST",
+        "/call",
+        json={"path": "db/users/select", "params": {}},
+        headers=headers,
+    )
+    assert select_resp.status_code == 200
+    rows = get_rows(select_resp.json())
+    assert len(rows) == 1
+    assert rows[0]["name"] == "Allowed"
+
+
+def test_cel_resource_unsupported_operator(compose_env):
+    """Flow 13 추가: 지원하지 않는 resource 연산자는 오류"""
+    env = compose_env
+    env.login_operator("owner@example.com", "password")
+
+    project = bootstrap_project(
+        env, FIXTURE_DIR_CEL_UNSUPPORTED, "cel_unsup", "cel-unsup-1"
+    )
+
+    token = signup_and_login(env, project, "unsupported@example.com", "pw123")
+    headers = jwt_headers(token, project)
+
+    select_resp = env.httpToBridge(
+        "POST",
+        "/call",
+        json={"path": "db/users/select", "params": {}},
+        headers=headers,
+    )
+    assert select_resp.status_code == 400
+    body = select_resp.json()
+    assert "unsupported resource-based condition" in body["error"]["message"]
+
+
 def test_column_prefix(compose_env):
     """Flow 14: Column prefix data masking"""
     env = compose_env
@@ -131,8 +227,12 @@ def test_column_prefix(compose_env):
 
     project = bootstrap_project(env, FIXTURE_DIR_PREFIX, "prefix", "prefix-1")
 
-    admin_key = create_api_key(env, project, FIXTURE_DIR_PREFIX, name="admin", roles="admin")
-    viewer_key = create_api_key(env, project, FIXTURE_DIR_PREFIX, name="viewer", roles="viewer")
+    admin_key = create_api_key(
+        env, project, FIXTURE_DIR_PREFIX, name="admin", roles="admin"
+    )
+    viewer_key = create_api_key(
+        env, project, FIXTURE_DIR_PREFIX, name="viewer", roles="viewer"
+    )
 
     admin_headers = api_key_headers(admin_key, project)
     viewer_headers = api_key_headers(viewer_key, project)
@@ -140,7 +240,10 @@ def test_column_prefix(compose_env):
     insert_resp = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/insert", "params": {"values": {"normal": "John Doe", "s_sensitive": "s1"}}},
+        json={
+            "path": "db/users/insert",
+            "params": {"values": {"normal": "John Doe", "s_sensitive": "s1"}},
+        },
         headers=admin_headers,
     )
     assert insert_resp.status_code == 200
@@ -178,8 +281,12 @@ def test_column_permissions(compose_env):
 
     project = bootstrap_project(env, FIXTURE_DIR_COL_PERMS, "colperms", "colperms-1")
 
-    admin_key = create_api_key(env, project, FIXTURE_DIR_COL_PERMS, name="admin", roles="admin")
-    basic_key = create_api_key(env, project, FIXTURE_DIR_COL_PERMS, name="basic", roles="basic")
+    admin_key = create_api_key(
+        env, project, FIXTURE_DIR_COL_PERMS, name="admin", roles="admin"
+    )
+    basic_key = create_api_key(
+        env, project, FIXTURE_DIR_COL_PERMS, name="basic", roles="basic"
+    )
 
     admin_headers = api_key_headers(admin_key, project)
     basic_headers = api_key_headers(basic_key, project)
@@ -187,7 +294,10 @@ def test_column_permissions(compose_env):
     insert_resp = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/insert", "params": {"values": {"email": "test@col.com", "name": "Test User"}}},
+        json={
+            "path": "db/users/insert",
+            "params": {"values": {"email": "test@col.com", "name": "Test User"}},
+        },
         headers=admin_headers,
     )
     assert insert_resp.status_code == 200

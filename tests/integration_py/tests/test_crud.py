@@ -1,8 +1,28 @@
 import re
-from dsl import unique_project, bootstrap_project, create_api_key, api_key_headers, get_rows
+from dsl import (
+    unique_project,
+    bootstrap_project,
+    create_api_key,
+    api_key_headers,
+    get_rows,
+)
 
 FIXTURE_DIR_BASIC = "/workspace/tests/integration_py/fixtures/basic"
 FIXTURE_DIR_EXPAND = "/workspace/tests/integration_py/fixtures/expand_static"
+FIXTURE_DIR_ARRAY = "/workspace/tests/integration_py/fixtures/array_validation"
+
+
+def _assert_insert_response_shape(resp):
+    body = resp.json()
+    assert "data" in body
+    row = body["data"]
+    assert isinstance(row, dict), f"insert response must be object, got: {body}"
+    assert "id" in row, f"insert response must include id, got: {body}"
+    assert "ids" not in row, f"legacy field ids must not exist, got: {body}"
+    assert "generated_id" not in row, (
+        f"legacy field generated_id must not exist, got: {body}"
+    )
+    return row
 
 
 def test_crud_basic(compose_env):
@@ -21,6 +41,19 @@ def test_crud_basic(compose_env):
         headers=headers,
     )
     assert insert.status_code == 200
+    inserted = _assert_insert_response_shape(insert)
+    assert inserted["email"] == "a@b.com"
+
+    insert_with_forced_id = env.httpToBridge(
+        "POST",
+        "/call",
+        json={
+            "path": "db/users/insert",
+            "params": {"values": {"id": "manual_id", "email": "b@b.com"}},
+        },
+        headers=headers,
+    )
+    assert insert_with_forced_id.status_code == 400
 
     select = env.httpToBridge(
         "POST",
@@ -43,22 +76,25 @@ def test_crud_advanced(compose_env):
     insert = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/insert", "params": {"values": {"email": "test@example.com"}}},
+        json={
+            "path": "db/users/insert",
+            "params": {"values": {"email": "test@example.com"}},
+        },
         headers=headers,
     )
     assert insert.status_code == 200
-    data = insert.json().get("data", {})
-    if isinstance(data, dict) and "generated_id" in data:
-        user_id = data["generated_id"]
-    elif isinstance(data, list):
-        user_id = data[0]["id"]
-    else:
-        user_id = data["ids"][0] if "ids" in data else data["id"]
+    user_id = _assert_insert_response_shape(insert)["id"]
 
     update = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/update", "params": {"data": {"email": "updated@example.com"}, "where": {"id": user_id}}},
+        json={
+            "path": "db/users/update",
+            "params": {
+                "data": {"email": "updated@example.com"},
+                "where": {"id": user_id},
+            },
+        },
         headers=headers,
     )
     assert update.status_code == 200
@@ -104,9 +140,11 @@ def test_crud_expand(compose_env):
 
     db_container = env.docker_client.containers.get(env.db_container_id)
     exec_result = db_container.exec_run(
-        ["/bin/sh", "-c", f"printf \"{ddl}\" | psql -U stk -d {db_name}"],
+        ["/bin/sh", "-c", f'printf "{ddl}" | psql -U stk -d {db_name}'],
     )
-    assert exec_result.exit_code == 0, f"Manual DDL failed: {exec_result.output.decode()}"
+    assert exec_result.exit_code == 0, (
+        f"Manual DDL failed: {exec_result.output.decode()}"
+    )
 
     env.runStkCli(
         f"stk apply --project {project} --env dev --ref expand-1",
@@ -121,50 +159,37 @@ def test_crud_expand(compose_env):
         "/call",
         json={
             "path": "db/users/insert",
-            "params": {"values": {"email": "user@expand.com", "name": "Expand User"}}
+            "params": {"values": {"email": "user@expand.com", "name": "Expand User"}},
         },
         headers=headers,
     )
     assert insert_user.status_code == 200, f"Insert user failed: {insert_user.text}"
-    user_data = insert_user.json().get("data")
-    if isinstance(user_data, dict) and "generated_id" in user_data:
-        user_id = user_data["generated_id"]
-    elif isinstance(user_data, list):
-        user_id = user_data[0]["id"]
-    else:
-        user_id = user_data["ids"][0] if "ids" in user_data else user_data["id"]
+    user_id = _assert_insert_response_shape(insert_user)["id"]
 
     insert_post = env.httpToBridge(
         "POST",
         "/call",
         json={
             "path": "db/posts/insert",
-            "params": {"values": {"title": "My First Post", "user_id": user_id}}
+            "params": {"values": {"title": "My First Post", "user_id": user_id}},
         },
         headers=headers,
     )
     assert insert_post.status_code == 200, f"Insert post failed: {insert_post.text}"
-    post_data = insert_post.json().get("data")
-    if isinstance(post_data, dict) and "generated_id" in post_data:
-        post_id = post_data["generated_id"]
-    elif isinstance(post_data, list):
-        post_id = post_data[0]["id"]
-    else:
-        post_id = post_data["ids"][0] if "ids" in post_data else post_data["id"]
+    post_id = _assert_insert_response_shape(insert_post)["id"]
 
     select_expand = env.httpToBridge(
         "POST",
         "/call",
         json={
             "path": "db/posts/select",
-            "params": {
-                "where": {"id": post_id},
-                "expand": ["user"]
-            }
+            "params": {"where": {"id": post_id}, "expand": ["user"]},
         },
         headers=headers,
     )
-    assert select_expand.status_code == 200, f"Select expand failed: {select_expand.text}"
+    assert select_expand.status_code == 200, (
+        f"Select expand failed: {select_expand.text}"
+    )
 
     rows = get_rows(select_expand.json())
     assert len(rows) == 1
@@ -177,12 +202,7 @@ def test_crud_expand(compose_env):
     select_normal = env.httpToBridge(
         "POST",
         "/call",
-        json={
-            "path": "db/posts/select",
-            "params": {
-                "where": {"id": post_id}
-            }
-        },
+        json={"path": "db/posts/select", "params": {"where": {"id": post_id}}},
         headers=headers,
     )
     assert select_normal.status_code == 200
@@ -196,10 +216,7 @@ def test_crud_expand(compose_env):
         "/call",
         json={
             "path": "db/posts/select",
-            "params": {
-                "where": {"id": post_id},
-                "expand": ["invalid_relation"]
-            }
+            "params": {"where": {"id": post_id}, "expand": ["invalid_relation"]},
         },
         headers=headers,
     )
@@ -219,7 +236,10 @@ def test_crud_pagination_sorting(compose_env):
         env.httpToBridge(
             "POST",
             "/call",
-            json={"path": "db/users/insert", "params": {"values": {"email": f"user{i}@example.com"}}},
+            json={
+                "path": "db/users/insert",
+                "params": {"values": {"email": f"user{i}@example.com"}},
+            },
             headers=headers,
         )
 
@@ -236,10 +256,75 @@ def test_crud_pagination_sorting(compose_env):
     select_sorted = env.httpToBridge(
         "POST",
         "/call",
-        json={"path": "db/users/select", "params": {"orderBy": {"email": "asc"}, "limit": 5}},
+        json={
+            "path": "db/users/select",
+            "params": {"orderBy": {"email": "asc"}, "limit": 5},
+        },
         headers=headers,
     )
     assert select_sorted.status_code == 200
     rows_sorted = get_rows(select_sorted.json())
     assert len(rows_sorted) == 5
     assert rows_sorted[0]["email"] == "user0@example.com"
+
+
+def test_crud_array_validation(compose_env):
+    """Flow 추가: array 컬럼 타입 검증 (insert/update)"""
+    env = compose_env
+    env.login_operator("owner@example.com", "password")
+
+    project = bootstrap_project(env, FIXTURE_DIR_ARRAY, "arr", "array-1")
+    api_key = create_api_key(env, project, FIXTURE_DIR_ARRAY)
+    headers = api_key_headers(api_key, project)
+
+    insert_ok = env.httpToBridge(
+        "POST",
+        "/call",
+        json={
+            "path": "db/users/insert",
+            "params": {
+                "data": {
+                    "email": "array-ok@example.com",
+                    "tags": ["a", "b"],
+                    "scores": [1, 2, 3],
+                }
+            },
+        },
+        headers=headers,
+    )
+    assert insert_ok.status_code == 200
+    inserted = _assert_insert_response_shape(insert_ok)
+    user_id = inserted["id"]
+
+    insert_bad = env.httpToBridge(
+        "POST",
+        "/call",
+        json={
+            "path": "db/users/insert",
+            "params": {
+                "data": {
+                    "email": "array-bad@example.com",
+                    "tags": ["ok", 1],
+                    "scores": [1, 2],
+                }
+            },
+        },
+        headers=headers,
+    )
+    assert insert_bad.status_code == 400
+    assert "Invalid type for column 'tags'" in insert_bad.json()["error"]["message"]
+
+    update_bad = env.httpToBridge(
+        "POST",
+        "/call",
+        json={
+            "path": "db/users/update",
+            "params": {
+                "where": {"id": user_id},
+                "data": {"scores": ["oops"]},
+            },
+        },
+        headers=headers,
+    )
+    assert update_bad.status_code == 400
+    assert "Invalid type for column 'scores'" in update_bad.json()["error"]["message"]

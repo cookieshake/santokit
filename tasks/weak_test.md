@@ -28,20 +28,20 @@
 
 ### P0 (바로 보강 권장)
 
-1. **Insert 응답 포맷 단일화 검증**
+1. **Insert 응답 포맷 단일화 검증** ✅ 완료
    - 변경점: `db/*/insert` 응답이 `{"data": {...}}`로 단일화됨
-   - 부족한 점: 기존 테스트는 성공 여부 중심이라 응답 스키마 회귀를 강하게 막지 못함
-   - 권장 추가: insert 결과에 PK/필수 필드 포함 여부 명시 검증
+   - 반영: `tests/integration_py/tests/test_crud.py`에 응답 shape 검증 추가
+   - 검증: `data` 객체/`id` 존재, legacy 키(`ids`, `generated_id`) 부재, 서버생성 ID에 수동 `id` 입력 시 `400`
 
-2. **`resource.*` 조건 SQL 필터 변환 회귀 테스트**
+2. **`resource.*` 조건 SQL 필터 변환 회귀 테스트** ✅ 완료
    - 변경점: 단순 동등식(`resource.<col> == <literal|request.auth.sub>`) 지원
-   - 부족한 점: `request.auth.sub` 외 literal/숫자/불리언/null 케이스 없음
-   - 권장 추가: 허용 케이스 + 미지원 연산(`!=`, `>`, `&&`) 에러 코드/메시지 검증
+   - 반영: `tests/integration_py/tests/test_security.py`에 literal/미지원 연산 케이스 추가
+   - 검증: literal equality 필터 동작(200), 미지원 연산(`!=`) 에러 메시지 검증(400)
 
-3. **Array 재귀 타입 검증 테스트**
+3. **Array 재귀 타입 검증 테스트** ✅ 완료
    - 변경점: insert/update 시 array 요소 타입 재귀 검증 추가
-   - 부족한 점: 통합 테스트에 array 스키마 fixture와 실패 케이스가 없음
-   - 권장 추가: `items: string`, 중첩 array, 타입 불일치(400) 시나리오
+   - 반영: `tests/integration_py/tests/test_crud.py`에 `test_crud_array_validation` 추가
+   - 검증: `items: string/int` 정상 입력(200), 타입 불일치 insert/update(400)
 
 ### P1 (다음 스프린트)
 

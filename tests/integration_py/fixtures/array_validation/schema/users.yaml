@@ -1,0 +1,20 @@
+version: 1
+tables:
+  users:
+    connection: main
+    id:
+      name: id
+      generate: ulid
+    columns:
+      email:
+        type: string
+        nullable: false
+        unique: true
+      tags:
+        type: array
+        items: string
+        nullable: true
+      scores:
+        type: array
+        items: int
+        nullable: true

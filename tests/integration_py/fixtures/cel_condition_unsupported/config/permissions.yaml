@@ -1,0 +1,11 @@
+tables:
+  users:
+    select:
+      roles: [authenticated]
+      condition: "resource.name != \"Denied\""
+    insert:
+      roles: [authenticated]
+    update:
+      roles: [authenticated]
+    delete:
+      roles: [admin]
