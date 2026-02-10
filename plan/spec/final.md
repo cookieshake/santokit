@@ -32,6 +32,7 @@
 용어:
 - Operator: Hub(Control Plane)를 운영/관리하는 팀 멤버(사람)
 - End User: Bridge(Data Plane)의 `/call`을 호출하는 앱의 최종 사용자(사람)
+  - 추가 용어 정의: `plan/spec/glossary.md`
 
 ---
 
@@ -226,6 +227,8 @@ Credential 우선순위(고정):
 { "error": { "code": "BAD_REQUEST", "message": "...", "requestId": "..." } }
 ```
 
+- 에러 코드 카탈로그: `plan/spec/errors.md`
+
 ### 5.2 Auto CRUD / Custom Logic
 Auto CRUD:
 - `path`: `db/{table}/{op}`
@@ -238,6 +241,19 @@ Custom Logic:
 Storage:
 - `path`: `storage/{bucket}/{op}`
 - 상세 스펙: `plan/spec/storage.md`
+
+---
+
+## 6) 추가 스펙 문서
+
+| 문서 | 내용 |
+|------|------|
+| `plan/spec/bridge-hub-protocol.md` | Bridge ↔ Hub 통신 프로토콜 (transport, 인증, 동기화, 장애 모드) |
+| `plan/spec/observability.md` | Health check, 메트릭, 트레이싱, 로깅, Audit Log |
+| `plan/spec/operator-rbac.md` | Operator 역할/권한 체계 (org/team/project RBAC) |
+| `plan/spec/client-sdk.md` | Client SDK 자동 생성 (`stk gen client`) |
+| `plan/spec/mcp.md` | MCP 서버 — AI 도구 통합 (`stk mcp`) |
+| `plan/spec/events.md` | Pub/Sub + Cron 선언적 이벤트/정기작업 |
 
 ---
 

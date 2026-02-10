@@ -135,7 +135,7 @@ Core types:
 - `boolean`
 - `json`
 - `timestamp` (JSON: `string`) - ISO 8601
-- `bytes`
+- `bytes` (JSON: `string`) - RFC4648 base64
 - `file` (storage path string; see below)
 - `array` (typed JSON array; see below)
 

@@ -456,3 +456,7 @@ target/
 
 # CLI local context
 .stk/
+
+# Local dev tooling
+.flox/
+.superset/

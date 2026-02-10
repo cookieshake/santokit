@@ -7,6 +7,16 @@ Planned scenarios (draft):
 - drift gate: snapshot -> drift -> promote blocked -> drift fixed -> promote ok
 - auth/runtime: api key + bearer + cookie access token -> /call
 
+Flow docs mapping (draft):
+
+| Flow doc | Test file |
+|----------|----------|
+| `plan/flows/operator.md` | `tests/integration_py/tests/test_operator.py` |
+| `plan/flows/auth.md` | `tests/integration_py/tests/test_auth.py` |
+| `plan/flows/crud.md` | `tests/integration_py/tests/test_crud.py` |
+| `plan/flows/security.md` | `tests/integration_py/tests/test_security.py` |
+| `plan/flows/logics.md` | `tests/integration_py/tests/test_logics.py` |
+
 Prereqs:
 - Docker (for docker-compose + testcontainers)
 - flox (for python/uv)
