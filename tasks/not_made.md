@@ -1,115 +1,96 @@
-# Missing Features & Discrepancies (Plan vs. Implementation)
+# 미구현/불일치 항목 (Plan vs Implementation)
 
-This document tracks features described in the `plan/` directory but are currently missing or incomplete in the `packages/` source code.
+이 문서는 `plan/` 스펙과 `packages/` 구현을 비교해, 아직 미구현이거나 스펙과 불일치하는 항목만 정리한다.
 
----
-
-## Core Permissions & Security
-
-### 1. Auto CRUD CEL Permissions (Row-Level Security)
-- **Spec (`plan/spec/crud.md`)**: Supports dynamic conditions based on `request.auth.roles` or `request.params.*`. Patterns like `resource.<column> == request.auth.sub` should be safely translated to SQL WHERE clauses.
-- **Status**: Currently, the `PermissionEvaluator` only handles hardcoded owner check patterns (e.g., `resource.id == request.auth.sub`). Generic `resource.*` conditions return an error stating that SQL translation is required but not implemented.
-
-### 2. General `resource.*` Conditions in CEL
-- **Spec (`plan/spec/crud.md`)**: Supports patterns like `resource.status == "active"` for dynamic row filtering.
-- **Status**: The `evaluate_condition` function in `evaluator.rs` explicitly returns an error for `resource.*` patterns that are not the standard owner-check pattern. These require full CEL-to-SQL translation which is not yet implemented.
+- 갱신일: 2026-02-10
 
 ---
 
-## Schema & Type Validation
+## A. 현재 유효한 갭 (우선순위 기준)
 
-### 3. Recursive Array Type Validation
-- **Spec (`plan/spec/crud.md`)**: During Insert/Update, `type: array` columns must have their elements recursively validated against the `items` type defined in the schema.
-- **Status**: The Bridge (`handle_auto_crud`) and SQL builders lack logic to perform deep type validation for array elements before database operations.
+### P0 — 스펙과 구현이 직접 충돌
 
-### 4. `decimal` Type Precision Handling
-- **Spec (`plan/spec/schema.md`)**: `decimal` type is for "fixed-point (financial, etc.)" requiring precision guarantees. JSON should use `string` representation.
-- **Status**: No explicit validation exists to ensure `decimal` columns receive string values in JSON or that precision parameters are properly handled.
+### 1. CRUD `insert` 응답 포맷 불일치
+- **Spec (`plan/spec/crud.md`)**: `insert`는 생성 row를 반환 (`{"data": {...}}`, `RETURNING *` 기반)
+- **구현 상태**: Bridge는 `ids`/`generated_id` 형태를 반환
+- **영향**: 문서 기반 SDK/클라이언트 구현 시 응답 파싱 불일치
+- **근거 코드**: `packages/services/bridge/src/handlers/call.rs`
 
-### 5. Primary Key Constraints Enforcement
-- **Spec (`plan/spec/schema.md`)**: Composite keys are forbidden; every table must have a single PK defined via `tables.<name>.id`. PK columns in `columns` section should trigger error.
-- **Status**: While the parser structure supports this, there's no explicit validation preventing PK column redefinition in `columns` section.
-
----
-
-## Multi-Engine & Database
-
-### 6. Multi-Engine Abstraction
-- **Spec (`plan/spec/final.md`, `schema.md`)**: The system should be engine-neutral, supporting Postgres as default but allowing for others.
-- **Status**: The implementation is heavily coupled with PostgreSQL. The Hub's `apply_schema_to_postgres` and `stk-sql`'s use of `PostgresQueryBuilder` are specific to Postgres. There is no engine-agnostic trait or interface to plug in other databases.
-
-### 7. Schema Drift-based Release Blocking
-- **Spec (`plan/spec/schema.md`)**: If DB drift exists, release creation/promotion should be blocked.
-- **Status**: `stk schema drift` CLI command exists, but the integration with `stk apply` to automatically block releases on drift is not fully verified/implemented.
+### 2. `stk release rollback` CLI 플래그 불일치
+- **Spec (`plan/spec/cli.md`)**: `stk release rollback --to-release-id <releaseId>`
+- **구현 상태**: CLI는 `--to` 플래그 사용
+- **영향**: 운영자 문서대로 실행 시 커맨드 실패 가능
+- **근거 코드**: `packages/tools/cli/src/main.rs`
 
 ---
 
-## Custom Logic
+### P1 — 명시된 기능 미구현
 
-### 8. Custom Logic Multi-statement & Transactions
-- **Spec (`plan/spec/logics.md`)**: Supports explicit transactions (`BEGIN`, `COMMIT`) and multi-statement SQL execution within `.sql` logic files.
-- **Status**: The Bridge uses `sqlx::query(...).fetch_all()` or `execute()`, which may only return the result of the last statement or fail to handle multi-statement results correctly depending on the driver configuration.
+### 3. `resource.*` 일반 CEL 조건 SQL 변환 미구현
+- **Spec (`plan/spec/crud.md`)**: 일반 `resource.*` 조건 확장 방향 제시
+- **구현 상태**: owner-check 패턴 외 `resource.*`는 에러 반환
+- **근거 코드**: `packages/libs/core/src/permissions/evaluator.rs`
 
----
+### 4. 배열(`type: array`) 재귀 타입 검증 미구현
+- **Spec (`plan/spec/crud.md`)**: Insert/Update 시 `items` 기준 재귀 검증
+- **구현 상태**: CRUD 경로에서 스키마 기반 배열 요소 재귀 검증 부재
+- **근거 코드**: `packages/services/bridge/src/handlers/call.rs`
 
-## Storage
+### 5. PK 재정의 방지 검증 미구현
+- **Spec (`plan/spec/schema.md`)**: `id` 컬럼의 `columns` 중복 정의 금지
+- **구현 상태**: 파서에 명시적 검증 로직 부재
+- **근거 코드**: `packages/libs/core/src/schema/parser.rs`
 
-### 9. Asynchronous Storage `onDelete: cascade`
-- **Spec (`plan/spec/storage.md`)**: S3 object deletion should be performed as a background/asynchronous task (Best Effort policy). Should not block the API response.
-- **Status**: `delete_s3_objects` runs sequentially within the `handle_auto_crud` handler using `.await`, potentially increasing API latency. Should be dispatched to `tokio::spawn` or a background worker.
+### 6. `stk connections rotate` 미구현
+- **Spec (`plan/secrets/model.md`)**: 회전 명령 정의
+- **구현 상태**: `set/test/list`만 존재
+- **근거 코드**: `packages/tools/cli/src/main.rs`, `packages/tools/cli/src/commands/connections.rs`
 
----
+### 7. `stk connections show` 미구현
+- **Spec (`plan/secrets/model.md`)**: 단건 조회 명령 정의
+- **구현 상태**: `show` 서브커맨드 없음
+- **근거 코드**: `packages/tools/cli/src/main.rs`, `packages/tools/cli/src/commands/connections.rs`
 
-## CLI Commands
-
-### 10. Connection Rotation (`stk connections rotate`)
-- **Spec (`plan/secrets/model.md`)**: `stk connections rotate --project <project> --env <env> --name <connection>` command for safe credential rotation.
-- **Status**: Not implemented. CLI only has `set` and `test` for connections.
-
-### 11. `stk apply --only` Granular Options
-- **Spec (`plan/spec/cli.md`)**: `stk apply --only schema|permissions|release` for partial applies, `--only permissions,release` combinations.
-- **Status**: CLI has `--only schema` option, but fine-grained combinations (e.g., `--only permissions,release`) may not be fully supported.
-
-### 12. `stk apply` Idempotency with `releaseId` Reuse
-- **Spec (`plan/spec/cli.md`, `final.md`)**: If input snapshot is identical, Hub should return existing `releaseId` instead of creating new one.
-- **Status**: Idempotency logic exists (`find_release_by_hash`), but edge cases around snapshot hash computation need verification.
-
----
-
-## Authentication & Authorization
-
-### 13. PASETO `kid` Header for Key Rotation
-- **Spec (`plan/spec/auth.md`)**: Token header should include `kid` for key identification during rolling deployment.
-- **Status**: `issue_access_token` in Hub creates PASETO tokens but `kid` inclusion in the token header needs verification. `extract_kid` function exists in core but may not be fully utilized.
-
-### 14. End User Roles Update Propagation
-- **Spec (`plan/spec/auth.md`)**: Since `roles` are included in access token, role changes require token re-issuance or short TTL.
-- **Status**: No mechanism exists to invalidate existing tokens when End User roles are updated. Only refresh token revocation is available.
-
-### 15. Multi-Project Cookie Namespace Isolation
-- **Spec (`plan/flows/auth.md`)**: Same Hub domain serving multiple projects should use namespaced cookies (`stk_access_<project>_<env>`).
-- **Status**: Cookie namespacing is implemented, but Bridge's cookie extraction logic needs to properly handle the namespaced cookie selection based on request context headers.
+### 8. PASETO `kid` 헤더 발급 미구현
+- **Spec (`plan/spec/auth.md`)**: 토큰 키 식별용 `kid` 요구
+- **구현 상태**: access token 발급 시 `kid` 헤더 설정 코드 부재
+- **근거 코드**: `packages/services/hub/src/main.rs` (`issue_access_token`)
 
 ---
 
-## Audit & Observability
+### P2 — 성능/운영성 개선 필요
 
-### 16. Audit Logging Completeness
-- **Spec (`plan/spec/final.md`)**: Centralized audit log for releases, permission changes, connection updates.
-- **Status**: Audit API exists, but comprehensive coverage verification needed for all Hub operations (connection set, OIDC provider changes, schema applies, etc.).
+### 9. `file onDelete: cascade` 처리 동기 실행
+- **Spec (`plan/spec/storage.md`)**: Best-effort 비동기 삭제
+- **구현 상태**: delete 경로에서 S3 삭제를 요청 처리 흐름에서 `await`
+- **영향**: API 지연 증가 가능
+- **근거 코드**: `packages/services/bridge/src/handlers/call.rs`
+
+### 10. End User role 변경 전파 전략 미흡
+- **Spec (`plan/spec/auth.md`)**: role 변경 시 토큰 재발급/짧은 TTL 등 운영 전략 필요
+- **구현 상태**: refresh revoke는 있으나 role 변경 즉시 반영 정책은 불명확
+- **근거 코드**: `packages/services/hub/src/main.rs`
 
 ---
 
-## Expand / Relations
+## B. 이전 문서에서 제거/하향된 항목 (현재는 해결 또는 스펙화 완료)
 
-### 17. Expand Depth Limitation Enforcement
-- **Spec (`plan/spec/crud.md`)**: Only 1-depth expand is supported (nested expand is out of scope).
-- **Status**: While nested expand isn't implemented, there's no explicit error message when a user attempts nested expand syntax.
+- `stk apply --only permissions,release` 조합: **지원됨**
+- `stk apply` releaseId 재사용(idempotency): **구현됨** (`find_release_by_hash`)
+- 드리프트 시 release 차단: **구현됨**
+- 멀티프로젝트 쿠키 네임스페이스 선택: **구현됨**
+- Storage `delete` 권한/동작 경로: **구현됨**
+- `release promote/rollback` 명령 자체 부재: **해결됨** (단, rollback 플래그 네이밍은 스펙 불일치)
 
 ---
 
-## Rate Limiting / Security
+## C. Open Questions로 관리하는 것이 맞는 항목 (미구현 리스트에서 분리)
 
-### 18. Rate Limit Cleanup/Expiry
-- **Spec**: Implicit requirement for rate limiting to not accumulate stale data.
-- **Status**: `rate_limits` table exists but no TTL-based cleanup mechanism for old entries. May lead to unbounded growth over time.
+아래는 "구현 누락"보다 "결정 미완료" 성격이 강하므로 `plan/notes/open-questions.md`에서 관리한다.
+
+- `bytes` JSON 직렬화 포맷
+- `decimal` precision/scale 표기 문법
+- native array 최적화 범위
+- cross-DB FK
+- nested expand
+- `resource.*` 일반 CEL의 범위/시점(로드맵 관점)
