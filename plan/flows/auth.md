@@ -46,8 +46,8 @@
 
 SSR 쿠키 모드(옵션):
 - Hub는 access/refresh token을 HttpOnly 쿠키로도 발급할 수 있다.
-  - 예: `Set-Cookie: stk_access=<paseto>; HttpOnly; Secure; SameSite=Lax; Path=/`
-  - 예: `Set-Cookie: stk_refresh=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/`
+  - 예: `Set-Cookie: stk_access_<project>_<env>=<paseto>; HttpOnly; Secure; SameSite=Lax; Path=/`
+  - 예: `Set-Cookie: stk_refresh_<project>_<env>=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/`
 - 이 경우 응답 body에 토큰을 포함하지 않고 `204` 또는 최소 JSON으로 응답할 수 있다.
 
 멀티 프로젝트 주의(쿠키 네임스페이스):
@@ -69,7 +69,7 @@ SSR 쿠키 모드(옵션):
 - 새 `accessToken` + (선택) 새 `refreshToken`
 
 SSR 쿠키 모드(옵션):
-- refresh 성공 시 새 `stk_access`(및 필요 시 `stk_refresh`) 쿠키를 재설정한다.
+- refresh 성공 시 새 `stk_access_<project>_<env>`(및 필요 시 `stk_refresh_<project>_<env>`) 쿠키를 재설정한다.
 
 ---
 
@@ -83,7 +83,7 @@ SSR 쿠키 모드(옵션):
 ```
 
 SSR 쿠키 모드(옵션):
-- Hub는 `stk_access`, `stk_refresh` 쿠키를 만료 처리한다.
+- Hub는 `stk_access_<project>_<env>`, `stk_refresh_<project>_<env>` 쿠키를 만료 처리한다.
 
 ---
 
@@ -134,7 +134,7 @@ Hub 동작:
 - `302 Location: <redirect_uri>?code=<one_time_code>` (권장)
 
 또는(SSR 편의):
-- Hub가 HttpOnly 쿠키(`stk_access`, `stk_refresh`)를 설정하고 redirect
+- Hub가 HttpOnly 쿠키(`stk_access_<project>_<env>`, `stk_refresh_<project>_<env>`)를 설정하고 redirect
 
 멀티 프로젝트 주의:
 - 같은 Hub 도메인에서 여러 프로젝트를 동시에 로그인하려면 쿠키 격리가 필요하다.
@@ -243,3 +243,12 @@ body 예시:
 기대 결과:
 - `stk_access_projA_dev`, `stk_refresh_projA_dev` 쿠키만 만료/삭제된다.
 - `stk_access_projB_dev`, `stk_refresh_projB_dev`는 유지된다.
+
+---
+
+## 공통 완료 기준 템플릿
+
+각 Flow는 아래 기준을 최소 포함하도록 유지한다.
+- 요청 예시: 경로/헤더/바디(또는 쿠키) 중 핵심 입력값 1개 이상 제시
+- 성공 기준: 기대 상태코드와 핵심 응답 필드 제시
+- 실패 기준: 최소 1개 부정 케이스와 기대 에러코드 제시

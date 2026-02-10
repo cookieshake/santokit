@@ -21,5 +21,7 @@
 - `plan/spec/cli.md`
 - `plan/spec/crud.md`
 - `plan/spec/schema.md`
+- `plan/spec/storage.md`
 - `plan/secrets/model.md`
 - `plan/flows/`
+- `plan/notes/open-questions.md`

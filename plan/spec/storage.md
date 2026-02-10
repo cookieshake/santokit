@@ -94,6 +94,7 @@ Private 파일 접근을 위한 Presigned URL을 요청한다. (Public 파일은
 규칙:
 - **Roles (OR):** 나열된 역할 중 하나라도 있으면 통과.
 - **Condition (CEL):** `roles` 통과 후, 2차적으로 CEL 표현식이 `true`여야 최종 허용.
+- `public`은 완전 익명 허용이 아니라, Bridge 공통 인증 게이트웨이를 통과한 요청에서 추가 role 제한이 없다는 의미다.
 
 CEL Context 변수:
 - `request.auth.sub`: 사용자 ID
@@ -101,6 +102,26 @@ CEL Context 변수:
 - `path.{variable}`: 정책 키 패턴의 와일드카드나 변수 매칭 (예: `docs/{userId}/*` → `path.userId`)
 - `request.params.key`: 전체 파일 경로
 - `request.params.contentLength`: 파일 크기 (upload 시)
+
+---
+
+## 3.1) Security Rules (v1)
+
+Presigned URL 보안 기본값:
+- URL 만료 시간은 짧게 유지한다.
+  - `upload_sign`: 기본 5분(최대 15분)
+  - `download_sign`: 기본 1분(최대 5분)
+- URL은 1회성 보장을 강제하지 않는다(v1). 대신 짧은 TTL과 권한 조건으로 리스크를 줄인다.
+
+Key 정규화/검증:
+- `key`는 canonical path로 정규화한다.
+- `..`, 이중 slash(`//`), 제어문자, 선행 slash(`/`)가 포함된 key는 거부한다(`400 BAD_REQUEST`).
+- 정책 매칭은 정규화된 key를 기준으로 수행한다.
+
+업로드 크기/타입 검증:
+- 정책에 `maxSize`가 있으면 `contentLength`는 필수다.
+- `contentLength`가 `maxSize`를 넘으면 서명 발급을 거부한다(`400 BAD_REQUEST`).
+- `allowedTypes`가 있으면 `contentType`은 필수이며 목록 불일치 시 거부한다.
 
 ---
 

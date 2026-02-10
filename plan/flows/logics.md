@@ -149,3 +149,12 @@ Tests the Custom Logics feature, which allows managing SQL functions as files an
 - Parser: `packages/services/bridge/src/handlers/call.rs:918-949`
 - Auth: `packages/services/bridge/src/handlers/call.rs:951-972`
 - Params: `packages/services/bridge/src/handlers/call.rs:974-1010`
+
+---
+
+## 공통 완료 기준 템플릿
+
+각 Flow는 아래 기준을 최소 포함하도록 유지한다.
+- 요청 예시: path/params/credential 중 핵심 입력값 1개 이상 제시
+- 성공 기준: 기대 상태코드와 핵심 응답 필드 제시
+- 실패 기준: 최소 1개 부정 케이스와 기대 에러코드 제시

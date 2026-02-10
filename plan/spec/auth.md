@@ -128,8 +128,9 @@ Refresh:
 
 쿠키 발급(SSR 지원):
 - Hub는 End User access token을 HttpOnly 쿠키로도 발급할 수 있다.
-  - 예: `Set-Cookie: stk_access=<paseto>; HttpOnly; Secure; SameSite=Lax; Path=/`
+  - 예: `Set-Cookie: stk_access_<project>_<env>=<paseto>; HttpOnly; Secure; SameSite=Lax; Path=/`
 - refresh token도 HttpOnly 쿠키로 운용할 수 있다(권장).
+  - 예: `Set-Cookie: stk_refresh_<project>_<env>=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/`
 
 멀티 프로젝트(같은 Hub 도메인) 주의:
 - Hub가 여러 프로젝트를 한 도메인에서 처리하면, 쿠키 이름 충돌로 “동시에 여러 프로젝트 로그인”이 어려워진다.
@@ -158,6 +159,20 @@ Refresh:
 ### 4.3 End User Access Token (Santokit)
 - 최종 인가에 사용되는 End User credential은 Santokit access token이다.
 - 토큰의 `projectId/envId` 바인딩이 라우팅 힌트보다 우선한다.
+
+### 4.4 Credential 우선순위(고정)
+
+Bridge는 credential이 여러 개 들어와도 아래 우선순위로 단일 컨텍스트를 확정한다.
+
+| 순서 | 입력 | 동작 |
+|---|---|---|
+| 1 | `X-Santokit-Api-Key` | API key를 사용한다. key의 `project/env`가 최종 컨텍스트다. |
+| 2 | `Authorization: Bearer <token>` | API key가 없을 때만 사용한다. token의 `projectId/envId`를 검증한다. |
+| 3 | `stk_access_<project>_<env>` 쿠키 | 1,2가 없을 때만 사용한다. 먼저 요청의 `project/env`를 결정한 뒤 해당 네임스페이스 쿠키를 읽는다. |
+
+에러 규칙:
+- credential이 하나도 없으면 `401`.
+- API key 또는 token의 바인딩과 라우팅 힌트(`X-Santokit-Project`, `X-Santokit-Env`)가 불일치하면 `403`.
 
 ---
 

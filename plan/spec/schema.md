@@ -159,6 +159,7 @@ tables:
     columns:
       tags: { type: array, items: string, nullable: false }
       scores: { type: array, items: int, nullable: true }
+```
 
 `file`:
 - 의미: Storage에 저장된 파일의 경로(string)를 담는 컬럼이다.
@@ -174,7 +175,6 @@ avatar:
   type: file
   bucket: main
   onDelete: cascade # 유저 삭제 시 프로필 이미지도 삭제
-```
 ```
 
 ---
@@ -201,7 +201,7 @@ CLI (최종 표면):
 - add foreign key constraint (기존 데이터가 위배하면 실패)
 
 조건부 허용(Explicit Destructive):
-- `stk apply` 시 `--force` 또는 `--allow-destroy` 옵션 필요.
+- `stk apply` 시 `--force` 옵션 필요.
 - drop table/column/index
 - 제약 조건 강화 (예: Nullable → Not Null; 데이터 위배 시 실패)
 - 단순 통/폐합 (re-create table)
@@ -211,6 +211,10 @@ CLI (최종 표면):
 - Santokit은 마이그레이션 스크립트를 실행하지 않으므로, 사용자가 (1) 컬럼을 drop하고 다시 만들거나 (2) 수동으로 데이터를 정리해야 한다.
 
 ### Rollback 정책
+
+용어 정리:
+- `release rollback`: Hub의 current release 포인터를 이전 `releaseId`로 이동하는 운영 동작(지원).
+- `schema rollback`: DB 스키마를 과거 상태로 되돌리는 down migration(미지원).
 
 원칙:
 - **스키마 rollback은 지원하지 않음** (by design)

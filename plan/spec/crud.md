@@ -128,7 +128,7 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 - `config/permissions.yaml`
 
 권한 키워드:
-- `public` (인증 없이 허용)
+- `public` (Bridge 공통 인증 게이트웨이를 통과한 요청에서 추가 role 제한 없음; 완전 익명 아님)
 - `authenticated` (End User access token 필요)
 - `{role}` (API key roles 또는 End User roles에 매칭)
 

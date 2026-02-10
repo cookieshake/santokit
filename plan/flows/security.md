@@ -88,3 +88,12 @@ permissions.yaml의 columns 섹션을 통해 정책 레벨에서 컬럼 접근�
 3. **columns.insert 제한**: `["name", "email", "avatar_url", "bio"]` → c_ssn INSERT 시 403
 4. admin role의 select는 전체 컬럼(또는 정책상 허용 컬럼)을 반환
 5. 와일드카드 prefix 패턴(`!c_*`)은 사용하지 않는다
+
+---
+
+## 공통 완료 기준 템플릿
+
+각 Flow는 아래 기준을 최소 포함하도록 유지한다.
+- 요청 예시: permissions 설정 + 호출 예시(헤더/바디) 1개 이상 제시
+- 성공 기준: 기대 상태코드와 핵심 응답 필드 제시
+- 실패 기준: 최소 1개 부정 케이스와 기대 에러코드 제시

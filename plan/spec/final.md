@@ -19,7 +19,7 @@
 
 ## 1) Components
 
-### 1.0 Hub (Control Plane)
+### 1.1 Hub (Control Plane)
 역할:
 - org/team/project/env 관리
 - DB connections + secrets 저장(암호화)
@@ -50,7 +50,7 @@
 - `packages/sdks/typescript/`
 - `packages/sdks/swift/`
 
-### 1.1 CLI (`stk`)
+### 2.1 CLI (`stk`)
 역할:
 - 운영(Operator)용 단일 진입점(웹 콘솔 대체)
 - Hub API를 호출해 프로젝트/환경/연결정보/권한/릴리즈/스키마 스냅샷을 조작한다
@@ -63,7 +63,7 @@ Unified apply:
 - 최종적으로 사용자는 “프로젝트 스냅샷”을 환경에 반영하는 단일 명령(`stk apply`)을 사용한다.
 - 상세: `plan/spec/cli.md`
 
-### 1.2 Bridge (Data Plane Runtime)
+### 2.2 Bridge (Data Plane Runtime)
 역할:
 - `/call` API 제공
 - 요청에서 `project+env` 컨텍스트를 해석
@@ -80,7 +80,7 @@ Unified apply:
 
 ---
 
-## 2) Secrets / Connections (Hub / Control Plane)
+## 3) Secrets / Connections (Hub / Control Plane)
 
 원칙:
 - secret 값은 Git/manifest/bundle/image에 절대 포함하지 않는다.
@@ -95,9 +95,9 @@ CLI:
 
 ---
 
-## 3) Permissions & Releases
+## 4) Permissions & Releases
 
-### 3.1 Permissions
+### 4.1 Permissions
 의미:
 - `config/permissions.yaml` 기반 테이블/컬럼 레벨 권한을 적용한다.
 - CEL(Common Expression Language) 기반의 동적 Condition을 지원한다.
@@ -105,7 +105,7 @@ CLI:
 - 상세: `plan/spec/logics.md`
 - 상세: `plan/spec/storage.md`
 
-### 3.2 Schema
+### 4.2 Schema
 의미:
 - 선언 스키마(YAML)가 Source of Truth다.
 - Hub(Control Plane)가 plan/apply를 실행한다(Operator가 CLI로 트리거).
@@ -113,7 +113,7 @@ CLI:
 - DB 드리프트가 있으면 릴리즈를 차단한다.
 - 상세: `plan/spec/schema.md`
 
-### 3.3 Releases (ReleaseId / Pointers)
+### 4.3 Releases (ReleaseId / Pointers)
 정의:
 - `releaseId`는 “스키마 IR + 권한 + 기타 설정”을 묶은 **불변 스냅샷 식별자**다.
 - 각 `env`는 “current release” 포인터를 가진다.
@@ -125,14 +125,18 @@ CLI:
   - 스냅샷이 달라지면 새로운 `releaseId`를 만든다.
 - `stk release promote`는 새로운 `releaseId`를 만들지 않고, to-env 포인터만 from-env의 `releaseId`로 이동한다.
 
-### 3.4 Release Model (Hub(Control Plane)-backed)
+용어 정리:
+- `release rollback`: current release 포인터를 이전 `releaseId`로 이동하는 운영 동작(지원).
+- `schema rollback`: DB 스키마를 과거 상태로 되돌리는 down migration(미지원).
+
+### 4.4 Release Model (Hub(Control Plane)-backed)
 의미:
 - Release는 “특정 `project+env`에 적용되는” 설정 번들이다:
 - permissions 버전
 - schema 버전(선언 스키마) + 적용 상태 (connection별)
 - Bridge(Data Plane)는 요청 처리 시점에 현재 릴리즈를 pull/캐시한다.
 
-#### 3.4.1 GitOps Flow (권장)
+#### 4.4.1 GitOps Flow (권장)
 원칙:
 - “환경(dev/stg/prod)”은 **프로젝트 내부의 env**로 관리한다. env마다 프로젝트를 새로 만들지 않는다.
 - Git 브랜치는 env에 매핑될 수 있다(예: `develop → dev`, `main → prod`).
@@ -169,9 +173,9 @@ Promotion (dev → prod):
 
 ---
 
-## 6) Runtime API (Bridge / Data Plane)
+## 5) Runtime API (Bridge / Data Plane)
 
-### 6.1 `POST /call`
+### 5.1 `POST /call`
 입력:
 ```json
 { "path": "db/users/select", "params": { "where": { "id": "..." }, "limit": 1 } }
@@ -194,11 +198,17 @@ Promotion (dev → prod):
 - API key도 없고 End User access token도 없으면 `401`.
 - End User access token의 `projectId/envId` 바인딩이 라우팅 힌트보다 우선하며, 불일치 시 `403`.
 
-Credential extraction(권장 규칙):
-1) `X-Santokit-Api-Key`가 있으면 서버/CI 호출로 간주하고 API key를 사용한다.
-2) 아니면 `Authorization: Bearer ...`가 있으면 End User access token으로 사용한다.
-3) 아니면 `X-Santokit-Project`, `X-Santokit-Env`로 `project/env`를 결정한 뒤,
-   쿠키 `stk_access_<project>_<env>`에서 access token을 읽는다.
+Credential 우선순위(고정):
+
+| 순서 | 입력 | 동작 |
+|---|---|---|
+| 1 | `X-Santokit-Api-Key` | API key를 사용한다. key의 `project/env`가 최종 컨텍스트다. |
+| 2 | `Authorization: Bearer <token>` | API key가 없을 때만 사용한다. token의 `projectId/envId`를 검증한다. |
+| 3 | `stk_access_<project>_<env>` 쿠키 | 1,2가 없을 때만 사용한다. 먼저 요청의 `project/env`를 결정한 뒤 해당 네임스페이스 쿠키를 읽는다. |
+
+에러 규칙:
+- credential이 하나도 없으면 `401`.
+- API key 또는 token의 바인딩과 라우팅 힌트(`X-Santokit-Project`, `X-Santokit-Env`)가 불일치하면 `403`.
 
 처리 파이프라인(최소):
 1) `path`가 Auto CRUD인지 확인: `db/{table}/{op}`
@@ -209,12 +219,12 @@ Credential extraction(권장 규칙):
 6) `{table}` → connection 룩업 → 해당 connection의 schema IR/permission으로 SQL 생성 + 실행
 7) 결과/에러 반환
 
-에러 포맷(초안):
+에러 포맷:
 ```json
 { "error": { "code": "BAD_REQUEST", "message": "...", "requestId": "..." } }
 ```
 
-### 6.2 Auto CRUD / Custom Logic
+### 5.2 Auto CRUD / Custom Logic
 Auto CRUD:
 - `path`: `db/{table}/{op}`
 - 상세 스펙: `plan/spec/crud.md`
@@ -229,7 +239,4 @@ Storage:
 
 ---
 
-## 7) Open Questions
-
-- Multi-runtime(Workers 등) 지원 범위
-- Postgres 외 DB 엔진 지원 범위
+미결정 항목은 `plan/notes/open-questions.md`에서 관리한다.

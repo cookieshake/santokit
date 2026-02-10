@@ -80,7 +80,7 @@ Repo-local context는 프로젝트 리포지토리의 `.stk/` 아래에 저장�
 
 옵션(초안):
 - `--only schema|permissions|release` (부분 반영)
-- `--force` 또는 `--allow-destroy` (파괴적 스키마 변경 허용)
+- `--force` (파괴적 스키마 변경 허용)
 - `--no-schema-apply` (plan/검증만; DB 변경 없이 릴리즈는 차단)
 - `--dry-run` (Hub에 반영하지 않고 plan/검증 결과만 출력)
 - `--json` (기계가 파싱하기 쉬운 출력; 예: `releaseId`, `ref`, 단계별 결과)

@@ -24,8 +24,8 @@ santokit/
 │   │   └── cli/          # [Rust] 'stk' Operator CLI
 │   │
 │   ├── libs/
-│   │   ├── core-rs/      # [Rust] Shared Structs, Parser, Validations
-│   │   └── sql-rs/       # [Rust] Dynamic SQL Generator (Schema -> SQL)
+│   │   ├── core/         # [Rust] Shared Structs, Parser, Validations
+│   │   └── sql/          # [Rust] Dynamic SQL Generator (Schema -> SQL)
 │   │
 │   └── sdks/
 │       ├── typescript/   # [TypeScript] JS Client SDK
@@ -52,14 +52,14 @@ santokit/
     *   Connection Pooling 내장.
 *   **Query Building (Dynamic):** **SeaQuery**
     *   `schema.md` 메타데이터를 기반으로 런타임에 SQL을 동적 생성.
-    *   `sql-rs` 라이브러리에서 로직을 캡슐화하여 SQL Injection 원천 차단.
+    *   `packages/libs/sql` 라이브러리에서 로직을 캡슐화하여 SQL Injection 원천 차단.
 
 ### C. CLI (`stk`)
 *   **Parser:** **Clap** (Derive API)
 *   **Interaction:** `inquire` (Prompt), `indicatif` (Spinner/Progress).
 *   **Table Output:** `comfy-table` (터미널 테이블 출력).
 
-### D. Core Logic (`core-rs`)
+### D. Core Logic (`core`)
 *   **Serialization:** **Serde** (`serde_json`, `serde_yaml`)
 *   **CEL Engine:** **`cel`** (https://github.com/cel-rust/cel-rust)
     *   권한 Condition 평가(Interpreter) 및 SQL Where절 변환(AST 활용) 담당.
@@ -85,8 +85,8 @@ santokit/
 
 ### Phase 1: Core & Schema
 1.  `workspace` 설정 (Cargo, Pnpm, Moon).
-2.  `packages/libs/core-rs`: 스키마 YAML 파서 및 구조체 정의.
-3.  `packages/libs/sql-rs`: SeaQuery 기반 DDL(CREATE TABLE) 생성기 구현.
+2.  `packages/libs/core`: 스키마 YAML 파서 및 구조체 정의.
+3.  `packages/libs/sql`: SeaQuery 기반 DDL(CREATE TABLE) 생성기 구현.
 
 ### Phase 2: CLI & Migration
 1.  `packages/tools/cli`: `stk apply` 구현.
@@ -95,7 +95,7 @@ santokit/
 ### Phase 3: Bridge (Runtime)
 1.  `packages/services/bridge`: Axum 서버 셋업.
 2.  `/call` 엔드포인트 구현 (Auto CRUD 연결).
-3.  `sql-rs`: SELECT/INSERT/UPDATE/DELETE 쿼리 생성기 구현.
+3.  `packages/libs/sql`: SELECT/INSERT/UPDATE/DELETE 쿼리 생성기 구현.
 4.  CEL 기반 권한 파서 연동.
 
 ### Phase 4: Storage & Logic
