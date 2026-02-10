@@ -30,6 +30,9 @@ policies:
       allowedTypes: ["image/jpeg", "image/png"]
     download_sign:
       roles: [public]
+    delete:
+      roles: [authenticated]
+      condition: "request.auth.sub != ''"
 
   "docs/{userId}/*":
     upload_sign:
@@ -37,6 +40,9 @@ policies:
       # Path variable 바인딩 지원
       condition: "path.userId == request.auth.sub"
     download_sign:
+      roles: [authenticated]
+      condition: "path.userId == request.auth.sub || 'admin' in request.auth.roles"
+    delete:
       roles: [authenticated]
       condition: "path.userId == request.auth.sub || 'admin' in request.auth.roles"
 ```
@@ -86,6 +92,15 @@ Private 파일 접근을 위한 Presigned URL을 요청한다. (Public 파일은
 - **Path:** `storage/{bucket}/delete`
 - **Params:**
   - `key`: 파일 경로
+
+**권한 모델:**
+- `upload_sign`/`download_sign`와 동일하게 `(roles OR) AND condition(CEL)` 패턴으로 검사한다.
+- 정책에 `delete` 규칙이 없으면 기본 거부(`403`)한다.
+
+**동작:**
+1. 정책 매칭 및 `delete` 규칙 존재 여부 확인.
+2. 권한 검사: (`roles` OR 조건) AND (`condition` CEL 평가).
+3. 권한 통과 시 스토리지 삭제 수행.
 
 ---
 

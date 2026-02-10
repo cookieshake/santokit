@@ -18,6 +18,13 @@
 - **Frontmatter (YAML)**: 메타데이터(권한, 파라미터 정의 등)
 - **Body (SQL)**: 실행할 SQL 쿼리
 
+Frontmatter 필드(핵심):
+- `auth`: `public` | `authenticated` (default: `authenticated`)
+- `roles`: 허용 role 리스트(선택)
+- `params`: 파라미터 타입/기본값 정의(선택)
+- `connection`: 실행할 DB connection 이름(선택, default: `main`)
+  - Bridge는 로직별 `connection` 값을 읽어 해당 connection pool에서 SQL을 실행한다.
+
 예시 (`logics/purchase_item.sql`):
 ```sql
 ---
@@ -63,7 +70,12 @@ COMMIT;
 4. **Parameter Validation**: 정의된 타입/필수 여부 체크.
 5. **SQL Parameter Binding**: 입력 파라미터(`:param`) 치환.
    - `request.auth.sub` 같은 시스템 변수도 바인딩 가능 (`:auth.sub`).
-6. SQL 실행 및 결과 반환.
+6. Frontmatter의 `connection`(기본 `main`)에 해당하는 pool에서 SQL 실행.
+7. 결과 형식 규칙에 맞춰 응답 반환.
+
+응답 형식:
+- Row 반환 쿼리(`SELECT`, `RETURNING` 포함): `{"data": {"data": [...]}}`
+- Execute-only 쿼리(행 반환 없음): `{"data": {"affected": N}}`
 
 ---
 

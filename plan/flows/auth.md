@@ -237,12 +237,13 @@ body 예시:
 
 요청 예시:
 ```json
-{ "project": "projA", "env": "dev" }
+{ "refreshToken": "<opaque>" }
 ```
 
 기대 결과:
 - `stk_access_projA_dev`, `stk_refresh_projA_dev` 쿠키만 만료/삭제된다.
 - `stk_access_projB_dev`, `stk_refresh_projB_dev`는 유지된다.
+- 쿠키 모드에서는 요청 바디 대신 `stk_refresh_projA_dev` 쿠키에서 refresh token을 읽어 처리할 수 있다.
 
 ---
 

@@ -48,6 +48,7 @@ where 확장:
 - 미지원 연산자/타입은 `400 BAD_REQUEST`로 실패한다(무시하지 않음).
 
 `select`:
+- 주의: 여기서 `select`는 `params.select`(반환 컬럼 선택) 필드를 의미하며, `op=select`(조회 연산)와는 별개다.
 - `select`: string[] | "*" (default `"*"`)
 - `expand`: string[] (optional; FK 기반 관계 로드)
 - `orderBy`: object (예: `{ created_at: "desc" }`)
@@ -59,6 +60,14 @@ where 확장:
   - PK 컬럼(`id.name`)은 기본적으로 입력에서 허용하지 않는다(Bridge가 생성).
     - `generate=auto_increment`면 DB가 생성한다(Bridge는 `RETURNING id` 등으로 값을 회수).
   - 단, 스키마에서 `tables.<name>.id.generate=client`면 입력에서 허용한다.
+
+`insert` 응답 형식:
+- Bridge는 생성 쿼리에 `RETURNING *`를 사용한다.
+- 응답에는 생성된 row(Primary Key 포함)를 반환한다.
+- 예:
+```json
+{"data": {"id": "usr_123", "email": "a@example.com"}}
+```
 
 `update`:
 - `data`: object
@@ -249,6 +258,10 @@ tables:
 - `columns: ["*"]` 또는 `columns` 미지정: 모든 컬럼 허용
 - `columns: ["name", "email"]`: 명시된 컬럼만 허용
 - 컬럼 제한이 필요하면 반드시 `columns` 필드를 명시해야 한다
+
+연산별 동작 규칙:
+- `select`: 요청한 컬럼 중 비허용 컬럼은 응답에서 조용히 제외한다(컬럼 제한만으로 `403`을 반환하지 않음).
+- `insert`/`update`: `data`에 비허용 컬럼이 하나라도 포함되면 요청 전체를 `403`으로 거부한다.
 
 ---
 

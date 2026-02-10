@@ -188,7 +188,7 @@ Auto CRUD 권한 체크에 사용한다.
 
 ## 6) How Logic Declares Auth
 
-로직 메타(프론트매터 또는 twin metadata)에서:
+로직 메타(프론트매터(YAML 메타데이터))에서:
 - `auth: authenticated` (default)
 - `auth: public`
 - `roles: [admin, ...]` (API key roles 또는 user.roles에 적용)
@@ -206,6 +206,10 @@ Bridge 처리:
 스코프:
 - End User 계정은 `project+env`에 속한다.
 - 같은 이메일/아이디가 환경별로 분리될 수 있다.
+
+기본 역할 정책:
+- Hub 내장 issuer에서 회원가입으로 생성된 End User의 기본 `roles`는 `["user"]`다.
+- 운영자가 별도 정책으로 roles를 재할당하지 않으면 로그인 시 해당 기본 역할이 access token에 포함된다.
 
 권장 엔드포인트(스케치):
 - `POST /endusers/signup` (optional)

@@ -49,6 +49,7 @@
 - `packages/contracts/` (SDK/서버가 공유하는 계약 아티팩트)
 - `packages/sdks/typescript/`
 - `packages/sdks/swift/`
+- `packages/sdks/python/`
 
 ### 2.1 CLI (`stk`)
 역할:
@@ -75,8 +76,9 @@ Unified apply:
 - 요청은 `X-Santokit-Project`, `X-Santokit-Env` 헤더로 라우팅할 수 있다.
   - API key가 존재하면, key에 바인딩된 `project/env`가 최종 컨텍스트다(불일치 시 `403`).
 
-지원 런타임(필수):
-- Node/Docker
+배포 타겟(필수):
+- 컨테이너(Docker)
+- VM(Node.js 환경)
 
 ---
 

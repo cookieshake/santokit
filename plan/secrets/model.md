@@ -59,6 +59,8 @@ Bootstrap:
 Connections:
 - `stk connections set --project <project> --env <env> --name <connection> --engine postgres --db-url <...>`
 - `stk connections test --project <project> --env <env> --name <connection>`
+- `stk connections list --project <project> --env <env>`
+- `stk connections show --project <project> --env <env> --name <connection>`
 
 Rotation:
 - `stk connections rotate --project <project> --env <env> --name <connection>`

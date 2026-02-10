@@ -80,6 +80,7 @@ Repo-local context는 프로젝트 리포지토리의 `.stk/` 아래에 저장�
 
 옵션(초안):
 - `--only schema|permissions|release` (부분 반영)
+  - 다중 단계를 쉼표로 함께 지정할 수 있다. 예: `--only permissions,release`
 - `--force` (파괴적 스키마 변경 허용)
 - `--no-schema-apply` (plan/검증만; DB 변경 없이 릴리즈는 차단)
 - `--dry-run` (Hub에 반영하지 않고 plan/검증 결과만 출력)
@@ -124,3 +125,7 @@ CI에서는 다음을 권장한다:
   - 환경의 릴리즈 히스토리를 최신순으로 나열한다(`releaseId`, `ref`, `createdAt`, `status` 등).
 - `stk release show --release-id <releaseId>`  
   - 해당 릴리즈가 가리키는 스냅샷(스키마/권한 버전, ref 등)을 출력한다.
+- `stk release promote --from <env> --to <env> [--release-id <releaseId>]`
+  - 릴리즈를 재생성하지 않고 대상 환경의 current release 포인터를 이동한다.
+- `stk release rollback --to-release-id <releaseId>`
+  - 현재 환경의 current release 포인터를 지정한 이전 릴리즈로 되돌린다.
