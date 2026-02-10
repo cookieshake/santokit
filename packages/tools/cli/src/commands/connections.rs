@@ -5,6 +5,15 @@ use crate::context::EffectiveContext;
 use crate::commands::http;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Deserialize)]
+struct Connection {
+    name: String,
+    engine: String,
+    db_url: String,
+    #[allow(dead_code)]
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
 pub async fn set(
     config: &CliConfig,
     ctx: &EffectiveContext,
@@ -27,12 +36,12 @@ pub async fn set(
         db_url: &'a str,
     }
     #[derive(Deserialize)]
-    struct Connection {
+    struct SetConnectionResponse {
         name: String,
         engine: String,
     }
 
-    let conn: Connection = http::send_json(
+    let conn: SetConnectionResponse = http::send_json(
         http::with_auth(config, client.post(format!("{}/api/connections", hub_url)))?
             .json(&SetConnectionRequest {
                 project,
@@ -80,31 +89,7 @@ pub async fn test(
 }
 
 pub async fn list(config: &CliConfig, ctx: &EffectiveContext) -> anyhow::Result<()> {
-    let project = ctx.require_project()?;
-    let env = ctx.require_env()?;
-
-    let hub_url = http::resolve_hub_url(config, ctx)?;
-    let client = http::client();
-
-    #[derive(Deserialize)]
-    struct Connection {
-        name: String,
-        engine: String,
-        db_url: String,
-        #[allow(dead_code)]
-        created_at: chrono::DateTime<chrono::Utc>,
-    }
-
-    let connections: Vec<Connection> = http::send_json(
-        http::with_auth(
-            config,
-            client.get(format!(
-                "{}/api/connections?project={}&env={}",
-                hub_url, project, env
-            )),
-        )?,
-    )
-    .await?;
+    let connections = fetch_connections(config, ctx).await?;
 
     if connections.is_empty() {
         println!("No connections.");
@@ -120,6 +105,58 @@ pub async fn list(config: &CliConfig, ctx: &EffectiveContext) -> anyhow::Result<
         );
     }
     Ok(())
+}
+
+pub async fn show(config: &CliConfig, ctx: &EffectiveContext, name: Option<&str>) -> anyhow::Result<()> {
+    let target = name
+        .or(ctx.connection.as_deref())
+        .unwrap_or("main");
+    let connections = fetch_connections(config, ctx).await?;
+    let conn = connections
+        .into_iter()
+        .find(|c| c.name == target)
+        .ok_or_else(|| anyhow::anyhow!("Connection not found: {}", target))?;
+
+    println!("name: {}", conn.name);
+    println!("engine: {}", conn.engine);
+    println!("db_url: {}", mask_url(&conn.db_url));
+    Ok(())
+}
+
+pub async fn rotate(
+    config: &CliConfig,
+    ctx: &EffectiveContext,
+    name: &str,
+    db_url: &str,
+) -> anyhow::Result<()> {
+    let current = fetch_connections(config, ctx)
+        .await?
+        .into_iter()
+        .find(|c| c.name == name)
+        .ok_or_else(|| anyhow::anyhow!("Connection not found: {}", name))?;
+
+    set(config, ctx, name, &current.engine, db_url).await?;
+    println!("Connection rotated: {}", name);
+    Ok(())
+}
+
+async fn fetch_connections(config: &CliConfig, ctx: &EffectiveContext) -> anyhow::Result<Vec<Connection>> {
+    let project = ctx.require_project()?;
+    let env = ctx.require_env()?;
+
+    let hub_url = http::resolve_hub_url(config, ctx)?;
+    let client = http::client();
+
+    http::send_json(
+        http::with_auth(
+            config,
+            client.get(format!(
+                "{}/api/connections?project={}&env={}",
+                hub_url, project, env
+            )),
+        )?,
+    )
+    .await
 }
 
 fn mask_url(url: &str) -> String {

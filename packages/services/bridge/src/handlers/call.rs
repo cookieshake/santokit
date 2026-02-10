@@ -3,6 +3,7 @@
 //! Santokit의 핵심 엔드포인트입니다.
 //! path에 따라 Auto CRUD, Custom Logic, Storage로 라우팅합니다.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::{
@@ -658,6 +659,7 @@ async fn handle_auto_crud(
             let data = crud_params.data.ok_or_else(|| BridgeError::BadRequest {
                 message: "Missing data for insert".to_string(),
             })?;
+            validate_array_columns(table_def, &data)?;
 
             let generated_id = if table_def.id.generate.bridge_generates() {
                 if data.contains_key(&table_def.id.name) {
@@ -683,16 +685,14 @@ async fn handle_auto_crud(
                 .fetch_all(&pool)
                 .await
                 .map_err(BridgeError::Database)?;
-            let ids = rows
-                .iter()
-                .filter_map(|row| row.try_get::<String, _>(0).ok())
-                .collect::<Vec<_>>();
-            serde_json::json!({ "ids": ids, "generated_id": generated_id })
+            let inserted = rows_to_json(rows).into_iter().next().unwrap_or(Value::Null);
+            serde_json::json!({ "data": inserted })
         }
         CrudOperation::Update => {
             let data = crud_params.data.ok_or_else(|| BridgeError::BadRequest {
                 message: "Missing data for update".to_string(),
             })?;
+            validate_array_columns(table_def, &data)?;
             let where_clause = crud_params.r#where.ok_or_else(|| BridgeError::BadRequest {
                 message: "Update requires where clause".to_string(),
             })?;
@@ -776,9 +776,13 @@ async fn handle_auto_crud(
                 .collect::<Vec<_>>();
 
             if !file_deletes.is_empty() {
-                if let Err(e) = delete_s3_objects(&release.storage, &file_deletes).await {
-                    tracing::warn!("Failed to delete file objects: {}", e);
-                }
+                let storage = release.storage.clone();
+                let deletes = file_deletes.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = delete_s3_objects(&storage, &deletes).await {
+                        tracing::warn!("Failed to delete file objects: {}", e);
+                    }
+                });
             }
 
             serde_json::json!({ "ids": ids })
@@ -1072,6 +1076,90 @@ fn validate_param_type(param_type: &str, value: &Value) -> bool {
         "bool" | "boolean" => value.is_boolean(),
         "json" => value.is_object() || value.is_array(),
         _ => true,
+    }
+}
+
+fn validate_array_columns(table: &stk_core::schema::Table, data: &HashMap<String, Value>) -> Result<()> {
+    for column in &table.columns {
+        let stk_core::schema::ColumnType::Array { items } = &column.column_type else {
+            continue;
+        };
+
+        let Some(value) = data.get(&column.name) else {
+            continue;
+        };
+
+        if value.is_null() {
+            continue;
+        }
+
+        validate_array_value(&column.name, items, value)?;
+    }
+
+    Ok(())
+}
+
+fn validate_array_value(
+    column_name: &str,
+    expected_item_type: &stk_core::schema::ColumnType,
+    value: &Value,
+) -> Result<()> {
+    let arr = value.as_array().ok_or_else(|| BridgeError::BadRequest {
+        message: format!(
+            "Invalid type for column '{}': expected array",
+            column_name
+        ),
+    })?;
+
+    for item in arr {
+        validate_value_type(column_name, expected_item_type, item)?;
+    }
+
+    Ok(())
+}
+
+fn validate_value_type(
+    column_name: &str,
+    expected_type: &stk_core::schema::ColumnType,
+    value: &Value,
+) -> Result<()> {
+    if value.is_null() {
+        return Ok(());
+    }
+
+    let valid = match expected_type {
+        stk_core::schema::ColumnType::String
+        | stk_core::schema::ColumnType::Bigint
+        | stk_core::schema::ColumnType::Decimal { .. }
+        | stk_core::schema::ColumnType::Timestamp
+        | stk_core::schema::ColumnType::Bytes
+        | stk_core::schema::ColumnType::File { .. } => value.is_string(),
+        stk_core::schema::ColumnType::Int => value.as_i64().is_some(),
+        stk_core::schema::ColumnType::Float => value.as_f64().is_some(),
+        stk_core::schema::ColumnType::Boolean => value.is_boolean(),
+        stk_core::schema::ColumnType::Json => true,
+        stk_core::schema::ColumnType::Array { items } => {
+            if let Some(arr) = value.as_array() {
+                for nested in arr {
+                    validate_value_type(column_name, items, nested)?;
+                }
+                true
+            } else {
+                false
+            }
+        }
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        Err(BridgeError::BadRequest {
+            message: format!(
+                "Invalid type for column '{}': expected {}",
+                column_name,
+                expected_type.expected_json_type()
+            ),
+        })
     }
 }
 

@@ -214,6 +214,18 @@ enum ConnectionsAction {
     },
     /// List connections
     List,
+    /// Show connection details
+    Show {
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Rotate connection credentials
+    Rotate {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        db_url: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -442,6 +454,12 @@ async fn main() -> anyhow::Result<()> {
             }
             ConnectionsAction::List => {
                 commands::connections::list(&config, &effective_context).await
+            }
+            ConnectionsAction::Show { name } => {
+                commands::connections::show(&config, &effective_context, name.as_deref()).await
+            }
+            ConnectionsAction::Rotate { name, db_url } => {
+                commands::connections::rotate(&config, &effective_context, &name, &db_url).await
             }
         },
 

@@ -2048,10 +2048,7 @@ async fn oidc_callback(
         }
     };
 
-    let ttl_seconds = std::env::var("STK_ACCESS_TTL")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(3600);
+    let ttl_seconds = access_token_ttl_seconds();
 
     let project_name = db
         .get_project_by_id(&session.project_id)
@@ -2277,10 +2274,7 @@ async fn enduser_login(
         return Err(HubError::Unauthorized("Invalid credentials".to_string()));
     }
 
-    let ttl_seconds = std::env::var("STK_ACCESS_TTL")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(3600);
+    let ttl_seconds = access_token_ttl_seconds();
 
     let token = issue_access_token(
         &state.paseto_keys,
@@ -2373,10 +2367,7 @@ async fn enduser_token(
         return Err(HubError::Unauthorized("Invalid refresh token".to_string()));
     }
 
-    let ttl_seconds = std::env::var("STK_ACCESS_TTL")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(3600);
+    let ttl_seconds = access_token_ttl_seconds();
 
     let token = issue_access_token(
         &state.paseto_keys,
@@ -2464,8 +2455,16 @@ fn issue_access_token(
     let exp = now + Duration::seconds(ttl_seconds);
     let jti = ulid::Ulid::new().to_string();
 
+    let footer_json = key
+        .kid
+        .as_ref()
+        .map(|kid| serde_json::json!({ "kid": kid }).to_string());
+
     let paseto_key = PasetoSymmetricKey::<V4, Local>::from(Key::from(key.key));
     let mut builder = PasetoBuilder::<V4, Local>::default();
+    if let Some(ref footer) = footer_json {
+        builder.set_footer(Footer::from(footer.as_str()));
+    }
 
     let token = builder
         .set_claim(SubjectClaim::from(user_id))
@@ -2479,6 +2478,14 @@ fn issue_access_token(
         .map_err(|e| HubError::Internal(e.to_string()))?;
 
     Ok(token)
+}
+
+fn access_token_ttl_seconds() -> i64 {
+    let configured = std::env::var("STK_ACCESS_TTL")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(300);
+    configured.clamp(60, 900)
 }
 
 struct RefreshTokenIssued {

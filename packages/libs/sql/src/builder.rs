@@ -159,7 +159,10 @@ impl<'a> SelectBuilder<'a> {
         column: &str,
         obj: &serde_json::Map<String, Value>,
     ) {
-        let col_iden = (DynIden(self.table.name.clone()), DynIden(column.to_string()));
+        let col_iden = (
+            DynIden(self.table.name.clone()),
+            DynIden(column.to_string()),
+        );
 
         for (op_key, op_value) in obj {
             let Some(op) = WhereOperator::from_str(op_key) else {
@@ -292,13 +295,12 @@ impl<'a> SelectBuilder<'a> {
         }
     }
 
-    fn build_permission_filters(
-        &self,
-        query: &mut SelectStatement,
-        filters: &[PermissionFilter],
-    ) {
+    fn build_permission_filters(&self, query: &mut SelectStatement, filters: &[PermissionFilter]) {
         for filter in filters {
-            let col_iden = (DynIden(self.table.name.clone()), DynIden(filter.column.clone()));
+            let col_iden = (
+                DynIden(self.table.name.clone()),
+                DynIden(filter.column.clone()),
+            );
             match filter.op {
                 PermissionFilterOp::Eq => self.build_eq_condition(query, &col_iden, &filter.value),
             }
@@ -353,7 +355,7 @@ impl<'a> InsertBuilder<'a> {
         query.values_panic(values);
 
         // RETURNING
-        query.returning(Query::returning().column(DynIden(self.table.id.name.clone())));
+        query.returning(Query::returning().expr(Expr::cust("*")));
 
         query.to_string(PostgresQueryBuilder)
     }
@@ -435,7 +437,11 @@ impl<'a> DeleteBuilder<'a> {
     }
 
     /// SQL 생성
-    pub fn build(&self, where_clause: &WhereClause, extra_filters: Option<&[PermissionFilter]>) -> String {
+    pub fn build(
+        &self,
+        where_clause: &WhereClause,
+        extra_filters: Option<&[PermissionFilter]>,
+    ) -> String {
         let table_iden = DynIden(self.table.name.clone());
         let mut query = Query::delete();
         query.from_table(table_iden.clone());
@@ -628,7 +634,11 @@ fn apply_where_operator_delete(
     }
 }
 
-fn apply_eq_update(query: &mut sea_query::UpdateStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+fn apply_eq_update(
+    query: &mut sea_query::UpdateStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+) {
     match value {
         Value::String(s) => {
             query.and_where(Expr::col(col_iden.clone()).eq(s.as_str()));
@@ -650,7 +660,11 @@ fn apply_eq_update(query: &mut sea_query::UpdateStatement, col_iden: &(DynIden, 
     }
 }
 
-fn apply_ne_update(query: &mut sea_query::UpdateStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+fn apply_ne_update(
+    query: &mut sea_query::UpdateStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+) {
     match value {
         Value::String(s) => {
             query.and_where(Expr::col(col_iden.clone()).ne(s.as_str()));
@@ -672,7 +686,11 @@ fn apply_ne_update(query: &mut sea_query::UpdateStatement, col_iden: &(DynIden, 
     }
 }
 
-fn apply_eq_delete(query: &mut sea_query::DeleteStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+fn apply_eq_delete(
+    query: &mut sea_query::DeleteStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+) {
     match value {
         Value::String(s) => {
             query.and_where(Expr::col(col_iden.clone()).eq(s.as_str()));
@@ -694,7 +712,11 @@ fn apply_eq_delete(query: &mut sea_query::DeleteStatement, col_iden: &(DynIden, 
     }
 }
 
-fn apply_ne_delete(query: &mut sea_query::DeleteStatement, col_iden: &(DynIden, DynIden), value: &Value) {
+fn apply_ne_delete(
+    query: &mut sea_query::DeleteStatement,
+    col_iden: &(DynIden, DynIden),
+    value: &Value,
+) {
     match value {
         Value::String(s) => {
             query.and_where(Expr::col(col_iden.clone()).ne(s.as_str()));
@@ -910,11 +932,14 @@ mod tests {
         let builder = InsertBuilder::new(table);
 
         let mut data = HashMap::new();
-        data.insert("email".to_string(), Value::String("test@example.com".to_string()));
+        data.insert(
+            "email".to_string(),
+            Value::String("test@example.com".to_string()),
+        );
         data.insert("status".to_string(), Value::String("active".to_string()));
 
         let sql = builder.build(&data, Some("user_123"));
         assert!(sql.contains("INSERT INTO \"users\""));
-        assert!(sql.contains("RETURNING"));
+        assert!(sql.contains("RETURNING *"));
     }
 }

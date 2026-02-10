@@ -5,8 +5,8 @@
 use super::context::EvalContext;
 use super::policy::{Operation, PermissionPolicy, RoleRequirement};
 use crate::error::{Error, Result};
-use cel_interpreter::{Context, Program};
 use cel_interpreter::objects::Value as CelValue;
+use cel_interpreter::{Context, Program};
 
 /// 권한 조건 필터
 #[derive(Debug, Clone)]
@@ -180,31 +180,13 @@ impl<'a> PermissionEvaluator<'a> {
     ///
     /// 현재는 간단한 패턴만 지원합니다.
     fn evaluate_condition(&self, condition: &str, ctx: &EvalContext) -> Result<EvalResult> {
-        // 간단한 owner 체크 패턴 인식
-        // "resource.id == request.auth.sub"
-        // "resource.user_id == request.auth.sub"
-
-        if condition.contains("request.auth.sub") {
-            let sub = ctx.auth.sub.as_deref().ok_or_else(|| Error::AccessDenied {
-                reason: "authentication required for condition evaluation".to_string(),
-            })?;
-
-            // 패턴에서 컬럼 이름 추출
-            let column = self.extract_owner_column(condition);
-
-            if let Some(col) = column {
-                return Ok(EvalResult::allow_with_filter(PermissionFilter {
-                    column: col,
-                    op: PermissionFilterOp::Eq,
-                    value: serde_json::Value::String(sub.to_string()),
-                }));
-            }
-        }
-
-        // resource 기반 조건은 지원하지 않음
         if condition.contains("resource.") {
+            if let Some(filter) = self.parse_resource_eq_filter(condition, ctx)? {
+                return Ok(EvalResult::allow_with_filter(filter));
+            }
             return Err(Error::CelExpression {
-                message: "resource-based conditions require SQL translation".to_string(),
+                message: "unsupported resource-based condition (only simple equality is supported)"
+                    .to_string(),
             });
         }
 
@@ -216,21 +198,98 @@ impl<'a> PermissionEvaluator<'a> {
         }
     }
 
-    /// Owner 체크 조건에서 컬럼 이름 추출
-    fn extract_owner_column(&self, condition: &str) -> Option<String> {
-        // "resource.{column} == request.auth.sub" 패턴 인식
-        let pattern = "resource.";
-        if let Some(start) = condition.find(pattern) {
-            let rest = &condition[start + pattern.len()..];
-            let end = rest.find(|c: char| !c.is_alphanumeric() && c != '_');
-            let column = match end {
-                Some(idx) => &rest[..idx],
-                None => rest,
-            };
-            return Some(column.to_string());
+    fn parse_resource_eq_filter(
+        &self,
+        condition: &str,
+        ctx: &EvalContext,
+    ) -> Result<Option<PermissionFilter>> {
+        let normalized = condition.trim();
+        let Some((left, right)) = normalized.split_once("==") else {
+            return Ok(None);
+        };
+
+        let left = left.trim();
+        let right = right.trim();
+
+        if let Some(column) = Self::parse_resource_column(left) {
+            let value = Self::parse_condition_value(right, ctx)?;
+            return Ok(Some(PermissionFilter {
+                column,
+                op: PermissionFilterOp::Eq,
+                value,
+            }));
         }
 
-        None
+        if let Some(column) = Self::parse_resource_column(right) {
+            let value = Self::parse_condition_value(left, ctx)?;
+            return Ok(Some(PermissionFilter {
+                column,
+                op: PermissionFilterOp::Eq,
+                value,
+            }));
+        }
+
+        Ok(None)
+    }
+
+    fn parse_resource_column(token: &str) -> Option<String> {
+        let column = token.strip_prefix("resource.")?;
+        if column.is_empty() {
+            return None;
+        }
+        if !column
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            return None;
+        }
+        Some(column.to_string())
+    }
+
+    fn parse_condition_value(token: &str, ctx: &EvalContext) -> Result<serde_json::Value> {
+        let token = token.trim();
+
+        if token == "request.auth.sub" {
+            let sub = ctx.auth.sub.as_deref().ok_or_else(|| Error::AccessDenied {
+                reason: "authentication required for condition evaluation".to_string(),
+            })?;
+            return Ok(serde_json::Value::String(sub.to_string()));
+        }
+
+        if token.eq_ignore_ascii_case("null") {
+            return Ok(serde_json::Value::Null);
+        }
+
+        if token.eq_ignore_ascii_case("true") {
+            return Ok(serde_json::Value::Bool(true));
+        }
+
+        if token.eq_ignore_ascii_case("false") {
+            return Ok(serde_json::Value::Bool(false));
+        }
+
+        if token.starts_with('"') && token.ends_with('"') && token.len() >= 2 {
+            return Ok(serde_json::Value::String(
+                token[1..token.len() - 1].to_string(),
+            ));
+        }
+
+        if let Ok(n) = token.parse::<i64>() {
+            return Ok(serde_json::Value::Number(n.into()));
+        }
+
+        if let Ok(n) = token.parse::<f64>() {
+            if let Some(num) = serde_json::Number::from_f64(n) {
+                return Ok(serde_json::Value::Number(num));
+            }
+        }
+
+        Err(Error::CelExpression {
+            message: format!(
+                "unsupported value expression in resource condition: {}",
+                token
+            ),
+        })
     }
 
     /// 컬럼 목록 결정
@@ -244,8 +303,8 @@ impl<'a> PermissionEvaluator<'a> {
     pub fn resolve_columns(&self, eval_result: &EvalResult) -> Option<Vec<String>> {
         match &eval_result.columns {
             Some(cols) if cols == &["*"] => None, // 모든 컬럼
-            Some(cols) => Some(cols.clone()),      // 명시 목록
-            None => None,                          // 모든 컬럼
+            Some(cols) => Some(cols.clone()),     // 명시 목록
+            None => None,                         // 모든 컬럼
         }
     }
 }
@@ -261,9 +320,11 @@ fn eval_cel_bool(condition: &str, ctx: &EvalContext) -> Result<bool> {
         message: e.to_string(),
     })?;
 
-    let result = program.execute(&cel_ctx).map_err(|e| Error::CelExpression {
-        message: e.to_string(),
-    })?;
+    let result = program
+        .execute(&cel_ctx)
+        .map_err(|e| Error::CelExpression {
+            message: e.to_string(),
+        })?;
 
     match result {
         CelValue::Bool(b) => Ok(b),
@@ -345,11 +406,15 @@ tables:
         let ctx = EvalContext::new(); // 미인증
 
         // posts.select는 public
-        let result = evaluator.evaluate("posts", Operation::Select, &ctx).unwrap();
+        let result = evaluator
+            .evaluate("posts", Operation::Select, &ctx)
+            .unwrap();
         assert!(result.allowed);
 
         // users.insert는 public
-        let result = evaluator.evaluate("users", Operation::Insert, &ctx).unwrap();
+        let result = evaluator
+            .evaluate("users", Operation::Insert, &ctx)
+            .unwrap();
         assert!(result.allowed);
     }
 
@@ -358,17 +423,19 @@ tables:
         let policy = sample_policy();
         let evaluator = PermissionEvaluator::new(&policy);
 
-        let ctx = EvalContext::new().with_auth(AuthContext::new(
-            "user_123".to_string(),
-            vec![],
-        ));
+        let ctx = EvalContext::new().with_auth(AuthContext::new("user_123".to_string(), vec![]));
 
         // users.select는 authenticated + condition
-        let result = evaluator.evaluate("users", Operation::Select, &ctx).unwrap();
+        let result = evaluator
+            .evaluate("users", Operation::Select, &ctx)
+            .unwrap();
         assert!(result.allowed);
         assert_eq!(result.filters.len(), 1);
         assert_eq!(result.filters[0].column, "id");
-        assert_eq!(result.filters[0].value, serde_json::Value::String("user_123".to_string()));
+        assert_eq!(
+            result.filters[0].value,
+            serde_json::Value::String("user_123".to_string())
+        );
     }
 
     #[test]
@@ -381,7 +448,9 @@ tables:
             "user_123".to_string(),
             vec!["writer".to_string()],
         ));
-        let result = evaluator.evaluate("users", Operation::Delete, &ctx).unwrap();
+        let result = evaluator
+            .evaluate("users", Operation::Delete, &ctx)
+            .unwrap();
         assert!(!result.allowed);
 
         // admin으로 delete 시도
@@ -389,7 +458,9 @@ tables:
             "user_123".to_string(),
             vec!["admin".to_string()],
         ));
-        let result = evaluator.evaluate("users", Operation::Delete, &ctx).unwrap();
+        let result = evaluator
+            .evaluate("users", Operation::Delete, &ctx)
+            .unwrap();
         assert!(result.allowed);
     }
 
@@ -404,9 +475,18 @@ tables:
         assert_eq!(resolved, None);
 
         // columns = ["name", "email"] → 명시적 목록
-        let eval_result = EvalResult::allow_with_columns(vec!["name".to_string(), "email".to_string()]);
+        let eval_result =
+            EvalResult::allow_with_columns(vec!["name".to_string(), "email".to_string()]);
         let resolved = evaluator.resolve_columns(&eval_result);
-        assert_eq!(resolved, Some(vec!["name", "email"].iter().map(|s| s.to_string()).collect()));
+        assert_eq!(
+            resolved,
+            Some(
+                vec!["name", "email"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            )
+        );
 
         // columns = None → None (모든 컬럼)
         let eval_result = EvalResult::allow();
@@ -424,19 +504,28 @@ tables:
             "user_123".to_string(),
             vec!["admin".to_string()],
         ));
-        let result = evaluator.evaluate("users", Operation::Select, &ctx).unwrap();
+        let result = evaluator
+            .evaluate("users", Operation::Select, &ctx)
+            .unwrap();
         assert!(result.allowed);
         assert_eq!(result.columns, Some(vec!["*".to_string()]));
         assert_eq!(evaluator.resolve_columns(&result), None); // "*" resolves to None
 
         // authenticated (non-admin) 매칭 → 두 번째 규칙 (제한된 컬럼)
-        let ctx = EvalContext::new().with_auth(AuthContext::new(
-            "user_456".to_string(),
-            vec![],
-        ));
-        let result = evaluator.evaluate("users", Operation::Select, &ctx).unwrap();
+        let ctx = EvalContext::new().with_auth(AuthContext::new("user_456".to_string(), vec![]));
+        let result = evaluator
+            .evaluate("users", Operation::Select, &ctx)
+            .unwrap();
         assert!(result.allowed);
-        assert_eq!(result.columns, Some(vec!["id", "name", "email"].iter().map(|s| s.to_string()).collect::<Vec<_>>()));
+        assert_eq!(
+            result.columns,
+            Some(
+                vec!["id", "name", "email"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+            )
+        );
     }
 
     #[test]
@@ -448,9 +537,14 @@ tables:
             "user_123".to_string(),
             vec!["admin".to_string()],
         ));
-        let result = evaluator.evaluate("unknown_table", Operation::Select, &ctx).unwrap();
+        let result = evaluator
+            .evaluate("unknown_table", Operation::Select, &ctx)
+            .unwrap();
         assert!(!result.allowed);
-        assert_eq!(result.reason, Some("no matching permission rule".to_string()));
+        assert_eq!(
+            result.reason,
+            Some("no matching permission rule".to_string())
+        );
     }
 
     #[test]
@@ -465,14 +559,60 @@ tables:
             env_id: None,
             principal_type: PrincipalType::ApiKey,
         });
-        let result = evaluator.evaluate("users", Operation::Select, &api_key_ctx).unwrap();
+        let result = evaluator
+            .evaluate("users", Operation::Select, &api_key_ctx)
+            .unwrap();
         assert!(!result.allowed);
 
-        let end_user_ctx = EvalContext::new().with_auth(AuthContext::end_user(
-            "user_123".to_string(),
-            vec![],
-        ));
-        let result = evaluator.evaluate("users", Operation::Select, &end_user_ctx).unwrap();
+        let end_user_ctx =
+            EvalContext::new().with_auth(AuthContext::end_user("user_123".to_string(), vec![]));
+        let result = evaluator
+            .evaluate("users", Operation::Select, &end_user_ctx)
+            .unwrap();
         assert!(result.allowed);
+    }
+
+    #[test]
+    fn test_resource_literal_condition_to_filter() {
+        let policy: PermissionPolicy = serde_yaml::from_str(
+            r#"
+tables:
+  posts:
+    select:
+      - roles: [public]
+        condition: "resource.status == \"active\""
+"#,
+        )
+        .unwrap();
+        let evaluator = PermissionEvaluator::new(&policy);
+
+        let result = evaluator
+            .evaluate("posts", Operation::Select, &EvalContext::new())
+            .unwrap();
+        assert!(result.allowed);
+        assert_eq!(result.filters.len(), 1);
+        assert_eq!(result.filters[0].column, "status");
+        assert_eq!(
+            result.filters[0].value,
+            serde_json::Value::String("active".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resource_condition_unsupported_operator() {
+        let policy: PermissionPolicy = serde_yaml::from_str(
+            r#"
+tables:
+  posts:
+    select:
+      - roles: [public]
+        condition: "resource.status != \"deleted\""
+"#,
+        )
+        .unwrap();
+        let evaluator = PermissionEvaluator::new(&policy);
+
+        let result = evaluator.evaluate("posts", Operation::Select, &EvalContext::new());
+        assert!(result.is_err());
     }
 }

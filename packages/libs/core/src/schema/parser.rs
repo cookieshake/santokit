@@ -94,6 +94,14 @@ impl SchemaParser {
     fn convert_raw_table(name: String, raw: RawTable) -> Result<Table> {
         let id = Self::convert_raw_id(raw.id)?;
         let columns = Self::convert_raw_columns(raw.columns)?;
+        if columns.iter().any(|column| column.name == id.name) {
+            return Err(Error::SchemaValidation {
+                message: format!(
+                    "PK column '{}' must not be redefined in columns for table '{}'",
+                    id.name, name
+                ),
+            });
+        }
         let indexes = Self::convert_raw_indexes(raw.indexes);
 
         Ok(Table {
@@ -180,12 +188,9 @@ impl SchemaParser {
 
         // File type
         if type_str == "file" {
-            let bucket = raw
-                .bucket
-                .clone()
-                .ok_or_else(|| Error::SchemaValidation {
-                    message: "file type requires 'bucket' field".to_string(),
-                })?;
+            let bucket = raw.bucket.clone().ok_or_else(|| Error::SchemaValidation {
+                message: "file type requires 'bucket' field".to_string(),
+            })?;
 
             return Ok(ColumnType::File {
                 bucket,
@@ -392,6 +397,24 @@ tables:
         ];
 
         let result = SchemaParser::build_project_schema(tables);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_pk_column_redefinition_error() {
+        let yaml = r#"
+version: 1
+tables:
+  users:
+    id:
+      name: user_id
+      generate: ulid
+    columns:
+      user_id:
+        type: string
+"#;
+
+        let result = SchemaParser::parse_yaml(yaml);
         assert!(result.is_err());
     }
 }
