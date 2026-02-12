@@ -131,10 +131,14 @@ Hub 동작:
 ### C. 앱으로 복귀(return)
 
 3) Hub가 앱으로 redirect
-- `302 Location: <redirect_uri>?code=<one_time_code>` (권장)
+- `302 Location: <redirect_uri>?exchange_code=<one_time_code>` (권장)
 
 또는(SSR 편의):
 - Hub가 HttpOnly 쿠키(`stk_access_<project>_<env>`, `stk_refresh_<project>_<env>`)를 설정하고 redirect
+
+권장(공통):
+- 앱은 `exchange_code`를 Hub에 교환 요청해 토큰을 얻는다.
+  - `POST /oidc/:provider/exchange`
 
 멀티 프로젝트 주의:
 - 같은 Hub 도메인에서 여러 프로젝트를 동시에 로그인하려면 쿠키 격리가 필요하다.
@@ -147,6 +151,36 @@ Hub 동작:
 이후 End User는 다음 중 하나로 Bridge를 호출한다:
 - `Authorization: Bearer <santokit_access_token>` (토큰 직접 사용)
 - HttpOnly 쿠키 기반(Bridge가 쿠키에서 토큰 추출) — 구현 선택
+
+---
+
+## Flow 05 — End User: OIDC 명시적 Linking (세션 필요, 자동 링크 없음)
+
+목표:
+- 이미 로그인된 End User가 다른 OIDC provider identity를 **명시적으로** 연결한다.
+
+전제:
+- End User 세션이 존재한다(쿠키 또는 `Authorization: Bearer`).
+- v0에서는 email 기반 자동 링크/merge를 제공하지 않는다.
+
+### A. 링크 시작(start)
+
+- `GET /oidc/:provider/start?mode=link&project=<project>&env=<env>&redirect_uri=<app_callback>`
+
+### B. 콜백(callback)
+
+- `GET /oidc/:provider/callback?code=...&state=...`
+- Hub는 `exchange_code`를 생성하고 `redirect_uri`로 전달한다.
+
+### C. 교환(exchange, attach)
+
+- `POST /oidc/:provider/exchange`
+  - body: `{ "exchange_code": "..." }`
+  - 세션: 쿠키 또는 bearer로 현재 End User를 식별
+
+기대 결과:
+- 성공: identity(provider+sub)가 현재 End User에 연결된다.
+- 충돌: identity가 이미 다른 End User에 연결되어 있으면 `409 CONFLICT`.
 
 ---
 

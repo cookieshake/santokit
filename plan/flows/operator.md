@@ -247,7 +247,7 @@
 
 ### B. 롤백(prod)
 
-- `stk release rollback --project <project> --env prod --to <previousReleaseId>`
+- `stk release rollback --project <project> --env prod --to-release-id <previousReleaseId>`
 
 의미:
 - prod의 "현재 릴리즈" 포인터를 이전 릴리즈로 되돌린다.
@@ -258,8 +258,7 @@
 ## Flow 09 — Operator RBAC(멤버 초대/역할 변경/제거)
 
 목표:
-- org/team/project 단위로 Operator(사람) 접근 권한을 관리한다.
-- 변경 이력은 audit log에 남는다.
+- org/project 단위로 Operator(사람) 접근 권한을 관리한다.
 
 전제:
 - Operator가 Hub에 로그인했다.
@@ -269,7 +268,6 @@
 ### A. 멤버 초대
 
 - org 멤버 초대: `stk org invite <email> --role <member|admin>`
-- team 멤버 초대: `stk team invite <email> --team <team> --role <member|lead>`
 - project 멤버 초대: `stk project invite <email> --role <admin|deployer|viewer>`
 
 성공 기준:
@@ -283,7 +281,6 @@
 ### B. 역할 변경
 
 - `stk org members set-role <user> --role <role>`
-- `stk team members set-role <user> --team <team> --role <role>`
 - `stk project members set-role <user> --role <role>`
 
 성공 기준:
@@ -294,7 +291,6 @@
 ### C. 제거
 
 - `stk org remove <user>`
-- `stk team remove <user> --team <team>`
 - `stk project remove <user>`
 
 성공 기준:
@@ -302,10 +298,10 @@
 
 ---
 
-## Flow 10 — 관측(Health/Metrics) 및 Audit log 조회
+## Flow 10 — Health/Readiness
 
 목표:
-- 운영자가 Hub/Bridge 상태를 빠르게 확인하고 변경 이력을 조회할 수 있다.
+- 운영자가 Hub/Bridge 상태를 빠르게 확인할 수 있다.
 
 ---
 
@@ -319,28 +315,6 @@
 
 실패 기준(예):
 - Bridge가 Hub에서 릴리즈를 로드하지 못하면 `readyz != 200`.
-
----
-
-### B. Metrics
-
-- Hub: `GET /metrics`
-- Bridge: `GET /metrics`
-
-성공 기준:
-- Prometheus exposition 포맷으로 노출된다.
-
----
-
-### C. Audit log
-
-- `stk audit list [--project <p>] [--env <e>] [--action <a>] [--since <date>] [--limit <n>]`
-
-성공 기준:
-- 최근 작업(예: `stk apply`, `stk release promote`)에 대한 이벤트가 조회된다.
-
-실패 기준(예):
-- 권한이 부족하면 `403 FORBIDDEN`.
 
 ---
 

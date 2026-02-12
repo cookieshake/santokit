@@ -6,7 +6,7 @@
 - BYO DB 연결정보는 “비밀”로 취급한다.
 
 목표:
-- 멀티 팀/프로젝트/환경에서 DB 연결정보를 안전하게 저장/회전/감사할 수 있어야 한다.
+- 멀티 프로젝트/환경에서 DB 연결정보를 안전하게 저장/회전할 수 있어야 한다.
 - Bridge는 요청의 `project+env`에 맞는 연결정보만 사용할 수 있어야 한다.
 
 ---
@@ -34,7 +34,7 @@ Hub는 최소한 아래를 가진다:
 원칙:
 - Hub DB에는 secret “평문”을 저장하지 않는다.
 - Hub는 서버 환경변수로 주입된 마스터키로 암복호화한다(대칭키).
-- 감사로그에는 “값”이 아니라 “키 이름/connection id/actor(keyId)”만 남긴다.
+- 운영 로그에는 “값”이 아니라 “키 이름/connection id/actor(keyId)”만 남긴다.
 
 ---
 
@@ -61,6 +61,3 @@ Connections:
 - `stk connections test --project <project> --env <env> --name <connection>`
 - `stk connections list --project <project> --env <env>`
 - `stk connections show --project <project> --env <env> --name <connection>`
-
-Rotation:
-- `stk connections rotate --project <project> --env <env> --name <connection>`

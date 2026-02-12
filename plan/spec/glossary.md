@@ -13,7 +13,7 @@
 
 ## 구성요소
 
-- Hub (Control Plane): org/team/project/env, secrets, schema plan/apply, permissions, releases, audit log 등을 관리한다.
+- Hub (Control Plane): org/project/env, secrets, schema plan/apply, permissions, releases 등을 관리한다.
 - Bridge (Data Plane): `POST /call` 런타임. 릴리즈를 pull/캐시해 Auto CRUD/Logic/Storage 요청을 처리한다.
 - `stk` (CLI): Operator가 Hub를 조작하는 단일 진입점(웹 콘솔 대체).
 
@@ -22,7 +22,6 @@
 ## 멀티테넌시 단위
 
 - org: 최상위 조직 단위.
-- team: org 내 협업 단위.
 - project: 하나의 Santokit 앱 단위(스키마/권한/릴리즈가 귀속).
 - env: project 내부의 환경 단위(dev/stg/prod 등). env마다 current release 포인터를 가진다.
 
@@ -62,14 +61,6 @@
 - Auto CRUD: `db/{table}/{op}` 형태의 기본 CRUD.
 - Custom Logic: `logics/{name}` 형태의 SQL 기반 로직.
 - Storage: `storage/{bucket}/{op}` 형태의 presigned URL 기반 파일 작업.
-
----
-
-## 운영/관측
-
-- audit log: Hub에서 운영 변경 이력을 남기는 로그.
-- metrics: Prometheus 형식으로 노출되는 메트릭.
-- tracing: OpenTelemetry 기반 분산 트레이싱.
 
 ---
 

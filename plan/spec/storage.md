@@ -102,6 +102,53 @@ Private 파일 접근을 위한 Presigned URL을 요청한다. (Public 파일은
 2. 권한 검사: (`roles` OR 조건) AND (`condition` CEL 평가).
 3. 권한 통과 시 스토리지 삭제 수행.
 
+### 2.4 Multipart Upload
+
+대용량 업로드를 위해 S3 Multipart Upload를 지원한다.
+
+#### 2.4.1 `multipart_create`
+- **Path:** `storage/{bucket}/multipart_create`
+- **Params:**
+  - `key`: 파일 경로
+  - `contentType`: MIME 타입
+  - `contentLength`: 전체 크기 (Optional; 정책에 `maxSize`가 있으면 필수)
+- **동작:**
+  1. 정책 매칭 및 권한 검사(roles + CEL)
+  2. 제약 검사(`maxSize`, `allowedTypes`)
+  3. Multipart Upload를 생성하고 `uploadId`를 반환
+- **Response:**
+  - `uploadId`: string
+
+#### 2.4.2 `multipart_sign_part`
+- **Path:** `storage/{bucket}/multipart_sign_part`
+- **Params:**
+  - `key`: 파일 경로
+  - `uploadId`: multipart upload id
+  - `partNumber`: 1-based part number
+  - `contentLength`: part 크기 (Optional)
+- **동작:**
+  1. 정책 매칭 및 권한 검사(roles + CEL)
+  2. 해당 part 업로드용 presigned URL(PUT)을 발급
+
+#### 2.4.3 `multipart_complete`
+- **Path:** `storage/{bucket}/multipart_complete`
+- **Params:**
+  - `key`: 파일 경로
+  - `uploadId`: multipart upload id
+  - `parts`: `{ partNumber: number, etag: string }[]`
+- **동작:**
+  1. 정책 매칭 및 권한 검사(roles + CEL)
+  2. S3 multipart complete 호출
+
+#### 2.4.4 `multipart_abort`
+- **Path:** `storage/{bucket}/multipart_abort`
+- **Params:**
+  - `key`: 파일 경로
+  - `uploadId`: multipart upload id
+- **동작:**
+  1. 정책 매칭 및 권한 검사(roles + CEL)
+  2. S3 multipart abort 호출
+
 ---
 
 ## 3) Permissions
@@ -120,13 +167,13 @@ CEL Context 변수:
 
 ---
 
-## 3.1) Security Rules (v1)
+## 3.1) Security Rules
 
 Presigned URL 보안 기본값:
 - URL 만료 시간은 짧게 유지한다.
   - `upload_sign`: 기본 5분(최대 15분)
   - `download_sign`: 기본 1분(최대 5분)
-- URL은 1회성 보장을 강제하지 않는다(v1). 대신 짧은 TTL과 권한 조건으로 리스크를 줄인다.
+- URL은 1회성 보장을 강제하지 않는다. 대신 짧은 TTL과 권한 조건으로 리스크를 줄인다.
 
 Key 정규화/검증:
 - `key`는 canonical path로 정규화한다.
@@ -156,7 +203,6 @@ Key 정규화/검증:
 ## 5) Limitation
 
 - Bridge는 파일 스트림을 직접 처리하지 않는다 (Proxy 모드 미지원).
-- Multipart Upload(대용량 분할 업로드)를 위한 복잡한 Sign Flow는 v1에서 제외한다.
 
 ---
 
@@ -170,5 +216,9 @@ Key 정규화/검증:
   - **Best Effort 정책**: 실패 시 에러 로그를 남기지만, 트랜잭션을 롤백하지는 않는다.
   - **주의**: 네트워크 장애나 S3 오류로 인해 orphan 파일이 남을 수 있음
   - 정기적인 orphan 파일 정리 작업(S3 lifecycle policy 등) 권장
+  - 안전 규칙(권장, v0):
+    - `type: file` 컬럼에 들어가는 key는 해당 버킷 정책 중 하나에 매칭되는 형식이어야 한다(정규화/검증 포함).
+    - cascade 삭제는 `storage/{bucket}/delete`와 동일한 권한 모델(roles + CEL)을 적용해야 한다.
+      - 즉, 삭제 권한이 없는 요청 컨텍스트에서는 파일 삭제가 실행되지 않아야 한다(best effort).
 - `onDelete: preserve`:
   - 아무 동작도 하지 않는다. (기본값)

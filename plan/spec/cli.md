@@ -49,7 +49,7 @@ Repo-local context는 프로젝트 리포지토리의 `.stk/` 아래에 저장�
 ## 3) Unified Apply (Project Snapshot)
 
 문제:
-- 시간이 지날수록 `stk schema apply`, `stk permissions apply`, `stk release create` 같은 “apply 계열”이 늘어난다.
+- 시간이 지날수록 스키마 적용/권한 반영/릴리즈 생성 같은 “apply 계열” 작업이 늘어난다.
 - 사용자가 “이번 커밋 상태를 환경에 반영”하고 싶을 때 명령이 분산되면 실수/누락이 잦아진다.
 
 해결:
@@ -129,3 +129,40 @@ CI에서는 다음을 권장한다:
   - 릴리즈를 재생성하지 않고 대상 환경의 current release 포인터를 이동한다.
 - `stk release rollback --to-release-id <releaseId>`
   - 현재 환경의 current release 포인터를 지정한 이전 릴리즈로 되돌린다.
+
+---
+
+## 7) Other Commands (Draft Index)
+
+이 문서는 CLI 전체를 완전하게 정의하기보다는, "context/apply/release"의 핵심 동작을 우선 정의한다.
+다만 `plan/`의 다른 문서에서 참조하는 커맨드의 네이밍을 일관되게 하기 위해 최소 인덱스를 둔다.
+
+Auth
+- `stk login`
+- `stk whoami`
+
+Bootstrap
+- `stk project create <project>`
+- `stk env create --project <project> <env>`
+
+Connections / secrets
+- `stk connections set --project <project> --env <env> --name <connection> --engine postgres --db-url <...>`
+- `stk connections test --project <project> --env <env> --name <connection>`
+- `stk connections list --project <project> --env <env>`
+- `stk connections show --project <project> --env <env> --name <connection>`
+
+API keys (project/env scoped)
+- `stk apikey create --project <project> --env <env> --name <name> [--roles <r1,r2,...>]`
+- `stk apikey list --project <project> --env <env>`
+- `stk apikey revoke --project <project> --env <env> --key-id <keyId>`
+
+Operator RBAC
+- `stk org invite <email> --role <member|admin>`
+- `stk org members set-role <user> --role <role>`
+- `stk org remove <user>`
+- `stk project invite <email> --role <admin|deployer|viewer>`
+- `stk project members set-role <user> --role <role>`
+- `stk project remove <user>`
+
+Notes
+- 위 커맨드들은 naming/shape를 위한 최소 스케치이며, 세부 동작은 각 스펙 문서에서 확정한다.

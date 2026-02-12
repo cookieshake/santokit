@@ -33,7 +33,7 @@
 | `UNAUTHORIZED` | 401 | 인증 정보 없음/무효(토큰 만료 포함) | credential이 하나도 없음 |
 | `FORBIDDEN` | 403 | 인증은 됐지만 권한이 없음(역할/컬럼 ACL/프로젝트 바인딩 불일치 포함) | API key의 `project/env`와 헤더가 불일치 |
 | `NOT_FOUND` | 404 | 리소스/경로가 존재하지 않음 | `path`의 table/logic/bucket이 없음 |
-| `CONFLICT` | 409 | 현재 상태와 충돌(중복 생성, 상태 전이 불가 등) | 이미 존재하는 org/team/project 생성 |
+| `CONFLICT` | 409 | 현재 상태와 충돌(중복 생성, 상태 전이 불가 등) | 이미 존재하는 org/project 생성 |
 | `TOO_MANY_REQUESTS` | 429 | 레이트 리밋에 걸림 | 동일 API key로 초당 제한 초과 |
 | `INTERNAL_ERROR` | 500 | 서버 내부 오류(예상치 못한 예외, 의존성 실패 포함) | SQL 실행 중 드라이버 에러 |
 | `SERVICE_UNAVAILABLE` | 503 | 일시적으로 서비스를 제공할 수 없음(필수 의존성 다운, max-stale 초과 등) | Hub 다운으로 릴리즈 stale 초과 |

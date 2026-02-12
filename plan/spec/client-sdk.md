@@ -1,42 +1,28 @@
 # Client SDK 자동 생성 — Spec (요약)
 
 목표:
-- 릴리즈 메타데이터(스키마 IR + permissions + logics)로부터 타입 안전한 클라이언트 SDK를 자동 생성한다.
+- 릴리즈 메타데이터(스키마 IR)로부터 타입 안전한 클라이언트 SDK를 자동 생성한다.
 - 개발자가 수동으로 API 타입을 정의하는 반복 작업을 제거한다.
-
-Encore 참고:
-- Encore는 `encore gen client <app-id> --output=./client.ts`로 **실행 중인 환경의 메타데이터**에서 타입 안전한 클라이언트를 생성한다.
-- 지원 언어: Go, TypeScript, JavaScript, OpenAPI spec.
-- 핵심 차별점: 소스 코드가 아닌 **라이브 환경 메타데이터**에서 생성한다 — 즉, 배포된 상태와 100% 일치하는 클라이언트를 보장한다.
-- 환경 선택 가능: `--env=local|staging|pr:72|production` — 환경별로 다른 클라이언트를 생성할 수 있다.
-- 구조화된 에러 타입: `APIError` with `Code`, `Message`, `Details` 필드.
-- 서비스 필터링: 특정 서비스만 포함하는 부분 클라이언트 생성 가능.
-- Santokit은 소스 코드가 아니라 YAML 스키마가 Source of Truth이므로, **릴리즈의 스키마 IR에서 생성**하는 것이 Encore와 동일한 "배포 상태 일치" 보장을 달성한다.
 
 ---
 
 ## 1) CLI 명령어
 
 ```
-stk gen client --lang <language> --output <path> [--env <env>] [--tables <t1,t2>]
+stk gen client --lang typescript --output <path> [--env <env>]
 ```
 
 | 플래그 | 설명 | 기본값 |
 |--------|------|--------|
-| `--lang` | 대상 언어 (`typescript`, `swift`, `python`, `go`) | 필수 |
+| `--lang` | 대상 언어 (`typescript`만 지원, v0) | 필수 |
 | `--output` | 출력 디렉토리/파일 경로 | 필수 |
 | `--env` | 대상 환경 (해당 환경의 현재 릴리즈 사용) | context의 env |
-| `--tables` | 특정 테이블만 포함 (쉼표 구분) | 전체 |
-| `--logics` | Custom Logic 클라이언트 포함 여부 | `true` |
-| `--storage` | Storage 클라이언트 포함 여부 | `true` |
 
 ### 동작
 
 1. Hub에서 대상 env의 현재 릴리즈를 가져온다.
 2. 릴리즈의 스키마 IR에서 테이블/컬럼/타입 정보를 추출한다.
-3. logics 메타데이터에서 파라미터/응답 타입을 추출한다.
-4. storage 메타데이터에서 버킷/정책 정보를 추출한다.
-5. 대상 언어의 템플릿으로 코드를 생성한다.
+3. 대상 언어의 템플릿으로 코드를 생성한다.
 
 구분:
 - SDK 생성(`stk gen client`)은 Hub(Control Plane)의 릴리즈 메타데이터를 사용한다.
@@ -48,18 +34,13 @@ stk gen client --lang <language> --output <path> [--env <env>] [--tables <t1,t2>
 
 원칙:
 - 생성된 클라이언트의 모듈/네임스페이스 구조는 **프로젝트 레포의 구조와 Santokit 호출 경로**를 최대한 반영한다.
-- 즉, 개발자는 repo에서 보던 개념(`schema/`, `logics/`, `config/storage.yaml`)을 SDK에서도 같은 덩어리로 다룬다.
+
 
 매핑:
 - `schema/*.yaml` → `client.db.<table>`
-- `logics/<path>.sql` → `client.logics.<path>` (하위 폴더는 그대로 네임스페이스로 반영)
-- `storage/{bucket}/{op}` → `client.storage.<bucket>.<op>`
 
-출력 디렉토리 구조(TypeScript 예시):
-- `<output>/index.ts` (클라이언트 엔트리)
-- `<output>/db/*.ts`
-- `<output>/logics/**/*.ts`
-- `<output>/storage/*.ts`
+출력(TypeScript v0):
+- `<output>` 단일 파일(TypeScript)만 생성한다.
 
 이름 규칙:
 - 파일/경로/테이블 이름은 원본을 보존하되, 프로퍼티 접근은 언어 관용에 맞게 변환한다.
@@ -69,15 +50,9 @@ stk gen client --lang <language> --output <path> [--env <env>] [--tables <t1,t2>
 경로 매핑 규칙:
 - 테이블:
   - table name은 `schema/*.yaml`의 `tables.<name>`을 사용한다(파일명은 의미가 없다).
-  - SDK 모듈 경로는 `db/<table>.ts`로 생성한다.
-- 로직:
-  - logic name은 파일 경로에서 확정된다: `logics/admin/users.sql` → logic path `admin/users`
-  - SDK 모듈 경로는 `logics/admin/users.ts`로 생성한다.
-  - 최종 접근자는 `client.logics.admin.users`처럼 경로 세그먼트를 네임스페이스로 반영한다.
 
 예시:
 - `schema/users.yaml`에 `tables.users`가 있으면: `client.db.users.select(...)`
-- `logics/admin/users.sql`이 있으면: `client.logics.admin.users.call(...)`
 
 ---
 
@@ -93,38 +68,35 @@ CRUD API:
 - `client.db.<table>.update(where, data)`
 - `client.db.<table>.delete(where)`
 
-Custom Logic API:
-- `client.logics.<path>.call(params)`
-
 결정:
-- 테이블/로직은 "객체 + 메서드" 형태로 노출한다(구현이 class이든 함수형이든 무관).
+- 테이블은 "객체 + 메서드" 형태로 노출한다(구현이 class이든 함수형이든 무관).
 - MVP에서는 체이닝 기반 query builder는 제공하지 않는다.
 
 ## 2) 타입 매핑
 
-| 스키마 타입 | TypeScript | Swift | Python | Go |
-|------------|------------|-------|--------|----|
-| `string` | `string` | `String` | `str` | `string` |
-| `int` | `number` | `Int` | `int` | `int32` |
-| `bigint` | `bigint` | `Int64` | `int` | `int64` |
-| `float` | `number` | `Double` | `float` | `float64` |
-| `decimal` | `string` | `Decimal` | `Decimal` | `string` |
-| `boolean` | `boolean` | `Bool` | `bool` | `bool` |
-| `json` | `unknown` | `AnyCodable` | `Any` | `json.RawMessage` |
-| `timestamp` | `Date` | `Date` | `datetime` | `time.Time` |
-| `bytes` | `Uint8Array` | `Data` | `bytes` | `[]byte` |
-| `file` | `string` (storage key) | `String` | `str` | `string` |
-| `array<T>` | `T[]` | `[T]` | `list[T]` | `[]T` |
+| 스키마 타입 | TypeScript |
+|------------|------------|
+| `string` | `string` |
+| `int` | `number` |
+| `bigint` | `bigint` |
+| `float` | `number` |
+| `decimal` | `string` |
+| `boolean` | `boolean` |
+| `json` | `unknown` |
+| `timestamp` | `string` (RFC3339) |
+| `bytes` | `string` (base64) |
+| `file` | `string` (storage key) |
+| `array<T>` | `T[]` |
 
-Nullable: `nullable: true`이면 `T | null` (TS), `Optional<T>` (Swift) 등으로 매핑.
+Nullable: `nullable: true`이면 `T | null`로 매핑.
 
 ### 2.1 직렬화 규칙 (JSON)
 
 Bridge `/call`의 JSON은 아래 표준을 따른다.
 
-- `timestamp`: RFC3339 문자열로 전송한다. SDK는 `Date`/`datetime`으로 파싱한다.
+- `timestamp`: RFC3339 문자열로 전송한다(런타임 파싱은 사용자 선택).
 - `decimal`: 문자열로 전송한다(정밀도 유지를 위해 number 금지).
-- `bytes`: RFC4648 base64 문자열로 전송한다(줄바꿈 없음). SDK는 언어별 bytes 타입으로 디코드한다.
+- `bytes`: RFC4648 base64 문자열로 전송한다(줄바꿈 없음). TypeScript SDK는 필요 시 디코드한다.
 - `file`: storage key 문자열로 전송한다(직접 다운로드 URL이 아님).
   - 다운로드/업로드는 Storage API(서명 발급)를 통해 수행한다.
 
@@ -133,14 +105,14 @@ Bridge `/call`의 JSON은 아래 표준을 따른다.
 ## 3) 생성 코드 구조 (TypeScript 예시)
 
 ```typescript
-// generated by stk gen client
-import { SantokitClient, type SantokitError } from '@santokit/client-core';
+// generated by stk gen client (v0)
+// 단일 파일로 생성되며, `POST /call` 래퍼 + 최소 타입을 제공한다.
 
 export interface User {
   id: string;
   email: string;
   name: string;
-  created_at: Date;
+  created_at: string;
 }
 
 export interface InsertUser {
@@ -164,33 +136,10 @@ export class UsersTable {
   async delete(where: { id: string }): Promise<{ affected: number }> { /* ... */ }
 }
 
-// Custom Logic
-export class PurchaseItemLogic {
-  constructor(private client: SantokitClient) {}
-
-  async call(params: { itemId: string; qty?: number }): Promise<unknown> { /* ... */ }
-}
-
-export class AdminUsersLogic {
-  constructor(private client: SantokitClient) {}
-  async call(params: { q?: string }): Promise<unknown> { /* ... */ }
-}
-
 // Client entrypoint
 export class MyAppClient {
   db: {
     users: UsersTable;
-  };
-  logics: {
-    purchaseItem: PurchaseItemLogic;
-    // 하위 폴더 예시: logics/admin/users.sql -> client.logics.admin.users
-    admin: {
-      users: AdminUsersLogic;
-    };
-  };
-  storage: {
-    // 예: storage/public/upload_sign -> client.storage.public.uploadSign(...)
-    [bucket: string]: unknown;
   };
 
   constructor(config: { bridgeUrl: string; apiKey?: string; accessToken?: string }) {
@@ -212,7 +161,7 @@ export interface SantokitError {
 ```
 
 - SDK는 HTTP 상태 코드에 따라 `SantokitError`를 throw/return한다.
-- 각 언어의 관용적 에러 처리 패턴을 따른다 (TS: throw, Go: error return, Swift: throws).
+- TypeScript에서는 예외(throw)로 표현한다.
 
 ### 4.1 Permissions 반영 범위(결정)
 
@@ -234,19 +183,11 @@ const client = new MyAppClient({
 ```
 
 - API key와 access token 중 하나를 설정한다.
-- access token은 만료 시 자동 갱신 (refresh token 사용, 옵션).
+- access token 만료/갱신은 MVP에서 자동화하지 않는다.
 
 ---
 
-## 6) 우선순위
-
-1. **TypeScript** — 가장 수요가 높은 프론트엔드/풀스택 언어. MVP.
-2. **OpenAPI spec** — 언어 무관한 표준. 다른 도구(Postman, Swagger UI)와 호환.
-3. **Swift / Python / Go** — 커뮤니티 수요에 따라 후속.
-
----
-
-## 7) Compatibility / 버저닝(결정)
+## 6) Compatibility / 버저닝(결정)
 
 - 생성된 SDK는 "생성 시점의 릴리즈"에 맞춰 타입/경로를 고정한다.
 - 생성 결과물에는 아래 메타데이터를 포함한다:
@@ -260,7 +201,4 @@ const client = new MyAppClient({
 
 ---
 
-## 미결정
-
-- `@santokit/client-core` 런타임 라이브러리의 범위 (HTTP 클라이언트, 인증 자동 갱신, 리트라이)
-- Realtime subscription (WebSocket) 지원 시 SDK 확장 방식
+미결정 항목은 `plan/notes/open-questions.md`에서 관리한다.

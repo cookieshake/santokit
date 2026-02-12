@@ -1,22 +1,14 @@
-# Auth — Spec (Operator + End User Accounts)
+# Auth — Spec (Operator + End User)
 
 목표:
-- Santokit “사람 주체”를 두 종류로 분리해 모델링한다.
-  - Operator: Hub(Control Plane)를 운영/관리하는 팀 멤버(사람)
-  - End User: Bridge(Data Plane)의 `/call`을 호출하는 앱의 최종 사용자(사람)
-- 웹 콘솔 없이 `stk`(CLI)로만 운영/관리 플로우가 가능해야 한다.
+- Operator(Hub Control Plane) 인증/권한과 End User(Bridge Data Plane) 인증을 분리해 정의한다.
+- End User는 built-in email/password + 외부 OIDC provider(여러 개) 로그인을 지원한다.
+- End User account linking(여러 identity를 하나의 End User로 통합)은 v0에서 **명시적 링크**만 지원한다(자동 링크 금지).
 
 핵심 원칙:
-- Control Plane은 “사용자 로그인 + 팀/프로젝트 RBAC”을 전제로 한다.
-- Data Plane은 “프로젝트 API 키(서버/CI)” + “End User access token”을 지원한다.
-- 외부 OIDC JWT는 Hub(Control Plane)에서 검증/통합한 뒤 access token으로 교환한다.
 - project/env 격리는 “라우팅”이 아니라 **검증된 credential**로 강제한다.
-- Hub(Control Plane)는 End User에 대해 “내장 계정관리 + 토큰 발급(issuer)”을 제공할 수 있다.
-- 또한 외부 OIDC issuer 연동도 지원한다(프로젝트별 선택).
-
-결정:
-- Bridge(Data Plane)만 토큰을 검증한다(외부 게이트웨이/서드파티 검증 요구 없음).
-- End User의 `roles`는 “Santokit 발급 access token”에 포함한다(허브 조회 없이 인가 가능).
+- Bridge는 `/call` 처리에서 access token을 **오프라인 검증**한다(Hub 조회 없이 인가).
+- Hub는 End User 인증 API(OIDC/callback/linking 포함)에서 토큰을 발급/갱신/폐기하며, 필요한 경우 토큰을 검증한다.
 
 ---
 
@@ -33,134 +25,144 @@
 ## 2) Operator Accounts & Auth (Hub / Control Plane)
 
 대상:
-- `stk`가 호출하는 Hub API(프로젝트/환경/연결정보/키/권한/릴리즈 관리)
+- `stk`가 호출하는 Hub API(프로젝트/환경/연결정보/키/권한/릴리즈 등)
 
-요구:
+요구(최소):
 - Operator(사람)가 로그인할 수 있어야 한다.
-- Hub(Control Plane)는 org/team/project 단위 RBAC을 가진다(예: org owner/admin/member).
+- Hub는 org/project 범위의 Operator RBAC을 평가한다.
 
 계정관리(필수):
-- Operator는 Hub에 저장된다(초대/가입/비활성화/역할 변경).
 - 비밀번호는 `argon2id` 또는 `bcrypt`로 해시 저장한다(평문 저장 금지).
-
-인증(필수):
-- `stk login` → Hub에서 Control Plane access token 발급
-- 토큰은 로컬 머신에 저장되고, `stk`가 Hub API 호출에 사용한다.
-
-권한(필수):
-- org/team/project 범위에서 Operator RBAC을 평가한다.
 
 ---
 
-## 3) End User Accounts & Data Plane Auth (Bridge / Data Plane)
+## 3) End User Auth (Hub issuer + Bridge verifier)
 
-Bridge(`/call`)는 두 종류의 credential을 다룬다.
+End User는 아래 identity를 가질 수 있다:
+- built-in password: `email + password`
+- 외부 OIDC: `provider + subject`
 
-### 3.1 Project API Key (서버/CI)
-요청 헤더:
-- `X-Santokit-Api-Key: <api_key>`
-
-키 속성:
-- 스코프는 `project + env`에 바인딩된다. (예: `myproj:prod`)
-- 키는 “keyId + secret” 형태이며, Hub는 평문 저장을 금지한다.
-- 회전을 위해 최소 2개 동시 활성(또는 versioned) 모델을 지원한다.
-
-권장 UX:
-- `apiKey` 값은 생성 시 **1회만** 노출한다(재조회 불가).
-- CLI는 `keyId`와 `apiKey`를 함께 출력한다.
-
-### 3.2 End User JWT (OIDC)
-요청 헤더:
-- `Authorization: Bearer <jwt>` (외부 issuer 토큰; Hub에서 검증/교환 입력으로 사용)
-
-검증:
-- JWKS로 signature 검증
-- `iss`/`exp` 체크
-- `aud`는 설정 시에만 체크
-
-표준 claims 매핑:
-- `sub` → `user.id`
-- `roles` 또는 `role` → `user.roles: string[]`
-
-issuer 선택:
-- (내장) Hub(Control Plane)가 End User 토큰을 발급하는 issuer 역할을 한다.
-- (외부) 프로젝트가 지정한 외부 OIDC issuer를 사용한다.
-
-내장 issuer 필수 기능:
-- 여러 외부 issuer 지원 + account linking(정규화)
-- token TTL/refresh 정책
-
-중요:
-- 외부 OIDC JWT는 “로그인/연동 입력”으로만 사용한다.
-- Bridge(Data Plane)가 매 요청에서 검증하는 토큰은 Santokit이 발급한 토큰이다(아래 3.3).
-
-결정:
-- 외부 OIDC 연동은 Hub(Control Plane)가 callback을 직접 처리하는 “Hub OIDC Flow” 하나로 통일한다.
-- `/endusers/exchange` 같은 “프론트에서 토큰을 들고 와서 교환” 방식은 제공하지 않는다.
-
-### 3.3 Santokit Access Token (Encrypted, Bridge-Verified)
-
-목표:
-- 클라이언트가 토큰 payload를 “까볼” 수 없도록 한다.
-- Hub(Control Plane) 조회 없이 Bridge(Data Plane)에서만 검증/복호화한다.
+### 3.1 Santokit Access Token (Bridge-Verified)
 
 형식(권장):
 - PASETO `v4.local` (대칭키 암호화)
 
-토큰에 포함되는 최소 claims:
-- `sub`: 내부 End User id (정규화된 id)
-- `projectId`, `envId` (또는 동등한 스코프 식별자)
+토큰 최소 claims:
+- `sub`: End User ID (정규화된 ID)
+- `projectId`, `envId`
 - `roles: string[]`
 - `iat`, `exp`
-- `jti` (revocation/audit correlation 용도)
+- `jti` (revocation/log correlation 등)
 
 검증:
 - Bridge는 `exp`와 `project/env` 바인딩을 검증한다.
-- `project/env` 라우팅 힌트(Host/header)와 토큰의 `projectId/envId`가 불일치하면 `403`.
 
 키 관리/로테이션:
 - 토큰 헤더에 `kid`를 포함한다.
-- Bridge는 “현재 키 + 이전 키(들)”을 로딩해 검증한다(롤링 배포 지원).
-- Hub는 새 키로 발급을 전환한 뒤, 충분한 유예 기간 후 이전 키를 폐기한다.
+- Bridge는 “현재 키 + 이전 키(들)”을 로딩해 검증한다.
+- 키 소재 동기화: `plan/spec/bridge-hub-protocol.md`의 `GET /internal/keys/{project}/{env}`
 
-Refresh:
-- refresh token은 opaque(랜덤)으로 발급하고 Hub에 해시로 저장한다(Bridge는 refresh 처리 안 함).
+### 3.2 Refresh Token (Hub-Verified)
 
-쿠키 발급(SSR 지원):
-- Hub는 End User access token을 HttpOnly 쿠키로도 발급할 수 있다.
-  - 예: `Set-Cookie: stk_access_<project>_<env>=<paseto>; HttpOnly; Secure; SameSite=Lax; Path=/`
-- refresh token도 HttpOnly 쿠키로 운용할 수 있다(권장).
-  - 예: `Set-Cookie: stk_refresh_<project>_<env>=<opaque>; HttpOnly; Secure; SameSite=Lax; Path=/`
+- refresh token은 opaque(랜덤)으로 발급하고 Hub에 **해시로 저장**한다.
+- Bridge는 refresh를 처리하지 않는다.
 
-멀티 프로젝트(같은 Hub 도메인) 주의:
-- Hub가 여러 프로젝트를 한 도메인에서 처리하면, 쿠키 이름 충돌로 “동시에 여러 프로젝트 로그인”이 어려워진다.
+### 3.3 Token Transport (Bearer + SSR Cookie)
 
-결정: 쿠키 네임스페이스
-- 쿠키 이름에 `project/env`를 포함해 네임스페이스한다.
-  - 예: `stk_access_<project>_<env>`, `stk_refresh_<project>_<env>`
-- Hub는 로그인/갱신/로그아웃 시 요청 컨텍스트의 `project/env`에 맞는 쿠키만 설정/폐기한다.
-- Bridge는 요청 컨텍스트의 `project/env`를 결정한 뒤, 해당 네임스페이스 쿠키를 선택한다.
-- Bridge는 End User access token을 `Authorization` 헤더 또는(옵션) 네임스페이스 쿠키에서 받을 수 있다.
+Hub End User API와 Bridge `/call`은 둘 다 아래 입력을 허용한다.
+
+Bearer:
+- `Authorization: Bearer <stk_access_token>`
+
+SSR cookies:
+- `stk_access_<project>_<env>=<stk_access_token>` (HttpOnly)
+- `stk_refresh_<project>_<env>=<refresh_token>` (HttpOnly)
+
+쿠키 네임스페이스(결정):
+- 여러 프로젝트/환경을 한 Hub 도메인에서 다루기 위해 쿠키 이름에 `project/env`를 포함한다.
 
 ---
 
-## 4) Context Binding / Environment Isolation (필수)
+## 4) Built-in Email/Password (Hub)
 
-### 4.1 Project API Key
-- Bridge는 API key를 먼저 검증한다.
-- key가 바인딩한 `project/env`를 **최종 요청 컨텍스트**로 설정한다.
-- 요청이 `X-Santokit-Project`, `X-Santokit-Env`를 보내더라도 “라우팅 힌트”일 뿐이다.
-- header의 `project/env`와 key의 `project/env`가 다르면 `403`으로 거부한다(헤더로 env 바꿔치기 불가).
+권장 엔드포인트(스케치):
+- `POST /endusers/signup`
+- `POST /endusers/login`
+- `POST /endusers/token` (refresh)
+- `POST /endusers/logout` (refresh revoke)
 
-### 4.2 External OIDC JWT
-- 외부 OIDC JWT는 Hub(Control Plane)의 “로그인/연동 입력”으로 사용한다.
-- Hub는 여러 issuer의 subject를 통합(linking/정규화)한 뒤 Santokit access token을 발급한다.
+v0 제약:
+- 이메일 verification은 제공하지 않는다.
 
-### 4.3 End User Access Token (Santokit)
-- 최종 인가에 사용되는 End User credential은 Santokit access token이다.
-- 토큰의 `projectId/envId` 바인딩이 라우팅 힌트보다 우선한다.
+---
 
-### 4.4 Credential 우선순위(고정)
+## 5) External OIDC Providers (Hub)
+
+지원:
+- 여러 OIDC provider를 `project+env` 스코프로 등록한다.
+- Hub가 callback을 처리하고, Santokit access/refresh를 발급한다.
+
+중요:
+- 외부 OIDC JWT를 Bridge `/call`에 그대로 보내는 방식은 지원하지 않는다.
+- Bridge가 검증하는 것은 Santokit access token이다.
+
+### 5.1 Provider Configuration (개념)
+
+- `providerName`: 예) `google`, `github`, `okta`
+- `issuer`
+- `clientId`, `clientSecret`
+- `scopes`
+- `redirectUriAllowlist[]`
+- (선택) roles mapping 규칙(최소) — claim에서 roles를 읽어오되, 없으면 기본 role을 사용
+
+### 5.2 OIDC Endpoints (login/link 공통)
+
+브라우저 리다이렉트 기반 플로우를 “exchange code”로 정규화한다.
+
+1) Start
+- `GET /oidc/:provider/start?mode=login|link&project=...&env=...&redirect_uri=...`
+  - `mode=link`는 **End User 세션 필요**(cookie 또는 bearer)
+
+2) Callback
+- `GET /oidc/:provider/callback?...`
+  - Hub가 code → token 교환, id_token 검증, subject 추출까지 수행
+  - 결과로 **1회용 exchange_code**를 생성한다(짧은 TTL)
+  - `redirect_uri`로 302 redirect 하며, exchange_code를 전달한다(쿼리 또는 fragment)
+
+3) Exchange
+- `POST /oidc/:provider/exchange`
+  - 입력: `{ "exchange_code": "..." }`
+  - `mode=login`: 세션 없이 허용(새 세션 발급)
+  - `mode=link`: **현재 End User 세션 필요**(cookie 또는 bearer)
+
+---
+
+## 6) Account Linking (Explicit Only, v0)
+
+목표:
+- 여러 identity(password/OIDC)를 하나의 End User로 묶는다.
+
+원칙(v0):
+- 자동 링크(예: 동일 email로 자동 merge/attach)는 제공하지 않는다.
+- linking은 반드시 “현재 로그인된 End User”에 attach하는 **명시적 동작**이다.
+
+### 6.1 Linking via OIDC
+
+- `GET /oidc/:provider/start?mode=link ...`
+- `POST /oidc/:provider/exchange` (mode=link)
+  - 성공 시: 현재 End User에 `{provider, subject}` identity를 추가
+  - 충돌 시: `409 CONFLICT` (이미 다른 End User에 연결됨)
+
+### 6.2 Linking Password Identity
+
+권장 엔드포인트(스케치):
+- `POST /endusers/password/set`
+  - 현재 End User 세션 필요(cookie 또는 bearer)
+  - 충돌 시: `409 CONFLICT`
+
+---
+
+## 7) Context Binding / Environment Isolation (필수)
 
 Bridge는 credential이 여러 개 들어와도 아래 우선순위로 단일 컨텍스트를 확정한다.
 
@@ -176,79 +178,8 @@ Bridge는 credential이 여러 개 들어와도 아래 우선순위로 단일 �
 
 ---
 
-## 5) Roles / Permissions (Data Plane)
+## 8) Security Notes (필수)
 
-권한 판단에 쓰는 roles의 출처:
-- API key: key에 부여된 `roles`(예: `admin`, `writer`, `reader`)
-- End-user JWT: 토큰 claims에서 파싱한 `user.roles`
-
-Auto CRUD 권한 체크에 사용한다.
-
----
-
-## 6) How Logic Declares Auth
-
-로직 메타(프론트매터(YAML 메타데이터))에서:
-- `auth: authenticated` (default)
-- `auth: public`
-- `roles: [admin, ...]` (API key roles 또는 user.roles에 적용)
-
-Bridge 처리:
-- `public`: 로직 레벨의 추가 인증 요구는 없음. 단, Bridge 공통 인증 게이트웨이는 credential을 요구한다.
-- `roles`: (API key 또는 JWT) 필요 + role 포함 필요
-
----
-
-## 7) End User Account APIs (Hub Issuer Mode)
-
-내장 issuer를 사용하는 경우, Hub(Control Plane)는 End User 계정관리를 제공한다.
-
-스코프:
-- End User 계정은 `project+env`에 속한다.
-- 같은 이메일/아이디가 환경별로 분리될 수 있다.
-
-기본 역할 정책:
-- Hub 내장 issuer에서 회원가입으로 생성된 End User의 기본 `roles`는 `["user"]`다.
-- 운영자가 별도 정책으로 roles를 재할당하지 않으면 로그인 시 해당 기본 역할이 access token에 포함된다.
-
-권장 엔드포인트(스케치):
-- `POST /endusers/signup` (optional)
-- `POST /endusers/login` → Santokit access token(PASETO) + refresh token
-- `POST /endusers/token` (refresh)
-- `POST /endusers/logout` (refresh revoke)
-  - (주의) Santokit access token이 PASETO인 경우 JWKS는 필요하지 않다.
-
-외부 OIDC 연동(단일 플로우):
-- `GET /oidc/:provider/start` (authorize redirect; project/env 선택 포함)
-- `GET /oidc/:provider/callback` (code → token 교환, 검증, linking, 세션/쿠키 발급)
-
-redirect 정책:
-- 허용된 redirect URI allowlist를 `project+env` 스코프로 Hub에 저장한다.
-
-저장 모델(최소):
-- `end_users(id, project_id, env_id, email, password_hash, roles, status, created_at, updated_at)`
-- `refresh_tokens(id, end_user_id, hash, expires_at, revoked_at, created_at)`
-
-주의:
-- End User 인증 UI(호스티드 로그인 페이지) 제공 여부는 별도 결정으로 둔다(필수 아님).
-
----
-
-## 8) CLI Commands (Draft)
-
-### 8.1 Operator Login (Control Plane)
-- `stk login`
-- `stk logout`
-- `stk whoami`
-
-### 8.2 API Key (Data Plane)
-- `stk apikey create --project <project> --env <env> --name <name> --roles admin,writer,reader`
-  - 출력(예시): `keyId=...` + `apiKey=...` (apiKey는 1회만)
-- `stk apikey list --project <project> --env <env>`
-  - 출력(예시): `keyId`, `name`, `roles`, `status`, `createdAt`, `lastUsedAt`
-- `stk apikey revoke --project <project> --env <env> --key-id <keyId>`
-
-권장 회전(무중단):
-1) 새 키 생성: `stk apikey create ...`
-2) 서버/CI에 새 키 배포
-3) 구 키 폐기: `stk apikey revoke ...`
+민감정보 로그 금지:
+- access/refresh token 값, API key 값, service token 값, DB URL, `/internal/keys` 응답의 키 소재는 로그/트레이스에 남기지 않는다.
+- `/internal/keys/*`는 request/response body 로깅을 반드시 제외한다.

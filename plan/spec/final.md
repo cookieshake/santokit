@@ -4,14 +4,15 @@
 
 핵심 결정:
 - Hub(Control Plane)는 필수. 웹 콘솔 없이 **CLI(`stk`)로만** 운영한다.
-- 멀티 팀/프로젝트 지원(멀티테넌트). Bridge(Data Plane)는 단일 공유 런타임이 기본이다.
+- 멀티 프로젝트 지원(멀티테넌트). Bridge(Data Plane)는 단일 공유 런타임이 기본이다.
 - 기본 제공 API는 Auto CRUD다.
 - BYO DB를 전제로 한다.
 - 스키마 Source of Truth는 “선언 스키마(YAML)”이다.
 - Data Plane 인증은 Project API key + End User access token을 지원한다.
   - End User 계정관리는 Hub(Control Plane)가 내장으로 제공할 수 있고, 외부 OIDC 연동도 지원한다.
   - 여러 외부 OIDC issuer를 통합(linking/정규화)해 “Santokit access token”으로 교환한다.
-  - Bridge(Data Plane)만 Santokit access token을 검증한다.
+  - Bridge(Data Plane)는 `/call` 처리에서 Santokit access token을 검증한다(Hub 조회 없이 인가).
+  - Hub(Control Plane)는 End User 인증 API에서 토큰을 발급/갱신/로그아웃 처리하며, 필요한 경우 토큰을 검증한다(예: linking 플로우).
   - End User `roles`는 access token에 포함한다(Hub 조회 없이 인가).
   - Hub는 access/refresh token을 HttpOnly 쿠키로도 발급할 수 있다(SSR 지원).
 
@@ -21,16 +22,15 @@
 
 ### 1.1 Hub (Control Plane)
 역할:
-- org/team/project/env 관리
+- org/project/env 관리
 - DB connections + secrets 저장(암호화)
 - 선언 스키마(YAML) 저장/검증 + schema plan/apply 실행
 - schema snapshot 저장(검증/드리프트 감지용)
 - permissions / releases 저장
-- audit log 저장
-- (선택) End User 계정관리 + 토큰 발급(issuer)
+- End User 계정관리 + 토큰 발급(issuer)
 
 용어:
-- Operator: Hub(Control Plane)를 운영/관리하는 팀 멤버(사람)
+ - Operator: Hub(Control Plane)를 운영/관리하는 멤버(사람)
 - End User: Bridge(Data Plane)의 `/call`을 호출하는 앱의 최종 사용자(사람)
   - 추가 용어 정의: `plan/spec/glossary.md`
 
@@ -52,8 +52,6 @@
 - `packages/libs/core/`
 - `packages/contracts/` (SDK/서버가 공유하는 계약 아티팩트)
 - `packages/sdks/typescript/`
-- `packages/sdks/swift/`
-- `packages/sdks/python/`
 
 ### 2.1 CLI (`stk`)
 역할:
@@ -73,7 +71,7 @@ Unified apply:
 - `/call` API 제공
 - 요청에서 `project+env` 컨텍스트를 해석
 - Hub에서 현재 릴리즈(permissions + schema IRs(connection별))를 pull/캐시 후 실행
-- DB/권한/레이트리밋/감사를 강제한다
+- DB/권한/레이트리밋을 강제한다
 
 멀티 프로젝트:
 - “한 Bridge = 여러 프로젝트/환경”이 기본이다.
@@ -97,7 +95,6 @@ CLI:
 - `stk connections test` (Hub에서 DB 연결 테스트)
 - `stk apply --only schema --dry-run --ref <ref>` (선언 스키마 기준 plan; destructive 변경은 차단)
 - `stk apply --only schema --ref <ref>` (허용된 subset만 DB에 적용)
-- `stk schema snapshot` (Hub가 DB introspection 후 검증/드리프트 감지)
 
 ---
 
@@ -187,6 +184,13 @@ Promotion (dev → prod):
 { "path": "db/users/select", "params": { "where": { "id": "..." }, "limit": 1 } }
 ```
 
+성공 응답(envelope):
+```json
+{ "data": {} }
+```
+- `data`: operation별 payload
+- `meta`: 선택(페이지네이션/카운트 등)
+
 인증(데이터 플레인):
 - 서버/CI: `X-Santokit-Api-Key: <api_key>`
 - End User:
@@ -252,11 +256,9 @@ Storage:
 | 문서 | 내용 |
 |------|------|
 | `plan/spec/bridge-hub-protocol.md` | Bridge ↔ Hub 통신 프로토콜 (transport, 인증, 동기화, 장애 모드) |
-| `plan/spec/observability.md` | Health check, 메트릭, 트레이싱, 로깅, Audit Log |
-| `plan/spec/operator-rbac.md` | Operator 역할/권한 체계 (org/team/project RBAC) |
+| `plan/spec/operator-rbac.md` | Operator 역할/권한 체계 (org/project RBAC) |
 | `plan/spec/client-sdk.md` | Client SDK 자동 생성 (`stk gen client`) |
 | `plan/spec/mcp.md` | MCP 서버 — AI 도구 통합 (`stk mcp`) |
-| `plan/spec/events.md` | Pub/Sub + Cron 선언적 이벤트/정기작업 |
 
 ---
 

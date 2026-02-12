@@ -29,19 +29,16 @@
 핵심 컴포넌트 위에 구축된 확장 기능:
 
 9. **`storage.md`** — 파일 스토리지 (S3 presigned URL)
-10. **`events.md`** — Pub/Sub & Cron (토픽, 구독, 스케줄)
-11. **`operator-rbac.md`** — Operator 권한 (org/team/project 역할)
-12. **`client-sdk.md`** — 클라이언트 라이브러리 (TypeScript SDK)
+10. **`operator-rbac.md`** — Operator 권한 (org/project 역할)
+11. **`client-sdk.md`** — 클라이언트 라이브러리 (TypeScript SDK)
 
 ### Tier 4: 운영
 
 운영 관련 사항 및 도구:
 
 13. **`bridge-hub-protocol.md`** — 내부 통신 (Bridge ↔ Hub)
-14. **`observability.md`** — 메트릭, 로그, 트레이스 (OpenTelemetry)
-15. **`audit-log.md`** — 감사 로깅 (누가 언제 무엇을 했는지)
-16. **`cli.md`** — CLI 인터페이스 (`stk` 명령어)
-17. **`mcp.md`** — MCP 통합 (스키마 인트로스펙션)
+14. **`cli.md`** — CLI 인터페이스 (`stk` 명령어)
+15. **`mcp.md`** — MCP 통합 (스키마/권한/릴리즈/로직 인트로스펙션)
 
 ---
 
@@ -78,37 +75,37 @@
                             │
         ┌───────────────────┼───────────────────┐
         │                   │                   │
-   ┌────▼────┐         ┌───▼────┐         ┌───▼────┐
-   │ storage │         │ events │         │operator│
-   │         │         │        │         │ -rbac  │
-   │ Tier 3  │         │ Tier 3 │         │        │
-   │Advanced │         │Advanced│         │ Tier 3 │
-   └─────────┘         └────┬───┘         └────────┘
-                            │
-                       ┌────▼────┐
-                       │ client  │
-                       │  -sdk   │
-                       │         │
-                       │ Tier 3  │
-                       └────┬────┘
-                            │
-        ┌───────────────────┼───────────────────┐
-        │                   │                   │
-   ┌────▼────┐         ┌───▼────┐         ┌───▼────┐
-   │ bridge  │         │observ- │         │ audit  │
-   │  -hub   │         │ability │         │  -log  │
-   │         │         │        │         │        │
-   │ Tier 4  │         │ Tier 4 │         │ Tier 4 │
-   │  Ops    │         │  Ops   │         │  Ops   │
-   └─────────┘         └────────┘         └────┬───┘
-                                               │
-                                          ┌────▼────┐
-                                          │   cli   │
-                                          │   mcp   │
-                                          │         │
-                                          │ Tier 4  │
-                                          │  Ops    │
-                                          └─────────┘
+    ┌────▼────┐                        ┌───▼────┐
+    │ storage │                        │operator│
+    │         │                        │ -rbac  │
+    │ Tier 3  │                        │        │
+    │Advanced │                        │ Tier 3 │
+    └────┬────┘                        └───┬────┘
+         │                                  │
+         └───────────────────┬──────────────┘
+                             │
+                        ┌────▼────┐
+                        │ client  │
+                        │  -sdk   │
+                        │         │
+                        │ Tier 3  │
+                        └────┬────┘
+                             │
+                        ┌────▼────┐
+                        │ bridge  │
+                        │  -hub   │
+                        │         │
+                        │ Tier 4  │
+                        │  Ops    │
+                        └────┬────┘
+                             │
+                        ┌────▼────┐
+                        │   cli   │
+                        │   mcp   │
+                        │         │
+                        │ Tier 4  │
+                        │  Ops    │
+                        └─────────┘
 ```
 
 ---
@@ -129,13 +126,10 @@
 | logics.md | Stable | 2026-02-10 | 80% | P0 |
 | **Tier 3: 고급** |
 | storage.md | Draft | — | 70% | P1 |
-| events.md | Stable | 2026-02-10 | 85% | P0 |
 | operator-rbac.md | Draft | — | 75% | P1 |
 | client-sdk.md | Draft | — | 70% | P1 |
 | **Tier 4: 운영** |
 | bridge-hub-protocol.md | Stable | 2026-02-10 | 90% | P0 |
-| observability.md | Stable | 2026-02-10 | 85% | P0 |
-| audit-log.md | Stable | 2026-02-10 | 85% | P0 |
 | cli.md | Draft | — | 60% | P1 |
 | mcp.md | Draft | — | 75% | P1 |
 
@@ -163,7 +157,6 @@
 - **crud.md** → `schema.md` (테이블/컬럼 정의)
 - **auth.md** → `schema.md` (권한이 테이블/컬럼 참조)
 - **logics.md** → `schema.md` (커스텀 SQL이 스키마에서 작동)
-- **events.md** → `schema.md` (이벤트 페이로드가 테이블 스키마와 일치할 수 있음)
 - **client-sdk.md** → `schema.md` (SDK 타입이 스키마에서 생성됨)
 
 ### 인증 플로우
@@ -172,7 +165,6 @@
 
 - **crud.md** → `auth.md` (작업 전 권한 검사)
 - **logics.md** → `auth.md` (커스텀 로직이 사용자 컨텍스트로 실행)
-- **events.md** → `auth.md` (핸들러가 서비스 토큰으로 인증)
 - **storage.md** → `auth.md` (presigned URL이 인증된 사용자로 범위 지정)
 - **mcp.md** → `auth.md` (MCP는 operator 인증 필요)
 
@@ -181,20 +173,14 @@
 모든 스펙이 에러 카탈로그 참조:
 
 - **crud.md** → `errors.md` (FORBIDDEN, NOT_FOUND 등)
-- **auth.md** → `errors.md` (UNAUTHORIZED, INVALID_CREDENTIALS)
+- **auth.md** → `errors.md` (UNAUTHORIZED)
 - **schema.md** → `errors.md` (중복 테이블에 대한 CONFLICT)
-- **events.md** → `errors.md` (SCHEMA_VALIDATION_FAILED)
 - **bridge-hub-protocol.md** → `errors.md` (SERVICE_UNAVAILABLE)
 
 ### 관찰성 통합
 
-관찰성은 전체에 통합됨:
-
-- **bridge-hub-protocol.md** → `observability.md` (메트릭, 트레이스)
-- **auth.md** → `observability.md` (인증 실패 로깅)
-- **crud.md** → `observability.md` (요청 트레이스)
-- **events.md** → `observability.md` (pub/sub 계측)
-- **audit-log.md** → `observability.md` (트레이스와의 상관관계)
+관찰성(로그/메트릭/트레이스)은 런타임 구현에서 다룬다.
+본 문서 묶음에서는 “민감정보 노출 금지” 같은 최소 보안 규칙을 각 스펙(auth/protocol/crud/storage)에 포함한다.
 
 ---
 
@@ -202,7 +188,7 @@
 
 ```
 plan/
-├── spec/              # 기술 명세 (17개 파일)
+├── spec/              # 기술 명세
 │   ├── ARCHITECTURE.md    (이 파일)
 │   ├── glossary.md        (용어)
 │   ├── conventions.md     (표준)
@@ -213,17 +199,11 @@ plan/
 │   ├── crud.md            (자동 CRUD)
 │   ├── logics.md          (커스텀 SQL)
 │   ├── storage.md         (파일 스토리지)
-│   ├── events.md          (pub/sub, cron)
 │   ├── operator-rbac.md   (operator 역할)
 │   ├── client-sdk.md      (SDK 설계)
 │   ├── bridge-hub-protocol.md (내부 프로토콜)
-│   ├── observability.md   (메트릭/로그/트레이스)
-│   ├── audit-log.md       (감사 추적)
 │   ├── cli.md             (CLI 인터페이스)
 │   └── mcp.md             (MCP 통합)
-│
-├── implement/         # 구현 세부사항
-│   └── stack.md       (기술 스택)
 │
 ├── flows/             # 사용자/operator 워크플로우
 │   ├── operator.md    (operator 워크플로우)
@@ -246,24 +226,12 @@ plan/
 
 ## 관련 문서
 
-### 신규 추가 (확장 스펙)
-
-- **`schema-evolution.md`** — 스키마 마이그레이션 전략, 무중단 배포
-- **`limits.md`** — 시스템 제한 및 용량 계획
-- **`performance.md`** — 성능 SLO 및 벤치마킹
-- **`versioning.md`** — 컴포넌트 버저닝 및 호환성 매트릭스
-- **`incident-response.md`** (flows 내) — 에러 복구 플레이북
-- **`disaster-recovery.md`** (flows 내) — 백업 및 DR 절차
 - **`decision-log.md`** (notes 내) — 해결된 설계 결정 기록
-- **`testing.md`** (implement 내) — 테스트 전략 및 커버리지 목표
-- **`codegen.md`** (implement 내) — SDK 코드 생성 접근법
 
 ### 운영 플레이북
 
 `plan/flows/` 참조:
 - **operator.md** — 일상적인 operator 작업
-- **incident-response.md** — 문제 해결 및 복구
-- **disaster-recovery.md** — 백업, 복원, 장애조치 절차
 
 ---
 
@@ -284,24 +252,20 @@ plan/
 1. `ARCHITECTURE.md` 검토 (이 파일) — 탐색
 2. 관련 Tier 2 스펙 정독 (schema, auth, crud, logics)
 3. 에러 처리 패턴을 위해 `errors.md` 확인
-4. 테스트 요구사항을 위해 `testing.md` 확인
-5. 계측 요구사항을 위해 `observability.md` 검토
+4. (선택) 운영/디버깅 요구사항을 위해 `bridge-hub-protocol.md`의 장애 모드/민감정보 규칙을 확인
 
 ### 운영자용 (시스템 운영)
 
 1. `cli.md` 읽기 — 명령어 참조
 2. `bridge-hub-protocol.md` 읽기 — 컴포넌트 통신 방식
-3. `observability.md` 읽기 — 모니터링 및 디버깅
-4. `incident-response.md` 읽기 — 문제 해결 플레이북
-5. `limits.md` 읽기 — 용량 계획
+3. `mcp.md` 읽기 — 운영/개발 보조 도구
 
 ### 보안 검토자용
 
 1. `auth.md` 읽기 — 인증 및 인가 모델
 2. `flows/security.md` 읽기 — 보안 제어 및 위협 모델
-3. `audit-log.md` 읽기 — 감사 추적 구현
-4. `operator-rbac.md` 읽기 — Operator 권한 모델
-5. `errors.md` 검토 — 에러 노출 정책
+3. `operator-rbac.md` 읽기 — Operator 권한 모델
+4. `errors.md` 검토 — 에러 노출 정책
 
 ---
 
@@ -311,7 +275,7 @@ plan/
 
 - **`auth.md` ↔ `crud.md`**: CRUD 작업 중 권한 검사가 이루어지지만, CRUD 작업은 인증 컨텍스트가 필요
 - **`schema.md` ↔ `logics.md`**: 커스텀 로직이 스키마에서 작동하지만, 스키마가 커스텀 로직 함수를 참조할 수 있음
-- **`events.md` ↔ `logics.md`**: 커스텀 로직이 이벤트를 발행할 수 있고, 이벤트가 커스텀 로직 핸들러를 트리거할 수 있음
+순환 참조는 최소화한다.
 
 이는 런타임에 컴포넌트 간 조정을 담당하는 Bridge에 의해 해결됩니다.
 
@@ -335,6 +299,5 @@ plan/
 - **용어**: `glossary.md` 참조
 - **설계 결정**: `notes/decision-log.md` 참조
 - **미해결 이슈**: `notes/open-questions.md` 참조
-- **구현 세부사항**: `implement/stack.md` 참조
 
 스펙 이슈 보고 또는 개선 제안은 팀에 문의하세요.

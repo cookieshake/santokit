@@ -27,12 +27,10 @@
 문서 작성 규칙:
 - "결정"과 "미결정"을 섞지 않는다. 미결정은 `plan/notes/open-questions.md`에만 남긴다.
 - 예시는 최소 1개 이상 포함한다(가능하면 성공/실패 각각 1개).
-- 구현 세부(내부 타입/모듈 구조)는 `plan/implement/`로 분리한다.
 
 ## Structure
 - `plan/overview/`: 큰 그림(현황/로드맵)
 - `plan/spec/`: 현재 합의된 스펙(대화 기준점)
-- `plan/implement/`: 구현 기술 스택/아키텍처
 - `plan/secrets/`: Hub 기반 시크릿/연결정보 모델
 - `plan/flows/`: 사용자/운영 플로우(시나리오별 문서)
 - `plan/notes/`: 비교 검토/의사결정 메모
@@ -42,13 +40,11 @@
 - `plan/spec/glossary.md`
 - `plan/spec/conventions.md`
 - `plan/spec/errors.md`
-- `plan/spec/audit-log.md`
 - `plan/spec/auth.md`
 - `plan/spec/cli.md`
 - `plan/spec/crud.md`
 - `plan/spec/schema.md`
 - `plan/spec/storage.md`
-- `plan/implement/stack.md`
 - `plan/secrets/model.md`
 - `plan/flows/`
 - `plan/notes/open-questions.md`

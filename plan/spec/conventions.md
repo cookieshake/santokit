@@ -38,8 +38,7 @@
 ## 4) Metrics (Prometheus)
 
 원칙:
-- Prometheus 메트릭 이름은 관례대로 snake_case를 사용한다.
-  - 예: `stk_bridge_requests_total`, `stk_bridge_request_duration_seconds`
+메트릭/로그/트레이스 등 운영 신호가 존재하는 경우에도 이름은 snake_case를 권장한다.
 
 ---
 
@@ -47,7 +46,7 @@
 
 원칙:
 - 환경변수는 관례대로 `UPPER_SNAKE`를 사용한다.
-  - 예: `STK_LOG_LEVEL`, `STK_OTEL_ENDPOINT`
+  - 예: `STK_LOG_LEVEL`, `STK_BRIDGE_TOKEN`
 
 ---
 
@@ -55,4 +54,4 @@
 
 원칙:
 - Hub의 내부 DB 테이블/컬럼명은 snake_case를 사용한다.
-  - 예: `audit_log.actor_id`
+  - 예: `end_user_identities.end_user_id`

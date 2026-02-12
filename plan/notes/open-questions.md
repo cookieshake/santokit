@@ -34,11 +34,6 @@
 - Push 방식(WebSocket/SSE) 도입 시점 및 우선순위
 - 멀티 Bridge 인스턴스 간 캐시 일관성 보장 필요 여부
 
-## Observability
-
-- Audit log 외부 스트리밍 (S3, SIEM 연동) 지원 시점
-- 로컬 개발 시 간이 대시보드 제공 여부
-
 ## Operator RBAC
 
 - 커스텀 역할 지원 여부 및 시점
@@ -54,12 +49,3 @@
 
 - Resource 노출 여부 (MCP resources vs tools-only)
 - Prompt 템플릿 제공 여부 (MCP prompts)
-- db_query의 결과 행 수 제한 및 타임아웃 정책
-
-## Pub/Sub + Cron
-
-- Exactly-once 전달 보장의 구현 범위 (MVP에서는 at-least-once만?)
-- 이벤트 스키마 진화(schema evolution) — 필드 추가/제거 시 기존 구독자 호환성
-- 이벤트 리플레이(replay) 지원 여부
-- Cron 실패 시 알림 채널 (이메일, Slack, webhook)
-- WebSocket/SSE 기반 실시간 이벤트 스트림을 클라이언트에 노출할 것인가
