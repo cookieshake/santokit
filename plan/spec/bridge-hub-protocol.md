@@ -100,7 +100,7 @@ Encore 참고:
 규칙:
 - 이 API는 Bridge가 End User access token 검증에 필요한 **키 소재**를 전달한다.
 - 이 엔드포인트는 `/internal/*` 네트워크 격리 + service token 인증을 전제로 한다.
-- 응답은 로깅/트레이싱 대상에서 제외해야 한다(민감정보).
+- **민감정보 보호**: 응답 내용은 로깅/트레이싱 대상에서 제외해야 한다(아래 Section 1.1.1 참조).
 
 키 포맷(결정, MVP):
 - Santokit End User access token이 PASETO v4.local(대칭키)인 경우:
@@ -129,6 +129,42 @@ Encore 참고:
   ]
 }
 ```
+
+#### 1.1.1 민감정보 필터링 규칙(확정)
+
+목표:
+- `/internal/keys` 응답에 포함된 키 소재가 로그/트레이스에 유출되지 않도록 한다.
+
+필터링 계층:
+1. **HTTP 미들웨어 레벨** (Hub/Bridge 공통):
+   - `/internal/keys/*` 경로에 대한 요청/응답은 구조화 로그의 `request.body`, `response.body` 필드에 기록하지 않는다.
+   - 로그에는 메타데이터만 포함: `{"path": "/internal/keys/myapp/prod", "status": 200, "durationMs": 12}`
+
+2. **OpenTelemetry Span Attributes**:
+   - `/internal/keys/*` 요청의 span에는 `http.request.body`, `http.response.body` attribute를 포함하지 않는다.
+   - span name은 `GET /internal/keys/{project}/{env}`로 남기되, project/env 값은 포함 가능(키 소재는 제외).
+
+3. **에러 로그**:
+   - `/internal/keys` 처리 중 에러 발생 시, 에러 메시지에 키 값을 포함하지 않는다.
+   - 예: `"Failed to fetch keys for project=myapp, env=prod"` (O)
+   - 예: `"Failed to decrypt key: k=abc123..."` (X)
+
+허용 목록(로그/트레이스에 남겨도 되는 정보):
+- `kid` (key ID) — 키 식별자, 민감하지 않음
+- `status` (`current`, `previous`)
+- `createdAt`
+- `project`, `env`
+
+금지 목록(절대 로그/트레이스에 남기지 않음):
+- `k` (key bytes의 base64 인코딩)
+- service token 값
+- 모든 암호화 키/토큰의 원문
+
+구현 체크리스트:
+- [ ] Hub에서 `/internal/keys` 핸들러에 "민감 경로" 플래그 설정
+- [ ] Bridge에서 `/internal/keys` 응답 수신 시 디버그 로그 비활성화
+- [ ] OTEL exporter에서 `/internal/keys` span의 body attribute 제거
+- [ ] 에러 핸들러에서 키 소재 마스킹 확인
 
 prefix:
 - `/internal/` prefix는 외부 노출을 차단하며, 네트워크 정책 또는 reverse proxy로 격리한다.

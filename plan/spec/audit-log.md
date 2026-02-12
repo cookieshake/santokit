@@ -73,6 +73,9 @@ Audit log는 "운영자가 Hub를 통해 수행하는 변경"과 "시스템이 �
 규칙:
 - `detail`에는 secret/token/db-url 값을 포함하지 않는다.
 - `detail`에는 가능한 한 "무엇이 바뀌었는지"가 남도록 한다(예: before/after hash, releaseId 등).
+- **Correlation**: `detail`에는 해당 액션을 수행한 HTTP 요청의 `requestId`를 포함한다.
+  - 이를 통해 감사 로그 → 로그 시스템 → 트레이스 뷰어로 연결할 수 있다.
+  - 자세한 규칙: `plan/spec/observability.md` Section 4.3 참조.
 
 ---
 

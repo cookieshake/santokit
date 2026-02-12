@@ -196,6 +196,45 @@ Hub 권장 필드:
 - `method`, `path`, `status`, `durationMs`
 - `actorId`, `actorType` (audit 연계)
 
+### 4.3 Correlation 규칙(확정)
+
+목적:
+- 로그, 트레이스, 감사 로그를 상호 연결해 요청 흐름을 추적하고 디버깅을 지원한다.
+
+ID 체계:
+- **`requestId`**: 단일 HTTP 요청의 고유 식별자(ULID 권장).
+  - Bridge/Hub 모두 요청 진입 시 생성한다.
+  - 응답 헤더에 `X-Request-Id`로 노출한다.
+  - 모든 로그 항목에 `requestId` 필드로 포함한다.
+- **`traceId`** (OpenTelemetry): 분산 트레이싱의 최상위 trace 식별자.
+  - Bridge는 요청마다 `traceId`를 생성 또는 상위 컨텍스트에서 전파한다.
+  - `traceId`는 OpenTelemetry span의 표준 필드로 관리된다.
+- **Audit log `id`**: 감사 로그 항목의 고유 식별자(BIGINT).
+
+연결 규칙:
+1. **로그 ↔ 트레이스**:
+   - 로그 항목에 `traceId`, `spanId`를 포함한다(OTEL 활성화 시).
+   - 예시: `{"ts": "...", "msg": "...", "requestId": "req_123", "traceId": "abc...", "spanId": "def..."}`
+   - 이를 통해 로그 항목을 트레이스 뷰어에서 조회할 수 있다.
+
+2. **로그 ↔ 감사 로그**:
+   - Hub가 audit log를 기록할 때 `detail` 필드에 `requestId`를 포함한다.
+   - 예시: `{"action": "release.promote", "detail": {"requestId": "req_456", ...}}`
+   - 이를 통해 감사 항목에서 해당 요청의 로그/트레이스를 역추적할 수 있다.
+
+3. **트레이스 ↔ 감사 로그**:
+   - 감사 로그의 `detail.requestId`를 통해 간접 연결된다.
+   - 필요 시 감사 로그에도 `traceId`를 추가할 수 있다(선택).
+
+실무 예시:
+- 운영자가 "release.promote 작업이 실패했다"는 감사 로그를 발견한다.
+- `detail.requestId`를 추출해 로그 시스템에서 `requestId`로 필터링한다.
+- 해당 로그 항목의 `traceId`를 사용해 트레이스 뷰어(Jaeger, Grafana Tempo 등)에서 전체 span 트리를 조회한다.
+
+구현 권장사항:
+- Bridge/Hub 모두 로그 컨텍스트에 `requestId`, `traceId`, `spanId`를 자동 포함하도록 구조화 로깅 설정.
+- OTEL 비활성화 시에도 `requestId`는 항상 생성/기록한다.
+
 ### 4.2 민감정보 마스킹(필수)
 
 금지(로그에 남기지 않음):
@@ -204,10 +243,15 @@ Hub 권장 필드:
 - API key 값, access/refresh token 값, service token 값
 - DB URL/비밀번호 등 secret
 - SQL 바인딩 값(PII 가능)
+- `/internal/keys` 응답의 키 소재(`k` 필드)
 
 허용(필요 시):
 - 토큰의 `kid` 같은 비식별 메타데이터
 - 에러 분류를 위한 코드/상태/원인(단, 민감 값 제외)
+
+특수 경로 필터링:
+- `/internal/keys/*` 경로에 대한 요청/응답은 body를 로그/트레이스에 기록하지 않는다.
+- 자세한 규칙: `plan/spec/bridge-hub-protocol.md` Section 1.1.1 참조.
 
 ---
 

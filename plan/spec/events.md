@@ -124,6 +124,35 @@ DLQ:
 멱등 가이드(예):
 - handler가 DB에 side-effect를 만든다면 `event.id`를 유니크 키로 저장해 중복 처리 방지
 
+### 1.3.2 Payload 타입 검증 및 에러 처리(확정)
+
+검증 시점:
+- **발행(Publish) 시**: Bridge는 이벤트 payload가 토픽 schema의 `required` 필드를 충족하는지 검증한다.
+  - 필수 필드 누락 시 발행 요청을 거부한다 (`400 BAD_REQUEST`, 코드: `SCHEMA_VALIDATION_FAILED`).
+  - 타입 불일치(예: `type: string`인데 숫자 전달) 시 거부한다.
+- **구독(Handler 실행) 시**: Bridge는 handler SQL이 요구하는 `:event.fieldName` 변수를 payload에서 조회한다.
+  - 필드가 payload에 없으면 **handler 실패로 처리**한다.
+  - 타입 불일치가 있으면 SQL 바인딩 실패로 처리한다.
+
+에러 코드(확정):
+- 발행 단계 에러: `400 BAD_REQUEST`, 응답 예시:
+  ```json
+  {
+    "error": {
+      "code": "SCHEMA_VALIDATION_FAILED",
+      "message": "Missing required field: orderId",
+      "requestId": "req_abc123"
+    }
+  }
+  ```
+- Handler 실행 단계 에러: handler는 실패로 간주되어 retry 정책에 따라 재시도한다.
+  - 재시도 후에도 payload가 여전히 필드를 충족하지 못하면 DLQ로 이동한다(deadLetter=true인 경우).
+  - DLQ에는 "Missing event field: `:event.orderId`" 같은 에러 메시지가 함께 저장된다.
+
+Schema Evolution 가이드(향후):
+- 토픽 schema에 필드를 추가할 때는 `required: false`로 시작하거나, 기존 구독자가 해당 필드를 사용하지 않도록 한다.
+- 필수 필드를 추가하면 기존 구독자가 에러를 발생시킬 수 있으므로, 릴리즈 조정이 필요하다.
+
 ### 1.4 이벤트 발행
 
 Auto CRUD 연동 (선언적, 권장: 트리거 파일):
@@ -225,6 +254,29 @@ connection: main
 timeout: 30s                    # 최대 실행 시간
 enabled: true                   # 환경별 비활성화 가능
 ```
+
+### 2.2.1 Timezone 및 Cron 표현식 규칙(확정)
+
+Timezone (결정):
+- 모든 cron `schedule`은 **UTC 기준**으로 해석한다.
+- DST(일광절약시간) 변동의 영향을 받지 않으며, 운영 예측 가능성을 높인다.
+- 사용자가 특정 지역 시간대를 기준으로 실행해야 하는 경우, 해당 지역 시간을 UTC로 변환해 schedule에 작성한다.
+
+Cron 표현식 스펙(확정):
+- 5-field 표준 cron 표현식 사용: `분 시 일 월 요일` (예: `0 */6 * * *`)
+- 초(seconds) 필드는 지원하지 않는다.
+- 년(year) 필드는 지원하지 않는다.
+- 표준 cron 특수 문자(`*`, `*/N`, `N-M`, `N,M`) 지원.
+- 비표준 확장(`@hourly`, `@daily` 등)은 MVP에서 지원하지 않는다. `every` 필드를 사용할 것.
+
+표현식 파싱:
+- Bridge는 표준 cron 파싱 라이브러리를 사용해 5-field 표현식을 파싱한다.
+- 파싱 실패 시 릴리즈 적용 단계에서 에러를 반환한다.
+
+예시:
+- `0 0 * * *` — 매일 00:00 UTC
+- `0 */6 * * *` — 6시간마다 (00:00, 06:00, 12:00, 18:00 UTC)
+- `30 9 * * 1` — 매주 월요일 09:30 UTC
 
 ### 2.3 제약
 

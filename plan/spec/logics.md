@@ -108,6 +108,10 @@ Event handler variables:
 Event payload variables:
 - 토픽 schema에 정의된 payload 필드는 `:event.<fieldName>`으로 바인딩된다.
   - 예: topic schema에 `orderId`가 있으면 `:event.orderId`를 사용할 수 있다.
+- **에러 처리**: handler가 요구하는 `:event.fieldName`이 payload에 없으면 handler는 실패로 간주된다.
+  - 이 경우 구독의 retry 정책에 따라 재시도된다.
+  - 최종 실패 시 DLQ로 이동한다(deadLetter=true인 경우).
+  - 자세한 규칙: `plan/spec/events.md` Section 1.3.2 참조.
 
 Cron handler variables:
 - `:cron.name`: cron job 이름
