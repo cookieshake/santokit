@@ -43,7 +43,7 @@ Auto CRUD는 `path` 컨벤션으로 라우팅된다:
 - `where`: object (표현식)
 
 where 확장:
-- 논리 연산자(`$and`, `$or`)는 현재 지원하지 않는다.
+- 논리 연산자(`$and`, `$or`)는 v0에서 지원하지 않는다 (`plan/notes/open-questions.md` 참조).
 - `in`/`notIn` 연산자는 비어있지 않은 scalar array 값을 받는다.
 - 미지원 연산자/타입은 `400 BAD_REQUEST`로 실패한다(무시하지 않음).
 
@@ -148,26 +148,20 @@ Bridge(Data Plane)는 현재 릴리즈가 가리키는 `schema_ir`을 사용해 
 - `authenticated` (End User access token 필요)
 - `{role}` (API key roles 또는 End User roles에 매칭)
 
-**Condition (CEL) - 현재 제한사항**:
+**Condition (CEL)**:
 - 단순 role 체크를 넘어선 동적 조건을 정의한다.
 - 구글 CEL(Common Expression Language) 표준을 사용한다.
 
 지원되는 패턴:
-1. **Owner Check (SQL 변환 지원)**:
-   - `resource.id == request.auth.sub`
-   - `resource.user_id == request.auth.sub`
-   - 패턴: `resource.<column> == request.auth.sub`
-   - 이 패턴은 SQL WHERE 절로 안전하게 변환됨
+1. **Resource 속성 조건 (SQL WHERE 변환)**:
+   - `resource.<column> == <value>` 형태의 조건은 SQL WHERE 절로 변환된다.
+   - 예: `resource.id == request.auth.sub`, `resource.status == "active"`
+   - 안전한 파라미터 바인딩으로 SQL 인젝션 방지
 
 2. **Request Context (CEL 평가)**:
    - `request.auth.roles`에 기반한 조건
    - `request.params.*`에 기반한 조건
-   - CEL 엔진으로 평가됨 (SQL 변환 없음)
-
-제한사항:
-- 일반적인 `resource.*` 조건 (예: `resource.status == "active"`)은 **현재 미지원**
-- 향후 릴리즈에서 추가 예정
-- 미지원 패턴 사용 시 명확한 에러 메시지 반환
+   - CEL 엔진으로 평가됨
 
 ### 4.1) Rule-Based Permissions
 
@@ -244,31 +238,16 @@ tables:
 
 ## 5) Column Access Control
 
-컬럼 접근 제어는 `permissions.yaml`의 rule-level `columns` 필드로만 지정한다.
+컬럼 접근 제어는 `permissions.yaml`의 rule-level `columns` 필드로 지정한다 (Section 4.1 참조).
 
-**명시적 제어**:
-컬럼명 prefix에 특별한 의미가 없다. 모든 컬럼 접근 제어는 permissions.yaml에서 명시적으로 정의해야 한다.
-
-```yaml
-tables:
-  users:
-    select:
-      - roles: [admin]
-        columns: ["*"]                    # 모든 컬럼 허용
-      - roles: [authenticated]
-        columns: ["id", "name", "email"]  # 제한된 컬럼만
-    insert:
-      - roles: [authenticated]
-        columns: ["name", "email"]        # 명시적으로 허용된 컬럼만
-```
-
+**동작 규칙**:
 - `columns: ["*"]` 또는 `columns` 미지정: 모든 컬럼 허용
 - `columns: ["name", "email"]`: 명시된 컬럼만 허용
-- 컬럼 제한이 필요하면 반드시 `columns` 필드를 명시해야 한다
+- 컬럼명 prefix에 특별한 의미 없음 (명시적 제어만 사용)
 
-연산별 동작 규칙:
-- `select`: 요청한 컬럼 중 비허용 컬럼은 응답에서 조용히 제외한다(컬럼 제한만으로 `403`을 반환하지 않음).
-- `insert`/`update`: `data`에 비허용 컬럼이 하나라도 포함되면 요청 전체를 `403`으로 거부한다.
+**연산별 동작**:
+- `select`: 요청한 컬럼 중 비허용 컬럼은 응답에서 조용히 제외
+- `insert`/`update`: `data`에 비허용 컬럼이 포함되면 `403` 거부
 
 ---
 

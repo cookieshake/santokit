@@ -182,4 +182,7 @@ Bridge는 credential이 여러 개 들어와도 아래 우선순위로 단일 �
 
 민감정보 로그 금지:
 - access/refresh token 값, API key 값, service token 값, DB URL, `/internal/keys` 응답의 키 소재는 로그/트레이스에 남기지 않는다.
-- `/internal/keys/*`는 request/response body 로깅을 반드시 제외한다.
+
+상세 규칙:
+- 내부 API 민감정보 필터링: `plan/spec/bridge-hub-protocol.md` Section 1.1.1
+- 전체 보안 규칙: `plan/flows/security.md`

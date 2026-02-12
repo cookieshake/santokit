@@ -30,9 +30,7 @@
 - End User 계정관리 + 토큰 발급(issuer)
 
 용어:
- - Operator: Hub(Control Plane)를 운영/관리하는 멤버(사람)
-- End User: Bridge(Data Plane)의 `/call`을 호출하는 앱의 최종 사용자(사람)
-  - 추가 용어 정의: `plan/spec/glossary.md`
+- Operator, End User, 기타 용어 정의: `plan/spec/glossary.md`
 
 표기 규칙:
 - snake_case vs camelCase 규칙: `plan/spec/conventions.md`

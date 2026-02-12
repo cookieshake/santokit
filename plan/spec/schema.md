@@ -163,7 +163,7 @@ tables:
 
 `file`:
 - 의미: Storage에 저장된 파일의 경로(string)를 담는 컬럼이다.
-- 상세: `plan/spec/storage.md`
+- 상세: `plan/spec/storage.md` (Draft)
 - 속성:
   - `bucket`: 대상 버킷 alias (필수)
   - `onDelete`: Row 삭제 시 파일 처리 정책 (선택)

@@ -13,13 +13,13 @@
 ## Schema/Type
 
 - `decimal` 타입의 precision/scale 파라미터 문법을 어떻게 노출할 것인가?
-- Native array 타입 최적화(예: DB native array 직접 매핑) 범위를 v1에 포함할 것인가?
-- Cross-DB FK(서로 다른 connection 간 참조) 허용 여부와 제약은 어떻게 정의할 것인가?
+- Native array 타입 최적화(예: Postgres native array 직접 매핑) 범위와 시점
+- Cross-DB FK(서로 다른 connection 간 참조) 허용 여부와 제약
 
 ## CRUD/Permission
 
-- Nested expand(다단계 FK 확장) 지원 여부와 깊이 제한 정책은 어떻게 정의할 것인가?
-- `resource.*` 범용 CEL 조건(테이블/로직 공통) 도입 시점과 호환성 전략은 무엇인가?
+- Where 절 논리 연산자 (`$and`, `$or`) 지원 시점 및 문법
+- Nested expand(다단계 FK 확장) 지원 여부와 깊이 제한 정책
 
 ## Auth
 

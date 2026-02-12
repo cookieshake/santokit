@@ -123,8 +123,9 @@ Non-goals (v0 범위 밖):
 - DB URL/비밀번호 등 연결정보
 - `/internal/keys` 응답의 키 소재(`k`)
 
-`/internal/keys/*`는 request/response body 로깅/트레이싱에서 제외한다:
-- 상세 규칙: `plan/spec/bridge-hub-protocol.md`
+상세 규칙:
+- 인증 관련: `plan/spec/auth.md` Section 8
+- 내부 API: `plan/spec/bridge-hub-protocol.md` Section 1.1.1
 
 ## 3) 내부 API 보호 (필수)
 
