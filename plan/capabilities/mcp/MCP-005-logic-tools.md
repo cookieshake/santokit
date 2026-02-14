@@ -4,7 +4,7 @@ domain: mcp
 title: Logic tools — list and get logic details
 status: planned
 depends: [MCP-001]
-spec_refs: ["plan/spec/mcp.md", "plan/spec/logics.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

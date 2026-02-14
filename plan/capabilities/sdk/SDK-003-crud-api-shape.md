@@ -4,7 +4,7 @@ domain: sdk
 title: Generated CRUD API shape
 status: planned
 depends: [SDK-001]
-spec_refs: ["plan/spec/client-sdk.md", "plan/spec/crud.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

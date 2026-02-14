@@ -4,7 +4,7 @@ domain: operator
 title: Apply schema changes through release pipeline
 status: implemented
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/operator.md", "plan/spec/schema.md"]
+spec_refs: ["plan/spec/schema.md"]
 test_refs:
   - tests/integration_py/tests/test_operator.py::test_operator_schema_change
 code_refs:

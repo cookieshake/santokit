@@ -4,7 +4,7 @@ domain: auth
 title: Isolate end-user auth across multiple projects
 status: implemented
 depends: [AUTH-001]
-spec_refs: ["plan/spec/auth.md", "plan/spec/bridge-hub-protocol.md"]
+spec_refs: ["plan/spec/bridge-hub-protocol.md"]
 test_refs:
   - tests/integration_py/tests/test_auth.py::test_enduser_multi_project_login
 code_refs:

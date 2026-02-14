@@ -4,7 +4,7 @@ domain: storage
 title: Download sign — presigned URL for file download
 status: planned
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/storage.md", "plan/spec/security.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

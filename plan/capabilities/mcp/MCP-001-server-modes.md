@@ -4,7 +4,7 @@ domain: mcp
 title: Start MCP server in stdio and SSE modes
 status: planned
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/mcp.md", "plan/spec/cli.md"]
+spec_refs: ["plan/spec/cli.md"]
 test_refs: []
 code_refs: []
 ---

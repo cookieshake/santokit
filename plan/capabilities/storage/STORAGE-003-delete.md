@@ -4,7 +4,7 @@ domain: storage
 title: Delete file from storage
 status: planned
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/storage.md", "plan/spec/security.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

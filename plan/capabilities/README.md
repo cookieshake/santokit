@@ -17,7 +17,7 @@ Each file must include this metadata:
 - `title`: short capability title
 - `status`: `planned | in_progress | implemented`
 - `depends`: capability IDs this capability requires (example: `[OPERATOR-001, SECURITY-005]`). Empty if none.
-- `spec_refs`: one or more spec references (referenced files must exist)
+- `spec_refs`: spec references if the capability relies on shared definitions (referenced files must exist). Empty if self-contained.
 - `test_refs`: pytest node IDs (required when `implemented`)
 - `code_refs`: code paths implementing the behavior (must be empty when `planned`)
 

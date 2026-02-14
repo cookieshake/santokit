@@ -4,7 +4,7 @@ domain: mcp
 title: Security — sensitive data filtering and RBAC enforcement
 status: planned
 depends: [MCP-001]
-spec_refs: ["plan/spec/mcp.md", "plan/spec/operator-rbac.md"]
+spec_refs: ["plan/spec/operator-rbac.md"]
 test_refs: []
 code_refs: []
 ---

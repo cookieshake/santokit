@@ -4,7 +4,7 @@ domain: mcp
 title: Release tool — get current release info
 status: planned
 depends: [MCP-001]
-spec_refs: ["plan/spec/mcp.md", "plan/spec/operator.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

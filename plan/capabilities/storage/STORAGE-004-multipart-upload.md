@@ -4,7 +4,7 @@ domain: storage
 title: Multipart upload flow
 status: planned
 depends: [STORAGE-001]
-spec_refs: ["plan/spec/storage.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

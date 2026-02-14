@@ -4,7 +4,7 @@ domain: operator
 title: Manage operator RBAC membership and roles
 status: planned
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/operator.md", "plan/spec/operator-rbac.md", "plan/spec/cli.md"]
+spec_refs: ["plan/spec/operator-rbac.md", "plan/spec/cli.md"]
 test_refs: []
 code_refs: []
 ---

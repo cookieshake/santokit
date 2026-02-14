@@ -4,7 +4,7 @@ domain: storage
 title: Path variable binding in storage CEL conditions
 status: planned
 depends: [STORAGE-001]
-spec_refs: ["plan/spec/storage.md", "plan/spec/security.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

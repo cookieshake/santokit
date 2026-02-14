@@ -4,7 +4,7 @@ domain: logics
 title: Execute public logic and return greeting
 status: implemented
 depends: [LOGICS-001]
-spec_refs: ["plan/spec/logics.md"]
+spec_refs: []
 test_refs:
   - tests/integration_py/tests/test_logics.py::test_logics_public_hello
 code_refs:

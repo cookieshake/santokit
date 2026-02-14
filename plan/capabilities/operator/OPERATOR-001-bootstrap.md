@@ -4,7 +4,7 @@ domain: operator
 title: Bootstrap project, env, connection, and initial apply
 status: implemented
 depends: []
-spec_refs: ["plan/spec/operator.md", "plan/spec/cli.md", "plan/spec/schema.md"]
+spec_refs: ["plan/spec/cli.md", "plan/spec/schema.md"]
 test_refs:
   - tests/integration_py/tests/test_operator.py::test_operator_bootstrap
 code_refs:

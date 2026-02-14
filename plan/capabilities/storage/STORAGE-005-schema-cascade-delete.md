@@ -4,7 +4,7 @@ domain: storage
 title: Schema integration — cascade delete on file column
 status: planned
 depends: [STORAGE-003, CRUD-002]
-spec_refs: ["plan/spec/storage.md", "plan/spec/schema.md"]
+spec_refs: ["plan/spec/schema.md"]
 test_refs: []
 code_refs: []
 ---

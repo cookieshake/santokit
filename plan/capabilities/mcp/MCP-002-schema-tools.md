@@ -4,7 +4,7 @@ domain: mcp
 title: Schema tools — list tables and get table details
 status: planned
 depends: [MCP-001]
-spec_refs: ["plan/spec/mcp.md", "plan/spec/schema.md"]
+spec_refs: ["plan/spec/schema.md"]
 test_refs: []
 code_refs: []
 ---

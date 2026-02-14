@@ -4,7 +4,7 @@ domain: operator
 title: Promote and rollback releases across environments
 status: implemented
 depends: [OPERATOR-003, OPERATOR-004]
-spec_refs: ["plan/spec/operator.md", "plan/spec/final.md", "plan/spec/schema.md"]
+spec_refs: ["plan/spec/final.md", "plan/spec/schema.md"]
 test_refs:
   - tests/integration_py/tests/test_operator.py::test_operator_release_promotion_rollback
 code_refs:

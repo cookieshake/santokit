@@ -4,7 +4,7 @@ domain: logics
 title: Return affected count for execute-only SQL logic
 status: implemented
 depends: [LOGICS-001, CRUD-001]
-spec_refs: ["plan/spec/logics.md", "plan/spec/errors.md"]
+spec_refs: ["plan/spec/errors.md"]
 test_refs:
   - tests/integration_py/tests/test_logics.py::test_logics_insert_item
 code_refs:

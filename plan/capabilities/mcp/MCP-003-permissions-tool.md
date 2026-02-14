@@ -4,7 +4,7 @@ domain: mcp
 title: Permissions tool — get table permissions
 status: planned
 depends: [MCP-001]
-spec_refs: ["plan/spec/mcp.md", "plan/spec/security.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

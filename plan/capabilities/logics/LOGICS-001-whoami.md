@@ -4,7 +4,7 @@ domain: logics
 title: Return authenticated subject via system variable
 status: implemented
 depends: [OPERATOR-001, OPERATOR-003, OPERATOR-004]
-spec_refs: ["plan/spec/logics.md", "plan/spec/auth.md"]
+spec_refs: []
 test_refs:
   - tests/integration_py/tests/test_logics.py::test_logics_whoami
 code_refs:

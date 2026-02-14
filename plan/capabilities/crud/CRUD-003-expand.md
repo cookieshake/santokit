@@ -4,7 +4,7 @@ domain: crud
 title: Expand related rows via declared foreign key relation
 status: implemented
 depends: [CRUD-001]
-spec_refs: ["plan/spec/crud.md", "plan/spec/schema.md"]
+spec_refs: ["plan/spec/schema.md"]
 test_refs:
   - tests/integration_py/tests/test_crud.py::test_crud_expand
 code_refs:

@@ -4,7 +4,7 @@ domain: sdk
 title: Auth integration in generated SDK
 status: planned
 depends: [SDK-001]
-spec_refs: ["plan/spec/client-sdk.md", "plan/spec/auth.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

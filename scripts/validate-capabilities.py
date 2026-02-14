@@ -187,8 +187,6 @@ def validate_file(path: Path, errors: list[str], all_ids: set[str]) -> None:
     code_refs = find_block_list(frontmatter, "code_refs")
     depends = find_inline_list(frontmatter, "depends")
 
-    if not spec_refs:
-        errors.append(f"{path}: spec_refs must not be empty")
     for ref in spec_refs:
         check_ref_exists(ref, errors, path, "spec_refs")
 

@@ -4,7 +4,7 @@ domain: security
 title: Reject unsupported resource-based CEL operators
 status: implemented
 depends: [SECURITY-001]
-spec_refs: ["plan/spec/security.md", "plan/spec/crud.md", "plan/spec/errors.md"]
+spec_refs: ["plan/spec/errors.md"]
 test_refs:
   - tests/integration_py/tests/test_security.py::test_cel_resource_unsupported_operator
 code_refs:

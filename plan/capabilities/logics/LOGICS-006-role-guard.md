@@ -4,7 +4,7 @@ domain: logics
 title: Enforce role guard on logic execution
 status: implemented
 depends: [LOGICS-001, OPERATOR-002]
-spec_refs: ["plan/spec/logics.md", "plan/spec/auth.md"]
+spec_refs: []
 test_refs:
   - tests/integration_py/tests/test_logics.py::test_logics_admin_only
 code_refs:

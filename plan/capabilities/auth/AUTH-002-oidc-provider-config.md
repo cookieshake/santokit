@@ -4,7 +4,7 @@ domain: auth
 title: Configure external OIDC provider in Hub
 status: implemented
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/auth.md"]
+spec_refs: []
 test_refs:
   - tests/integration_py/tests/test_auth.py::test_enduser_login_external_oidc
 code_refs:

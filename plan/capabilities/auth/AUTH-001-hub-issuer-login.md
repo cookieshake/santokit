@@ -4,7 +4,7 @@ domain: auth
 title: End-user login with Hub-issued access token
 status: implemented
 depends: [OPERATOR-001, OPERATOR-004]
-spec_refs: ["plan/spec/auth.md", "plan/spec/errors.md"]
+spec_refs: ["plan/spec/errors.md"]
 test_refs:
   - tests/integration_py/tests/test_auth.py::test_enduser_login_hub_issuer
 code_refs:

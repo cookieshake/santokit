@@ -4,7 +4,7 @@ domain: storage
 title: Upload sign — presigned URL for file upload
 status: planned
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/storage.md", "plan/spec/security.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

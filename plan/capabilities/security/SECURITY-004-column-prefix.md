@@ -4,7 +4,7 @@ domain: security
 title: Enforce column visibility via explicit permissions.yaml column lists with test fixture validation
 status: implemented
 depends: [CRUD-001]
-spec_refs: ["plan/spec/security.md", "plan/spec/crud.md"]
+spec_refs: []
 test_refs:
   - tests/integration_py/tests/test_security.py::test_column_prefix
 code_refs:

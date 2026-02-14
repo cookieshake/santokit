@@ -4,7 +4,7 @@ domain: crud
 title: Pagination and sorting on select operations
 status: implemented
 depends: [CRUD-001]
-spec_refs: ["plan/spec/crud.md", "plan/spec/conventions.md"]
+spec_refs: ["plan/spec/conventions.md"]
 test_refs:
   - tests/integration_py/tests/test_crud.py::test_crud_pagination_sorting
 code_refs:

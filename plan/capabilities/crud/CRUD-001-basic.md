@@ -4,7 +4,7 @@ domain: crud
 title: Basic insert/select and generated ID behavior
 status: implemented
 depends: [OPERATOR-001, OPERATOR-003, OPERATOR-004]
-spec_refs: ["plan/spec/crud.md", "plan/spec/schema.md", "plan/spec/errors.md"]
+spec_refs: ["plan/spec/schema.md", "plan/spec/errors.md"]
 test_refs:
   - tests/integration_py/tests/test_crud.py::test_crud_basic
 code_refs:

@@ -4,7 +4,7 @@ domain: auth
 title: Explicit OIDC account linking for authenticated user
 status: planned
 depends: [AUTH-002]
-spec_refs: ["plan/spec/auth.md"]
+spec_refs: []
 test_refs: []
 code_refs: []
 ---

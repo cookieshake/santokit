@@ -4,7 +4,7 @@ domain: sdk
 title: Error handling in generated SDK
 status: planned
 depends: [SDK-001]
-spec_refs: ["plan/spec/client-sdk.md", "plan/spec/errors.md"]
+spec_refs: ["plan/spec/errors.md"]
 test_refs: []
 code_refs: []
 ---

@@ -4,7 +4,7 @@ domain: operator
 title: Apply permissions changes through release pipeline
 status: implemented
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/operator.md", "plan/spec/auth.md", "plan/spec/crud.md"]
+spec_refs: []
 test_refs:
   - tests/integration_py/tests/test_operator.py::test_operator_permissions_change
 code_refs:

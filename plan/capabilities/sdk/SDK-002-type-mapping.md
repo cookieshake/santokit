@@ -4,7 +4,7 @@ domain: sdk
 title: Type mapping from schema to TypeScript
 status: planned
 depends: [SDK-001]
-spec_refs: ["plan/spec/client-sdk.md", "plan/spec/schema.md"]
+spec_refs: ["plan/spec/schema.md"]
 test_refs: []
 code_refs: []
 ---

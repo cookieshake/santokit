@@ -4,7 +4,7 @@ domain: sdk
 title: Generate TypeScript client from release schema
 status: planned
 depends: [OPERATOR-001, OPERATOR-003]
-spec_refs: ["plan/spec/client-sdk.md", "plan/spec/schema.md", "plan/spec/cli.md"]
+spec_refs: ["plan/spec/schema.md", "plan/spec/cli.md"]
 test_refs: []
 code_refs: []
 ---

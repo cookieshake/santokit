@@ -1,24 +1,11 @@
 # CLI (`stk`) Context — Spec
 
-목표:
-- Operator가 매 명령마다 `--project/--env`를 반복 입력하지 않도록 한다.
-- CI/스크립트에서는 `--project/--env`를 명시해 재현성을 유지한다.
-- 스키마/권한/릴리즈 등 “프로젝트 스냅샷”을 한 번에 반영할 수 있어야 한다.
-
-운영 원칙:
-- 로컬 개발: repo context 기본값 사용 가능
-- CI/자동화: `--project/--env`를 항상 명시
-
----
-
 ## 1) Repo Context
 
 Repo-local context는 프로젝트 리포지토리의 `.stk/` 아래에 저장한다.
 
-권장 파일:
-- `.stk/context.json`
+파일: `.stk/context.json`
 
-예시:
 ```json
 {
   "hubUrl": "https://hub.example.com",
@@ -28,145 +15,86 @@ Repo-local context는 프로젝트 리포지토리의 `.stk/` 아래에 저장�
 }
 ```
 
-원칙:
-- repo context가 존재하면, `stk`는 기본값으로 이를 사용한다.
-- 명령에 `--project/--env`가 명시되면 repo context보다 우선한다.
-- `hubUrl`이 존재하면, `stk`는 해당 Hub를 기본 대상으로 사용한다.
+우선순위 규칙:
+- repo context가 존재하면 `stk`는 기본값으로 이를 사용한다.
+- `--project` / `--env`가 명시되면 repo context보다 우선한다.
 - `--hub <url>`이 명시되면 repo context의 `hubUrl`보다 우선한다.
-- `connection`은 “기본 connection(편의)”이다:
-  - `stk connections set/test` 같은 커맨드의 기본 대상으로 사용한다.
-  - 스키마 적용은 `schema/*.yaml`의 `connection:` 선언을 기준으로 한다.
+- `connection`: `stk connections set/test` 같은 커맨드의 기본 대상으로 사용한다. 스키마 적용은 `schema/*.yaml`의 `connection:` 선언을 기준으로 한다.
 
 ---
 
-## 2) Commands (Draft)
+## 2) Context Commands
 
-### 2.1 Set / Show
 - `stk context set --hub <url> --project <project> --env <env> [--connection <name>]`
 - `stk context show`
-
-### 2.2 Clear
 - `stk context clear`
 
 ---
 
-## 3) Unified Apply (Project Snapshot)
+## 3) Unified Apply (`stk apply`)
 
-문제:
-- 시간이 지날수록 스키마 적용/권한 반영/릴리즈 생성 같은 “apply 계열” 작업이 늘어난다.
-- 사용자가 “이번 커밋 상태를 환경에 반영”하고 싶을 때 명령이 분산되면 실수/누락이 잦아진다.
+`stk apply` 한 번으로 repo 상태(스키마/권한)를 Hub에 반영하고 릴리즈까지 생성하는 unified command.
 
-해결:
-- `stk apply` 한 번으로 “repo 상태(스키마/권한 등)”를 Hub(Control Plane)에 반영하고,
-  릴리즈까지 생성하는 unified command를 제공한다.
-
-입력(기본 규약):
+입력:
 - 선언 스키마: `schema/*.yaml`
 - 권한: `config/permissions.yaml`
-- (선택) 기타 설정: `config/*.yaml`
 
-명령:
-- `stk apply --ref <ref>` (권장: 현재 커밋 SHA)
+실행 순서:
+1. schema validate
+2. schema plan + (옵션) schema apply
+3. drift check (드리프트면 실패)
+4. permissions apply
+5. release create
 
-동작(순서, 권장):
-1) schema validate
-2) schema plan + (옵션) schema apply
-3) drift check (드리프트면 실패)
-4) permissions apply
-5) release create
+### 플래그
 
-릴리즈 생성 규칙:
-- `stk apply`는 기본적으로 `release create`까지 수행한다(= 성공 시 `releaseId`가 생성/확정된다).
-- `--only schema`처럼 `release` 단계가 제외되면 `releaseId`는 생성되지 않는다.
-- Hub는 `apply`를 **멱등**으로 처리할 수 있어야 한다:
-  - 동일한 입력(`project/env/ref` + 스냅샷 내용)이면 같은 `releaseId`를 반환한다.
-  - 스냅샷 내용이 달라지면 새로운 `releaseId`를 생성한다.
+| 플래그 | 의미 |
+|--------|------|
+| `--ref <ref>` | 현재 커밋 SHA. 릴리즈 메타데이터에 기록된다. |
+| `--only schema\|permissions\|release` | 지정된 단계만 실행. 쉼표로 다중 지정 가능 (예: `--only permissions,release`). |
+| `--force` | 파괴적 스키마 변경 허용. 없으면 destructive DDL은 차단된다. |
+| `--no-schema-apply` | plan/검증만 수행. DB 변경 없이 릴리즈는 차단된다. |
+| `--dry-run` | Hub에 반영하지 않고 plan/검증 결과만 출력. |
+| `--json` | 기계가 파싱하기 쉬운 출력 (`releaseId`, `ref`, 단계별 결과 등). |
 
-옵션(초안):
-- `--only schema|permissions|release` (부분 반영)
-  - 다중 단계를 쉼표로 함께 지정할 수 있다. 예: `--only permissions,release`
-- `--force` (파괴적 스키마 변경 허용)
-- `--no-schema-apply` (plan/검증만; DB 변경 없이 릴리즈는 차단)
-- `--dry-run` (Hub에 반영하지 않고 plan/검증 결과만 출력)
-- `--json` (기계가 파싱하기 쉬운 출력; 예: `releaseId`, `ref`, 단계별 결과)
+### 멱등성
 
-원칙:
-- destructive 변경은 apply에서 항상 차단된다.
-- drift가 있으면 릴리즈는 차단된다.
-- CI에서는 `--project/--env/--ref`를 명시한다.
+- Hub는 apply를 멱등으로 처리한다.
+- 동일한 입력 (`project/env/ref` + 스냅샷 내용)이면 같은 `releaseId`를 반환한다.
+- 스냅샷 내용이 달라지면 새로운 `releaseId`를 생성한다.
 
-멀티 connection 원칙:
-- 스키마에서 table마다 connection(DB)을 선언할 수 있다.
-- `release` 단계(= releaseId 생성/확정)는 “프로젝트 스냅샷 전체”를 대상으로 한다(테이블 일부만 대상으로 한 release는 만들지 않는다).
+### Multi-Connection
+
+- `release` 단계 (releaseId 생성/확정)는 "프로젝트 스냅샷 전체"를 대상으로 한다. 테이블 일부만 대상으로 한 release는 만들지 않는다.
 
 ---
 
-## 4) Behavior
+## 4) Error Behavior
 
-- repo context가 없고 `--project/--env`도 없으면:
-  - 기본 동작은 에러로 종료한다(명시적으로 설정하도록 유도)
-  - 옵션으로 인터랙티브 선택(prompt)을 추가할 수 있다.
-- repo context에 `hubUrl`이 없고 `--hub`도 없으면:
-  - 기본 동작은 에러로 종료한다(명시적으로 설정하도록 유도)
+- repo context가 없고 `--project/--env`도 없으면: 에러로 종료 (명시적으로 설정하도록 유도).
+- repo context에 `hubUrl`이 없고 `--hub`도 없으면: 에러로 종료.
 
 ---
 
 ## 5) CI Guidance
 
-CI에서는 다음을 권장한다:
 - repo context에 의존하지 않는다.
 - 모든 `stk` 명령에 `--project/--env`를 명시한다.
+- `--ref`는 항상 현재 커밋 SHA로 고정해 재현성을 보장한다.
 
 ---
 
-## 6) Release Commands (Operator/CI)
+## 6) Command Index
 
-`releaseId`를 “어디서 얻는가”를 명확히 하기 위한 최소 커맨드 셋:
+이 문서는 `context/apply`의 핵심 동작을 정의한다. 하위 커맨드의 세부 동작은 각 capability 문서에서 확정한다.
 
-- `stk release current`  
-  - 현재 컨텍스트(`project/env`)의 “current release”를 출력한다.
-- `stk release list [--limit N]`  
-  - 환경의 릴리즈 히스토리를 최신순으로 나열한다(`releaseId`, `ref`, `createdAt`, `status` 등).
-- `stk release show --release-id <releaseId>`  
-  - 해당 릴리즈가 가리키는 스냅샷(스키마/권한 버전, ref 등)을 출력한다.
-- `stk release promote --from <env> --to <env> [--release-id <releaseId>]`
-  - 릴리즈를 재생성하지 않고 대상 환경의 current release 포인터를 이동한다.
-- `stk release rollback --to-release-id <releaseId>`
-  - 현재 환경의 current release 포인터를 지정한 이전 릴리즈로 되돌린다.
-
----
-
-## 7) Other Commands (Draft Index)
-
-이 문서는 CLI 전체를 완전하게 정의하기보다는, "context/apply/release"의 핵심 동작을 우선 정의한다.
-다만 `plan/`의 다른 문서에서 참조하는 커맨드의 네이밍을 일관되게 하기 위해 최소 인덱스를 둔다.
-
-Auth
-- `stk login`
-- `stk whoami`
-
-Bootstrap
-- `stk project create <project>`
-- `stk env create --project <project> <env>`
-
-Connections / secrets
-- `stk connections set --project <project> --env <env> --name <connection> --engine postgres --db-url <...>`
-- `stk connections test --project <project> --env <env> --name <connection>`
-- `stk connections list --project <project> --env <env>`
-- `stk connections show --project <project> --env <env> --name <connection>`
-
-API keys (project/env scoped)
-- `stk apikey create --project <project> --env <env> --name <name> [--roles <r1,r2,...>]`
-- `stk apikey list --project <project> --env <env>`
-- `stk apikey revoke --project <project> --env <env> --key-id <keyId>`
-
-Operator RBAC
-- `stk org invite <email> --role <member|admin>`
-- `stk org members set-role <user> --role <role>`
-- `stk org remove <user>`
-- `stk project invite <email> --role <admin|deployer|viewer>`
-- `stk project members set-role <user> --role <role>`
-- `stk project remove <user>`
-
-Notes
-- 위 커맨드들은 naming/shape를 위한 최소 스케치이며, 세부 동작은 각 스펙 문서에서 확정한다.
+| Command group | 최소 커맨드 | Capability |
+|---------------|------------|------------|
+| auth | `stk login`, `stk whoami` | AUTH-001 |
+| bootstrap | `stk project create`, `stk env create` | OPERATOR-001 |
+| connections | `stk connections set/test/list/show` | OPERATOR-001 |
+| apikey | `stk apikey create/list/revoke` | OPERATOR-002 |
+| apply (schema) | `stk apply --only schema [--dry-run] [--force]` | OPERATOR-003 |
+| apply (permissions) | `stk apply --only permissions` | OPERATOR-004 |
+| release | `stk release current/list/show/promote/rollback` | OPERATOR-005 |
+| rbac | `stk org/project invite/members/remove` | OPERATOR-006 |

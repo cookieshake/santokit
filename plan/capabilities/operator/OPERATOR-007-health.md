@@ -4,7 +4,7 @@ domain: operator
 title: Expose health and readiness endpoints
 status: planned
 depends: [OPERATOR-001]
-spec_refs: ["plan/spec/operator.md", "plan/spec/architecture.md"]
+spec_refs: ["plan/spec/architecture.md"]
 test_refs: []
 code_refs: []
 ---

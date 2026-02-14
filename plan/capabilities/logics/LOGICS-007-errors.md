@@ -4,7 +4,7 @@ domain: logics
 title: Return consistent errors for common logic failure modes
 status: implemented
 depends: [LOGICS-001]
-spec_refs: ["plan/spec/logics.md", "plan/spec/errors.md"]
+spec_refs: ["plan/spec/errors.md"]
 test_refs:
   - tests/integration_py/tests/test_logics.py::test_logics_error_cases
 code_refs:
