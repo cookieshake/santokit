@@ -18,8 +18,22 @@ verify:
 ## Intent
 Support logic route execution for public-auth declared SQL logic.
 
+## Caller Intent
+- Expose lightweight utility logic with minimal authorization friction.
+
+## Execution Semantics
+- Bridge resolves logic metadata and permits execution under public auth setting.
+- SQL result rows are normalized into standard `data` response envelope.
+
+## Observable Outcome
+- Caller receives deterministic greeting payload from logic route.
+- Same route is callable without role-specific grants.
+
 ## API Usage
 - `POST /call` with `{"path":"logics/public_hello"}`
 
 ## Acceptance
 - `logics/public_hello` returns expected greeting row.
+
+## Failure Modes
+- Missing logic definition in release snapshot: route returns not found.

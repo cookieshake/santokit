@@ -19,8 +19,24 @@ verify:
 ## Intent
 Allow deterministic literal condition checks for resource attributes.
 
+## Caller Intent
+- Enforce fixed-value resource filters from policy (for example status gates) without client cooperation.
+
+## Execution Semantics
+- CEL literal equality on `resource.<column>` is translated into SQL predicate.
+- Predicate is composed with request filter and permission rule outcome.
+- Only rows satisfying literal policy survive selection.
+
+## Observable Outcome
+- Calls return subset constrained by literal policy regardless of requested where.
+- Non-matching rows remain invisible to caller.
+
 ## API Usage
 - `POST /call` with `{"path":"db/users/select"}` where policy condition includes `resource.<column> == "literal"`
 
 ## Acceptance
 - Only rows matching literal CEL condition are returned.
+
+## Failure Modes
+- Literal type incompatible with column type: policy execution fails.
+- Unknown resource column in condition: request/policy evaluation fails.

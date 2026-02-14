@@ -18,9 +18,24 @@ verify:
 ## Intent
 Guarantee stable runtime behavior when optional parameters are omitted.
 
+## Caller Intent
+- Call logic with fewer arguments while keeping deterministic behavior via defaults.
+
+## Execution Semantics
+- Bridge applies declared defaults for missing optional params.
+- Explicitly provided params override defaults.
+- Effective param set is type-checked before SQL binding.
+
+## Observable Outcome
+- No-arg and partial-arg calls still execute with predictable values.
+- Full override uses caller-provided values only.
+
 ## API Usage
 - `POST /call` with `{"path":"logics/default_params"}`
 - `POST /call` with `{"path":"logics/default_params","params":{"greeting":"hi"}}`
 
 ## Acceptance
 - No-param, partial override, and full override cases all produce expected values.
+
+## Failure Modes
+- Provided override type mismatch: request rejected.

@@ -18,8 +18,23 @@ verify:
 ## Intent
 Restrict specific logic routes to authorized roles only.
 
+## Caller Intent
+- Expose privileged logic routes only to callers carrying required role claims.
+
+## Execution Semantics
+- Bridge evaluates logic auth metadata against resolved caller roles.
+- Unauthorized callers are rejected before SQL execution.
+- Authorized callers execute same logic route under identical SQL semantics.
+
+## Observable Outcome
+- End-user without required role receives forbidden response.
+- Admin/service role caller receives normal logic data response.
+
 ## API Usage
 - `POST /call` with `{"path":"logics/admin_only"}` as end-user and as admin key
 
 ## Acceptance
 - Non-admin request is denied and admin request succeeds.
+
+## Failure Modes
+- Role claim missing or stale: request denied.

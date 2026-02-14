@@ -18,8 +18,24 @@ verify:
 ## Intent
 Ensure restricted fields are omitted for lower-privilege readers.
 
+## Caller Intent
+- Present role-appropriate data views without exposing sensitive columns.
+
+## Execution Semantics
+- Column allowlist for role is computed from permissions policy.
+- Bridge projects query/result set to allowed columns before response serialization.
+- Different credentials over same row can observe different column subsets.
+
+## Observable Outcome
+- Admin sees full or broader field set.
+- Restricted roles receive redacted/omitted sensitive-prefixed columns.
+
 ## API Usage
 - `POST /call` as admin and viewer for same row and compare visible columns
 
 ## Acceptance
 - Viewer cannot see restricted prefixed columns while admin can.
+
+## Failure Modes
+- Policy omits required operational column: caller sees incomplete data by design.
+- Role not matched by rule set: access denied.

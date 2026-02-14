@@ -29,6 +29,10 @@ Each file must include this metadata:
 - Capability document includes at least one executable usage example:
   - operator domain: `stk ...` commands
   - other domains: `/call` request or API request example
+- Capability document explains execution semantics, not only command lists:
+  - caller intent (what outcome the operator wants)
+  - command behavior (what control-plane/data-plane state changes)
+  - observable result and key failure modes
 - Domain capability guides (`plan/capabilities/<domain>/README.md`) contain narrative steps and capability links.
 - Spec docs contain shared definitions and common rules reused by multiple capabilities.
 

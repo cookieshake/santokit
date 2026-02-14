@@ -18,8 +18,24 @@ verify:
 ## Intent
 Register provider metadata required for OIDC login flows.
 
+## Caller Intent
+- Enable external identity provider login for a target project/env without changing Bridge token contract.
+
+## Execution Semantics
+- Hub stores provider metadata and allowlist constraints per project/env.
+- Subsequent OIDC start/callback uses this config to validate issuer and redirect paths.
+- Bridge still only accepts Santokit access token, not raw upstream OIDC token.
+
+## Observable Outcome
+- Provider registration endpoint accepts valid metadata and persists configuration.
+- Misconfigured providers fail early during setup or callback validation.
+
 ## API Usage
 - `POST /api/oidc/providers` with provider metadata (`issuer`, `auth_url`, `token_url`, `client_id`, `redirect_uris`)
 
 ## Acceptance
 - OIDC provider registration endpoint accepts valid provider configuration.
+
+## Failure Modes
+- Invalid redirect URI allowlist or malformed issuer URLs: registration rejected.
+- Duplicate or conflicting provider name in same scope: write is rejected.

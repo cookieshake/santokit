@@ -18,8 +18,24 @@ verify:
 ## Intent
 Require declared parameters and apply them as safe SQL bindings.
 
+## Caller Intent
+- Guarantee required inputs are present and safely bound before query execution.
+
+## Execution Semantics
+- Logic metadata marks required params and expected types.
+- Bridge validates presence/type, then binds values as SQL parameters.
+- Query executes only after validation passes.
+
+## Observable Outcome
+- Calls with complete parameters return filtered data.
+- Calls missing required params fail deterministically.
+
 ## API Usage
 - `POST /call` with `{"path":"logics/get_items","params":{"owner_id":"owner-1"}}`
 
 ## Acceptance
 - Owner-scoped query returns matching rows and empty for non-matches.
+
+## Failure Modes
+- Required param omitted: request rejected.
+- Param type mismatch: request rejected.

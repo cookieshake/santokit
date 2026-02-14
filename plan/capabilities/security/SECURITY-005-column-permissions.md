@@ -18,8 +18,24 @@ verify:
 ## Intent
 Restrict selectable/writable columns using `permissions.yaml` column lists.
 
+## Caller Intent
+- Enforce least-privilege field access per role for read and write operations.
+
+## Execution Semantics
+- Authorization computes allowed columns per operation from policy rules.
+- Select response is projected; write payload is validated against allowed column set.
+- Violations are rejected before SQL write or response emission.
+
+## Observable Outcome
+- Basic role receives limited fields and cannot mutate forbidden columns.
+- Admin role can operate broader allowed field set.
+
 ## API Usage
 - `POST /call` as admin and basic role with `{"path":"db/users/select","params":{}}`
 
 ## Acceptance
 - Basic role sees limited columns and admin sees broader allowed set.
+
+## Failure Modes
+- Disallowed column in insert/update payload: request rejected.
+- Policy references non-existent column: rule evaluation fails.

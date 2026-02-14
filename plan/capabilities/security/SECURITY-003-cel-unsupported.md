@@ -18,8 +18,24 @@ verify:
 ## Intent
 Fail fast when CEL expression cannot be safely converted/evaluated in supported path.
 
+## Caller Intent
+- Receive explicit failure for unsupported condition shape instead of silent policy bypass.
+
+## Execution Semantics
+- Permission compiler checks CEL expression against supported translation subset.
+- Unsupported operators/patterns are rejected before SQL execution.
+- Error is surfaced as client-facing validation failure.
+
+## Observable Outcome
+- Requests under unsupported resource condition return deterministic 4xx.
+- No best-effort fallback that could weaken policy.
+
 ## API Usage
 - `POST /call` against a table guarded by unsupported `resource` CEL operator
 
 ## Acceptance
 - Unsupported resource operator usage returns `400 BAD_REQUEST`.
+
+## Failure Modes
+- Condition parse errors: request rejected.
+- Unsupported operator introduced in policy rollout: affected calls fail until policy corrected.

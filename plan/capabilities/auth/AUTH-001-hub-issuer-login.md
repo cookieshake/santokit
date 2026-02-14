@@ -19,6 +19,18 @@ verify:
 ## Intent
 Issue and consume Santokit end-user tokens through Hub and Bridge boundaries.
 
+## Caller Intent
+- Authenticate an end user in a specific `project/env` and obtain a token that Bridge can verify offline.
+
+## Execution Semantics
+- Hub creates/validates end-user identity and issues access token bound to `project/env`.
+- Bridge resolves credential context and validates token binding before request authorization.
+- Authorization decision for `/call` is then evaluated against release permissions.
+
+## Observable Outcome
+- Login endpoint returns usable access token.
+- Same token is accepted by Bridge for the matching context and rejected on mismatch.
+
 ## API Usage
 - `POST /api/endusers/signup` with `{ project, env, email, password }`
 - `POST /api/endusers/login` with `{ project, env, email, password }`
@@ -26,3 +38,7 @@ Issue and consume Santokit end-user tokens through Hub and Bridge boundaries.
 
 ## Acceptance
 - Signup/login succeeds and issued token is accepted by Bridge auth pipeline.
+
+## Failure Modes
+- Wrong password or unknown user: login fails.
+- Token context mismatch (`project/env`): Bridge returns authorization failure.
