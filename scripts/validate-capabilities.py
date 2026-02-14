@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CAP_ROOT = ROOT / "plan" / "capabilities"
-ALLOWED_DOMAINS = {"operator", "auth", "crud", "security", "logics"}
+ALLOWED_DOMAINS = {"operator", "auth", "crud", "security", "logics", "storage", "sdk", "mcp"}
 
 REQUIRED_SECTIONS = [
     "## Intent",

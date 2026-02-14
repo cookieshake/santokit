@@ -4,7 +4,7 @@
 
 ## ID and File Naming
 
-- Domain is fixed to one of: `operator`, `auth`, `crud`, `security`, `logics`.
+- Domain is fixed to one of: `operator`, `auth`, `crud`, `security`, `logics`, `storage`, `sdk`, `mcp`.
 - Capability ID format: `DOMAIN-NNN` (example: `AUTH-003`).
 - File format: `{ID}-{slug}.md` (example: `AUTH-003-multi-project-login.md`).
 
