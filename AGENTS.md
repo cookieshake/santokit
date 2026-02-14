@@ -6,144 +6,76 @@
 
 Santokit은 **선언적 Backend-as-a-Service 플랫폼**으로, YAML 기반의 스키마/권한 선언만으로 API를 자동 생성하고 관리하는 시스템입니다.
 
+핵심 개념, API 스펙, 인증 모델 등은 `plan/capabilities/`와 `plan/spec/`를 참조하세요.
+
 ### 핵심 컴포넌트
 
 | 컴포넌트 | 역할 | 위치 |
 |---------|------|------|
-| **Hub** | Control Plane - org/team/project/env 관리, DB connections, 스키마, 권한, 릴리즈 관리 | `packages/services/hub/` |
-| **Bridge** | Data Plane - `/call` API 제공, 런타임 요청 처리 | `packages/services/bridge/` |
-| **CLI (`stk`)** | 운영자용 단일 진입점 (웹 콘솔 대체) | `packages/tools/cli/` |
+| **Hub** | Control Plane - org/project/env/릴리즈 관리 | `packages/services/hub/` |
+| **Bridge** | Data Plane - `POST /call` 런타임 | `packages/services/bridge/` |
+| **CLI (`stk`)** | 운영자용 단일 진입점 | `packages/tools/cli/` |
 | **Core** | 공유 라이브러리 (핵심 타입, 유틸) | `packages/libs/core/` |
 | **SQL** | SQL 생성 및 처리 라이브러리 | `packages/libs/sql/` |
-
 
 ## 디렉토리 구조
 
 ```
 santokit/
 ├── packages/
-│   ├── services/       # 서비스 바이너리
-│   │   ├── hub/        # Control Plane
-│   │   └── bridge/     # Data Plane
-│   ├── tools/          # CLI 도구
-│   │   └── cli/        # stk CLI
-│   └── libs/           # 공유 라이브러리
-│       ├── core/       # 핵심 타입/유틸
-│       └── sql/        # SQL 처리
-├── plan/               # 설계 문서 (Single Source of Truth)
-│   ├── spec/           # 스펙 문서
-│   ├── flows/          # 사용자/운영 플로우
-│   ├── overview/       # 로드맵
-│   └── secrets/        # 시크릿 모델
-├── tests/              # 테스트
-│   └── integration_py/ # Python 통합 테스트
-└── scripts/            # 유틸리티 스크립트
+│   ├── services/hub/       # Control Plane
+│   ├── services/bridge/    # Data Plane
+│   ├── tools/cli/          # stk CLI
+│   └── libs/{core,sql}/    # 공유 라이브러리
+├── plan/
+│   ├── capabilities/       # 행동 명세 (SoT) — 구현/테스트 추적
+│   └── spec/               # 공유 정의 (스키마 포맷, 에러 카탈로그 등)
+├── tests/integration_py/   # Python 통합 테스트
+└── scripts/                # 유틸리티 스크립트
 ```
 
-## 개발 가이드라인
-
-### 1. 문서 우선 (Documentation First)
-
-- **`plan/` 디렉토리가 Single Source of Truth**입니다.
-- 큰 결정(인증/권한/데이터 스토어/런타임)은 `plan/`에서 먼저 합의하고 문서를 갱신해야 합니다.
-- 주요 스펙 문서:
-  - `plan/spec/final.md` - 최종 통합 스펙
-  - `plan/spec/auth.md` - 인증/인가 스펙
-  - `plan/spec/cli.md` - CLI 명령어 스펙
-  - `plan/spec/crud.md` - Auto CRUD 스펙
-  - `plan/spec/schema.md` - 스키마 관리 스펙
-  - `plan/spec/logics.md` - Custom Logic 스펙
-
-### 2. 코드 스타일
+## 코드 스타일
 
 - **Rust 표준 스타일**: `cargo fmt` 사용
 - **Clippy 린트 준수**: `cargo clippy` 경고 없도록 유지
-- **에러 처리**: `thiserror`와 `anyhow` 사용
+- **에러 처리**:
   - 라이브러리 코드: `thiserror`로 구체적인 에러 타입 정의
   - 애플리케이션 코드: `anyhow`로 에러 전파
 
-### 3. 테스트
-
-- **통합 테스트**: `tests/integration_py/` (Python + Testcontainers)
-- 테스트 실행:
-  ```sh
-  # flox 환경 활성화 필요
-  flox activate
-  cd tests/integration_py
-  uv venv --clear
-  uv pip install -e .
-  uv run pytest
-  
-  # 또는 스크립트 사용
-  ./scripts/run-integration-tests.sh
-  ```
-
-### 4. 통합 테스트 구조
-
-`plan/flows/`와 `tests/integration_py/tests/`는 카테고리별로 대응됩니다.
-
-| Flow 문서 | 테스트 파일 | 카테고리 |
-|-----------|------------|---------|
-| `plan/flows/operator.md` | `test_operator.py` | 부트스트랩, API key, 스키마/권한 변경, 릴리즈 |
-| `plan/flows/auth.md` | `test_auth.py` | End-user 로그인, 외부 OIDC, 멀티프로젝트 |
-| `plan/flows/crud.md` | `test_crud.py` | CRUD 기본/고급, FK expand, 페이지네이션/정렬 |
-| `plan/flows/security.md` | `test_security.py` | CEL 조건, 컬럼 prefix, 컬럼 권한 |
-| `plan/flows/logics.md` | `test_logics.py` | 커스텀 SQL 로직 |
-
-**규칙:**
-- Flow 추가 시 해당 카테고리 파일에 섹션을 추가하고, 테스트 함수도 대응 파일에 추가합니다.
-- 공통 setup 헬퍼는 `dsl.py`에 정의: `bootstrap_project`, `create_api_key`, `api_key_headers`, `jwt_headers`, `signup_and_login`, `get_rows`
-
-### 5. 빌드
+## 빌드
 
 ```sh
-# 전체 빌드
-cargo build
-
-# 릴리즈 빌드
-cargo build --release
-
-# 특정 패키지 빌드
-cargo build -p stk-hub
-cargo build -p stk-bridge
-cargo build -p stk-cli
+cargo build                    # 전체
+cargo build -p stk-hub         # Hub만
+cargo build -p stk-bridge      # Bridge만
+cargo build -p stk-cli         # CLI만
 ```
 
-## 핵심 개념
+## 테스트
 
-### Auto CRUD
-- 경로 형식: `db/{table}/{op}`
-- 지원 연산: `select`, `insert`, `update`, `delete`
+통합 테스트: `tests/integration_py/` (Python + Testcontainers)
 
-### Custom Logic
-- 경로 형식: `logics/{name}`
-- SQL 기반 커스텀 로직 실행
+```sh
+flox activate
+./scripts/run-integration-tests.sh
+```
 
-### Permissions
-- `config/permissions.yaml` 기반
-- CEL(Common Expression Language) 조건 지원
-- 테이블/컬럼 레벨 권한 제어
+Capability 도메인별로 테스트 파일이 대응됩니다:
 
-### Releases
-- `releaseId`: 스키마 IR + 권한 + 설정의 불변 스냅샷
-- 환경(env)별 "current release" 포인터 관리
-- `stk apply`로 릴리즈 생성/적용
+| 도메인 | 테스트 파일 |
+|--------|------------|
+| operator | `test_operator.py` |
+| auth | `test_auth.py` |
+| crud | `test_crud.py` |
+| security | `test_security.py` |
+| logics | `test_logics.py` |
 
-## API 인증
-
-### Data Plane (Bridge)
-- **서버/CI**: `X-Santokit-Api-Key: <api_key>`
-- **End User**: 
-  - `Authorization: Bearer <santokit_access_token>`
-  - 또는 쿠키: `stk_access_<project>_<env>=<token>`
-
-### 멀티 프로젝트 라우팅
-- `X-Santokit-Project: <project>`
-- `X-Santokit-Env: <env>`
+- Capability 추가 시 해당 테스트 파일에 함수를 추가하고, frontmatter `test_refs`에 연결합니다.
+- 공통 헬퍼는 `dsl.py`: `bootstrap_project`, `create_api_key`, `api_key_headers`, `jwt_headers`, `signup_and_login`, `get_rows`
 
 ## 환경 설정
 
-- **flox**: 개발 환경 관리 (`.flox/` 디렉토리)
+- **flox**: 개발 환경 관리 (`.flox/`)
 - `.envrc`: direnv 설정
 - `.stk/`: CLI 로컬 컨텍스트 (gitignore됨)
 
@@ -152,8 +84,3 @@ cargo build -p stk-cli
 1. **Secret 관리**: secret 값은 Git/manifest/bundle/image에 절대 포함하지 않습니다.
 2. **스키마 변경**: destructive 변경은 기본 차단, `--force`로 허용 가능합니다.
 3. **DB 드리프트**: 드리프트가 있으면 릴리즈가 차단됩니다.
-
-## 관련 리소스
-
-- 스펙 문서: `plan/spec/`
-- 통합 테스트 가이드: `tests/integration_py/README.md`
