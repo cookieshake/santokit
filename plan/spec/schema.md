@@ -224,7 +224,7 @@ CLI (최종 표면):
 대신:
 - **Forward-only migration** 정책
 - 문제 발생 시: 새로운 마이그레이션으로 수정 (hotfix)
-- 예: 컬럼 추가 실수 → 컬럼 삭제 마이그레이션 생성 (`--force`)
+- 예: 컬럼 추가 실수 → 컬럼 삭제 마이그레이션 생성 (`--force`) 
 
 권장 사항:
 - Production 반영 전 dev/staging에서 충분히 검증
