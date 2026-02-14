@@ -3,23 +3,16 @@ id: LOGICS-004
 domain: logics
 title: Validate required logic parameters and bind safely
 status: implemented
-owners: [bridge]
-flow_refs: ["plan/capabilities/logics/README.md"]
+depends: [LOGICS-001]
 spec_refs: ["plan/spec/logics.md", "plan/spec/errors.md"]
 test_refs:
   - tests/integration_py/tests/test_logics.py::test_logics_get_items
 code_refs:
   - packages/services/bridge/src/handlers/call.rs
-verify:
-  - cmd: ./scripts/run-integration-tests.sh
-    args: ["-k", "test_logics_get_items"]
 ---
 
 ## Intent
-Require declared parameters and apply them as safe SQL bindings.
-
-## Caller Intent
-- Guarantee required inputs are present and safely bound before query execution.
+Callers invoking parameterized logic need guaranteed presence and type safety of required inputs before any SQL executes, so bridge validates and binds params before query execution.
 
 ## Execution Semantics
 - Logic metadata marks required params and expected types.
@@ -30,11 +23,14 @@ Require declared parameters and apply them as safe SQL bindings.
 - Calls with complete parameters return filtered data.
 - Calls missing required params fail deterministically.
 
-## API Usage
+## Usage
 - `POST /call` with `{"path":"logics/get_items","params":{"owner_id":"owner-1"}}`
 
-## Acceptance
-- Owner-scoped query returns matching rows and empty for non-matches.
+## Acceptance Criteria
+- [ ] `POST /call` with `{"path":"logics/get_items","params":{"owner_id":"owner-1"}}` returns HTTP 200 with rows belonging to `owner-1`.
+- [ ] The same call with `{"owner_id":"nonexistent-user"}` returns HTTP 200 with an empty `data` array.
+- [ ] `POST /call` with `{"path":"logics/get_items"}` (missing `owner_id`) returns HTTP 400.
+- [ ] `POST /call` with `{"path":"logics/get_items","params":{"owner_id":123}}` (wrong type) returns HTTP 400.
 
 ## Failure Modes
 - Required param omitted: request rejected.

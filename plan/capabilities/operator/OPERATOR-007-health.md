@@ -3,21 +3,14 @@ id: OPERATOR-007
 domain: operator
 title: Expose health and readiness endpoints
 status: planned
-owners: [hub, bridge]
-flow_refs: ["plan/capabilities/operator/README.md"]
-spec_refs: ["plan/spec/operator.md", "plan/spec/ARCHITECTURE.md"]
+depends: [OPERATOR-001]
+spec_refs: ["plan/spec/operator.md", "plan/spec/architecture.md"]
 test_refs: []
-code_refs:
-  - packages/services/hub/
-  - packages/services/bridge/
-verify: []
+code_refs: []
 ---
 
 ## Intent
-Enable fast operational checks for service liveness and readiness.
-
-## Operator Intent
-- Distinguish "process is up" from "service can safely serve traffic" during operations.
+Operators and orchestration systems need fast, reliable checks to distinguish process liveness from traffic readiness; this capability exposes dedicated health and readiness endpoints on Hub and Bridge to gate rollouts and surface dependency failures before they become user-facing errors.
 
 ## Execution Semantics
 - `/healthz` reports basic process liveness.
@@ -28,14 +21,18 @@ Enable fast operational checks for service liveness and readiness.
 - Healthy services return success on both endpoints.
 - Degraded dependencies surface as readiness failures before user-facing errors escalate.
 
-## API Usage
+## Usage
 - `GET /healthz` (Hub)
 - `GET /readyz` (Hub)
 - `GET /healthz` (Bridge)
 - `GET /readyz` (Bridge)
 
-## Acceptance
-- `/healthz` and `/readyz` return expected status for healthy and degraded cases.
+## Acceptance Criteria
+- [ ] `GET /healthz` on Hub returns HTTP 200 when the process is running.
+- [ ] `GET /readyz` on Hub returns HTTP 200 when all dependencies (DB, config) are available.
+- [ ] `GET /healthz` on Bridge returns HTTP 200 when the process is running.
+- [ ] `GET /readyz` on Bridge returns HTTP 200 when release config is loaded and reachable.
+- [ ] `GET /readyz` on Hub or Bridge returns a non-200 status when a required dependency is unavailable, while `GET /healthz` may still return HTTP 200.
 
 ## Failure Modes
 - Downstream dependency not ready: `readyz` fails while `healthz` may still pass.

@@ -11,6 +11,15 @@ ROOT = Path(__file__).resolve().parents[1]
 CAP_ROOT = ROOT / "plan" / "capabilities"
 ALLOWED_DOMAINS = {"operator", "auth", "crud", "security", "logics"}
 
+REQUIRED_SECTIONS = [
+    "## Intent",
+    "## Execution Semantics",
+    "## Observable Outcome",
+    "## Usage",
+    "## Acceptance Criteria",
+    "## Failure Modes",
+]
+
 
 def read_frontmatter(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
@@ -22,6 +31,16 @@ def read_frontmatter(path: Path) -> list[str]:
     except StopIteration as exc:
         raise ValueError("missing frontmatter end marker") from exc
     return lines[1:end]
+
+
+def read_body(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    try:
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    except StopIteration:
+        return ""
+    return "\n".join(lines[end + 1 :])
 
 
 def find_scalar(frontmatter: list[str], key: str) -> str | None:
@@ -74,22 +93,6 @@ def find_block_list(frontmatter: list[str], key: str) -> list[str]:
     return items
 
 
-def has_verify_command(frontmatter: list[str]) -> bool:
-    raw = find_scalar(frontmatter, "verify")
-    if raw == "[]":
-        return False
-    in_verify = False
-    for line in frontmatter:
-        if re.match(r"^verify:\s*$", line):
-            in_verify = True
-            continue
-        if in_verify and not line.startswith("  "):
-            break
-        if in_verify and re.match(r"^\s*-\s*cmd:\s*.+$", line):
-            return True
-    return False
-
-
 def check_nodeid(nodeid: str, errors: list[str], file_path: Path) -> None:
     if "::" not in nodeid:
         errors.append(f"{file_path}: invalid test nodeid (missing ::): {nodeid}")
@@ -114,7 +117,32 @@ def check_ref_exists(ref: str, errors: list[str], file_path: Path, field: str) -
         errors.append(f"{file_path}: {field} target does not exist: {ref}")
 
 
-def validate_file(path: Path, errors: list[str]) -> None:
+def check_depends(depends: list[str], all_ids: set[str], errors: list[str], file_path: Path) -> None:
+    for dep in depends:
+        if not re.match(r"^[A-Z]+-\d{3}$", dep):
+            errors.append(f"{file_path}: invalid depends id format: {dep}")
+        elif dep not in all_ids:
+            errors.append(f"{file_path}: depends references unknown capability: {dep}")
+
+
+def check_body_sections(body: str, errors: list[str], file_path: Path) -> None:
+    for section in REQUIRED_SECTIONS:
+        if section not in body:
+            errors.append(f"{file_path}: missing required section: {section}")
+
+    # Acceptance Criteria must contain at least one checklist item
+    if "## Acceptance Criteria" in body:
+        ac_start = body.index("## Acceptance Criteria")
+        ac_rest = body[ac_start:]
+        # Find next ## or end
+        next_section = re.search(r"\n## ", ac_rest[1:])
+        ac_block = ac_rest[: next_section.start() + 1] if next_section else ac_rest
+        if "- [ ]" not in ac_block:
+            errors.append(f"{file_path}: Acceptance Criteria must use '- [ ]' checklist format")
+
+
+
+def validate_file(path: Path, errors: list[str], all_ids: set[str]) -> None:
     if path.name == "README.md" and path.parent == CAP_ROOT:
         return
 
@@ -126,6 +154,7 @@ def validate_file(path: Path, errors: list[str]) -> None:
         return
 
     frontmatter = read_frontmatter(path)
+    body = read_body(path)
 
     cap_id = (find_scalar(frontmatter, "id") or "").strip().strip('"').strip("'")
     status = (find_scalar(frontmatter, "status") or "").strip().strip('"').strip("'")
@@ -152,34 +181,55 @@ def validate_file(path: Path, errors: list[str]) -> None:
     if status not in {"planned", "in_progress", "implemented"}:
         errors.append(f"{path}: invalid status: {status}")
 
-    flow_refs = find_inline_list(frontmatter, "flow_refs")
+    # Required fields
     spec_refs = find_inline_list(frontmatter, "spec_refs")
     test_refs = find_block_list(frontmatter, "test_refs")
     code_refs = find_block_list(frontmatter, "code_refs")
-
-    if not flow_refs:
-        errors.append(f"{path}: flow_refs must not be empty")
-    for ref in flow_refs:
-        check_ref_exists(ref, errors, path, "flow_refs")
+    depends = find_inline_list(frontmatter, "depends")
 
     if not spec_refs:
         errors.append(f"{path}: spec_refs must not be empty")
     for ref in spec_refs:
         check_ref_exists(ref, errors, path, "spec_refs")
 
-    if not code_refs:
-        errors.append(f"{path}: code_refs must not be empty")
     for ref in code_refs:
         check_ref_exists(ref, errors, path, "code_refs")
 
     for nodeid in test_refs:
         check_nodeid(nodeid, errors, path)
 
-    if status == "implemented":
+    # depends validation (deferred to second pass via all_ids)
+    check_depends(depends, all_ids, errors, path)
+
+    # Status-specific rules
+    if status == "planned":
+        if test_refs:
+            errors.append(f"{path}: planned capability must have empty test_refs")
+        if code_refs:
+            errors.append(f"{path}: planned capability must have empty code_refs")
+    elif status == "implemented":
         if not test_refs:
             errors.append(f"{path}: implemented requires non-empty test_refs")
-        if not has_verify_command(frontmatter):
-            errors.append(f"{path}: implemented requires at least one verify cmd")
+        if not code_refs:
+            errors.append(f"{path}: implemented requires non-empty code_refs")
+
+    # Body section validation
+    check_body_sections(body, errors, path)
+
+
+def collect_all_ids(md_files: list[Path]) -> set[str]:
+    ids: set[str] = set()
+    for md in md_files:
+        if md.name == "README.md":
+            continue
+        try:
+            fm = read_frontmatter(md)
+            cap_id = (find_scalar(fm, "id") or "").strip().strip('"').strip("'")
+            if cap_id:
+                ids.add(cap_id)
+        except Exception:
+            pass
+    return ids
 
 
 def main() -> int:
@@ -188,11 +238,12 @@ def main() -> int:
         return 1
 
     md_files = sorted(CAP_ROOT.glob("**/*.md"))
+    all_ids = collect_all_ids(md_files)
     errors: list[str] = []
 
     for md in md_files:
         try:
-            validate_file(md, errors)
+            validate_file(md, errors, all_ids)
         except Exception as exc:  # pragma: no cover
             errors.append(f"{md}: unexpected parse error: {exc}")
 

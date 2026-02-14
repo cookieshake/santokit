@@ -3,24 +3,17 @@ id: OPERATOR-004
 domain: operator
 title: Apply permissions changes through release pipeline
 status: implemented
-owners: [cli, hub]
-flow_refs: ["plan/capabilities/operator/README.md"]
+depends: [OPERATOR-001]
 spec_refs: ["plan/spec/operator.md", "plan/spec/auth.md", "plan/spec/crud.md"]
 test_refs:
   - tests/integration_py/tests/test_operator.py::test_operator_permissions_change
 code_refs:
   - packages/tools/cli/
   - packages/services/hub/
-verify:
-  - cmd: ./scripts/run-integration-tests.sh
-    args: ["-k", "test_operator_permissions_change"]
 ---
 
 ## Intent
-Ship permissions policy updates in a repeatable release operation.
-
-## Operator Intent
-- Change access policy declaratively and publish it as the active runtime policy set.
+Operators need to update access policy declaratively and publish it as the active runtime policy set; this capability ships permissions changes through the release pipeline so Bridge enforces them immediately on subsequent requests.
 
 ## Execution Semantics
 - `stk apply --only permissions,release` validates permission document shape and semantics.
@@ -31,11 +24,14 @@ Ship permissions policy updates in a repeatable release operation.
 - Policy changes are visible through authorization behavior in Bridge.
 - Env points to a release containing updated permissions.
 
-## CLI Usage
+## Usage
 - `stk apply --project <project> --env <env> --only permissions,release --ref <ref>`
 
-## Acceptance
-- Permission ref apply succeeds and reflects updated policy set.
+## Acceptance Criteria
+- [ ] `stk apply --only permissions,release --ref <ref>` exits 0.
+- [ ] The env release pointer is updated to a release containing the new permissions snapshot.
+- [ ] A `/call` request that was previously denied is now permitted under the updated policy (HTTP 200).
+- [ ] A `/call` request that was previously permitted is now denied under the updated policy (HTTP 403).
 
 ## Failure Modes
 - Invalid permission schema or unknown table/column references: apply fails.

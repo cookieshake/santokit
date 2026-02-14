@@ -16,30 +16,40 @@ Each file must include this metadata:
 - `domain`: one of fixed domains
 - `title`: short capability title
 - `status`: `planned | in_progress | implemented`
-- `owners`: code ownership tags
-- `flow_refs`: one or more narrative references (use `plan/capabilities/<domain>/README.md`)
-- `spec_refs`: one or more spec references
-- `test_refs`: pytest node IDs (required when implemented)
-- `code_refs`: code paths implementing the behavior
-- `verify`: command list to validate behavior
+- `depends`: capability IDs this capability requires (example: `[OPERATOR-001, SECURITY-005]`). Empty if none.
+- `spec_refs`: one or more spec references (referenced files must exist)
+- `test_refs`: pytest node IDs (required when `implemented`)
+- `code_refs`: code paths implementing the behavior (must be empty when `planned`)
+
+## Content Sections
+
+Each capability document must contain these sections in order:
+
+1. `## Intent` — who needs this and why, in one or two sentences.
+2. `## Execution Semantics` — what state changes occur, which components are involved.
+3. `## Observable Outcome` — what the caller can verify after execution.
+4. `## Usage` — at least one executable example:
+   - operator domain: `stk ...` commands
+   - other domains: `/call` request or API request example
+5. `## Acceptance Criteria` — checklist of verifiable conditions:
+   - Each item must specify concrete observables (HTTP status, response shape, data state).
+   - Use `- [ ]` checklist format.
+6. `## Failure Modes` — known error cases and their expected behavior.
 
 ## Content Rules
 
 - Capability document contains normative behavior for that capability.
-- Capability document includes at least one executable usage example:
-  - operator domain: `stk ...` commands
-  - other domains: `/call` request or API request example
-- Capability document explains execution semantics, not only command lists:
-  - caller intent (what outcome the operator wants)
-  - command behavior (what control-plane/data-plane state changes)
-  - observable result and key failure modes
-- Domain capability guides (`plan/capabilities/<domain>/README.md`) contain narrative steps and capability links.
+- Domain capability guides (`plan/capabilities/<domain>/README.md`) contain:
+  - narrative flow explaining the order and relationship between capabilities
+  - component boundaries involved (e.g., Hub vs Bridge, control-plane vs data-plane)
+  - capability links
 - Spec docs contain shared definitions and common rules reused by multiple capabilities.
 
 ## Status Rules
 
-- `implemented` requires at least one `test_refs` entry and one `verify` entry.
-- `planned` can have empty `test_refs` and `verify`.
+- `planned`: `test_refs` and `code_refs` must be empty.
+- `in_progress`: `test_refs` may be partially filled. `code_refs` may be filled.
+- `implemented`: requires at least one `test_refs` entry. `code_refs` must be filled.
 
 ## Validation Command
 

@@ -3,23 +3,16 @@ id: LOGICS-007
 domain: logics
 title: Return consistent errors for common logic failure modes
 status: implemented
-owners: [bridge]
-flow_refs: ["plan/capabilities/logics/README.md"]
+depends: [LOGICS-001]
 spec_refs: ["plan/spec/logics.md", "plan/spec/errors.md"]
 test_refs:
   - tests/integration_py/tests/test_logics.py::test_logics_error_cases
 code_refs:
   - packages/services/bridge/src/handlers/call.rs
-verify:
-  - cmd: ./scripts/run-integration-tests.sh
-    args: ["-k", "test_logics_error_cases"]
 ---
 
 ## Intent
-Provide predictable HTTP errors for missing params, missing logic, auth, and type mismatch.
-
-## Caller Intent
-- Get stable, diagnosable failure semantics for common logic invocation mistakes.
+Clients need stable, diagnosable HTTP error responses for common logic invocation mistakes so that missing params, unknown routes, auth failures, and type mismatches are all distinguishable without DB round-trips.
 
 ## Execution Semantics
 - Validation and routing errors are classified before DB execution.
@@ -30,13 +23,18 @@ Provide predictable HTTP errors for missing params, missing logic, auth, and typ
 - Same invalid input yields same error category across calls.
 - Successful requests are not silently coerced from invalid payloads.
 
-## API Usage
-- Missing param: `{"path":"logics/get_items"}`
-- Not found: `{"path":"logics/nonexistent"}`
-- Invalid type: `{"path":"logics/get_items","params":{"owner_id":123}}`
+## Usage
+- Missing param: `POST /call` with `{"path":"logics/get_items"}`
+- Not found: `POST /call` with `{"path":"logics/nonexistent"}`
+- Invalid type: `POST /call` with `{"path":"logics/get_items","params":{"owner_id":123}}`
 
-## Acceptance
-- Missing required param, nonexistent logic, unauthenticated request, and invalid type all fail with expected status.
+## Acceptance Criteria
+- [ ] `POST /call` with `{"path":"logics/get_items"}` (missing required `owner_id`) returns HTTP 400.
+- [ ] `POST /call` with `{"path":"logics/nonexistent"}` returns HTTP 404.
+- [ ] `POST /call` with `{"path":"logics/admin_only"}` using no credential returns HTTP 401.
+- [ ] `POST /call` with `{"path":"logics/admin_only"}` using an end-user credential without the required role returns HTTP 403.
+- [ ] `POST /call` with `{"path":"logics/get_items","params":{"owner_id":123}}` (integer instead of string) returns HTTP 400.
+- [ ] All error responses use a structured body (e.g. `{"error": "..."}`) suitable for client-side parsing.
 
 ## Failure Modes
 - Ambiguous/combined invalid inputs may prioritize first validation failure by pipeline order.

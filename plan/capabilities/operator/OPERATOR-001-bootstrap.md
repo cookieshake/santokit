@@ -3,24 +3,17 @@ id: OPERATOR-001
 domain: operator
 title: Bootstrap project, env, connection, and initial apply
 status: implemented
-owners: [cli, hub]
-flow_refs: ["plan/capabilities/operator/README.md"]
+depends: []
 spec_refs: ["plan/spec/operator.md", "plan/spec/cli.md", "plan/spec/schema.md"]
 test_refs:
   - tests/integration_py/tests/test_operator.py::test_operator_bootstrap
 code_refs:
   - packages/tools/cli/
   - packages/services/hub/
-verify:
-  - cmd: ./scripts/run-integration-tests.sh
-    args: ["-k", "test_operator_bootstrap"]
 ---
 
 ## Intent
-Make a project operational from zero with CLI-driven control-plane setup.
-
-## Operator Intent
-- Start from an empty project and reach a state where `/call` can be served using a valid release.
+Operators need a repeatable starting point to make a project fully operational from zero; this capability drives all CLI-based control-plane setup required before any end-user request can be served.
 
 ## Execution Semantics
 - `stk project create` creates the project scope in Hub.
@@ -33,7 +26,7 @@ Make a project operational from zero with CLI-driven control-plane setup.
 - The environment has a current release pointer and a usable DB connection.
 - Subsequent API key or end-user calls can be authorized against that env context.
 
-## CLI Usage
+## Usage
 - `stk project create <project>`
 - `stk env create --project <project> dev`
 - `stk env create --project <project> prod`
@@ -41,8 +34,13 @@ Make a project operational from zero with CLI-driven control-plane setup.
 - `stk connections test --project <project> --env dev --name main`
 - `stk apply --project <project> --env dev --ref <ref>`
 
-## Acceptance
-- `stk project create`, `stk env create`, `stk connections set/test`, and `stk apply` succeed.
+## Acceptance Criteria
+- [ ] `stk project create <project>` exits 0 and project scope is visible in Hub.
+- [ ] `stk env create` exits 0 for both `dev` and `prod` environments.
+- [ ] `stk connections set` exits 0 and connection record is stored in Hub for the target env.
+- [ ] `stk connections test` exits 0 and Hub confirms reachability and authentication to the DB.
+- [ ] `stk apply` exits 0 and the env has a valid current release pointer afterward.
+- [ ] A subsequent `/call` request authorized against that env returns HTTP 200.
 
 ## Failure Modes
 - Invalid DB URL or unreachable DB: connection test/apply fails.
