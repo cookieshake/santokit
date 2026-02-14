@@ -78,7 +78,7 @@ CRUD API:
 |------------|------------|
 | `string` | `string` |
 | `int` | `number` |
-| `bigint` | `bigint` |
+| `bigint` | `string` |
 | `float` | `number` |
 | `decimal` | `string` |
 | `boolean` | `boolean` |
@@ -95,6 +95,7 @@ Nullable: `nullable: true`이면 `T | null`로 매핑.
 Bridge `/call`의 JSON은 아래 표준을 따른다.
 
 - `timestamp`: RFC3339 문자열로 전송한다(런타임 파싱은 사용자 선택).
+- `bigint`: JSON wire format은 문자열로 전송/수신한다(정밀도 보존).
 - `decimal`: 문자열로 전송한다(정밀도 유지를 위해 number 금지).
 - `bytes`: RFC4648 base64 문자열로 전송한다(줄바꿈 없음). TypeScript SDK는 필요 시 디코드한다.
 - `file`: storage key 문자열로 전송한다(직접 다운로드 URL이 아님).

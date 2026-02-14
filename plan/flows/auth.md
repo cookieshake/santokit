@@ -1,5 +1,9 @@
 # Authentication Flows
 
+번호 규칙:
+- Flow 번호는 카테고리 간 전역 번호를 공유한다.
+- 번호 결번은 기존 합의/삭제 이력으로 유지할 수 있다.
+
 ## Flow 03 — End User: Hub 내장 계정 로그인(issuer) → 쿠키/토큰 발급(SSR 포함)
 
 목표:
@@ -106,7 +110,7 @@ SSR 쿠키 모드(옵션):
 
 Hub 동작:
 - redirect_uri allowlist 검증
-- state/nonce/PKCE 세션 생성
+- state/nonce/PKCE 세션 생성 (provider 정보 포함)
 - 외부 IdP authorize URL로 302 redirect
 
 ---
@@ -117,7 +121,7 @@ Hub 동작:
 - `GET /oidc/:provider/callback?code=...&state=...`
 
 Hub 동작:
-- state/nonce/PKCE 검증
+- state 검증 및 세션에서 provider/nonce/PKCE 복원
 - code → token 교환
 - 외부 토큰 검증
 - `issuer+sub` → internal end_user_id로 linking/정규화
@@ -170,7 +174,7 @@ Hub 동작:
 ### B. 콜백(callback)
 
 - `GET /oidc/:provider/callback?code=...&state=...`
-- Hub는 `exchange_code`를 생성하고 `redirect_uri`로 전달한다.
+- Hub는 state에서 provider를 복원하고, `exchange_code`를 생성하여 `redirect_uri`로 전달한다.
 
 ### C. 교환(exchange, attach)
 

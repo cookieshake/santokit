@@ -9,6 +9,10 @@
 - 멀티 프로젝트/환경에서 DB 연결정보를 안전하게 저장/회전할 수 있어야 한다.
 - Bridge는 요청의 `project+env`에 맞는 연결정보만 사용할 수 있어야 한다.
 
+운영 원칙:
+- 로컬 개발: repo context 기본값 사용 가능
+- CI/자동화: `--project/--env`를 항상 명시
+
 ---
 
 ## 1) Source of Truth

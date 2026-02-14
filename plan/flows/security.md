@@ -1,5 +1,9 @@
 # Security Flows
 
+번호 규칙:
+- Flow 번호는 카테고리 간 전역 번호를 공유한다.
+- 번호 결번은 기존 합의/삭제 이력으로 유지할 수 있다.
+
 ## Flow 13 — End User: CEL Condition 기반 WHERE 주입
 
 목표:

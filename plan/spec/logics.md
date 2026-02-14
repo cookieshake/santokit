@@ -88,7 +88,7 @@ Frontmatter (`--- ... ---`):
 
 주의(현재 구현):
 - Bridge의 공통 인증 게이트웨이는 credential(API key 또는 End User token)을 요구한다.
-- 따라서 `auth: public`은 "추가 인증 요구 없음"을 의미하며, 완전 익명 호출을 의미하지 않는다.
+- `auth: public`의 의미는 `plan/spec/auth.md`의 정의를 따른다.
 
 변수 바인딩 (System Context):
 - `:auth.sub`: 현재 로그인한 유저 ID

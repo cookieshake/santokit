@@ -38,7 +38,8 @@
 ## 4) Metrics (Prometheus)
 
 원칙:
-메트릭/로그/트레이스 등 운영 신호가 존재하는 경우에도 이름은 snake_case를 권장한다.
+- Prometheus metric name/label은 snake_case를 사용한다.
+- 로그/트레이스 필드명 규칙과 혼동하지 않도록 분리한다(로그/트레이스는 Section 3 기준).
 
 ---
 

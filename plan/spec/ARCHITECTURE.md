@@ -36,9 +36,9 @@
 
 운영 관련 사항 및 도구:
 
-13. **`bridge-hub-protocol.md`** — 내부 통신 (Bridge ↔ Hub)
-14. **`cli.md`** — CLI 인터페이스 (`stk` 명령어)
-15. **`mcp.md`** — MCP 통합 (스키마/권한/릴리즈/로직 인트로스펙션)
+12. **`bridge-hub-protocol.md`** — 내부 통신 (Bridge ↔ Hub)
+13. **`cli.md`** — CLI 인터페이스 (`stk` 명령어)
+14. **`mcp.md`** — MCP 통합 (스키마/권한/릴리즈/로직 인트로스펙션)
 
 ---
 
@@ -118,13 +118,13 @@
 | crud.md | Stable | 2026-02-10 | 90% | P0 |
 | logics.md | Stable | 2026-02-10 | 80% | P0 |
 | **Tier 3: 고급** |
-| storage.md | Draft | — | 70% | P1 |
-| operator-rbac.md | Draft | — | 75% | P1 |
+| storage.md | Draft | TBD | 70% | P1 |
+| operator-rbac.md | Draft | TBD | 75% | P1 |
 | **Tier 4: 통합/운영** |
 | bridge-hub-protocol.md | Stable | 2026-02-10 | 90% | P0 |
-| client-sdk.md | Draft | — | 70% | P1 |
-| cli.md | Draft | — | 60% | P1 |
-| mcp.md | Draft | — | 75% | P1 |
+| client-sdk.md | Draft | TBD | 70% | P1 |
+| cli.md | Draft | TBD | 60% | P1 |
+| mcp.md | Draft | TBD | 75% | P1 |
 
 ### 상태 정의
 

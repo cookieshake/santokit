@@ -53,6 +53,8 @@ policies:
 
 Storage 기능은 `storage/{bucket}/{op}` 컨벤션으로 라우팅된다.
 
+모든 Storage 연산 응답은 `/call` 공통 envelope(`{ "data": ... }`)를 따른다.
+
 ### 2.1 `upload_sign` (for PUT)
 클라이언트가 업로드용 Presigned URL을 요청한다.
 
@@ -71,9 +73,11 @@ Storage 기능은 `storage/{bucket}/{op}` 컨벤션으로 라우팅된다.
 **Response:**
 ```json
 {
-  "url": "https://s3.ap-northeast-2.amazonaws.com/...?Signature=...",
-  "method": "PUT",
-  "headers": { "Content-Type": "image/jpeg" }
+  "data": {
+    "url": "https://s3.ap-northeast-2.amazonaws.com/...?Signature=...",
+    "method": "PUT",
+    "headers": { "Content-Type": "image/jpeg" }
+  }
 }
 ```
 
@@ -117,7 +121,7 @@ Private 파일 접근을 위한 Presigned URL을 요청한다. (Public 파일은
   2. 제약 검사(`maxSize`, `allowedTypes`)
   3. Multipart Upload를 생성하고 `uploadId`를 반환
 - **Response:**
-  - `uploadId`: string
+  - `{ "data": { "uploadId": "..." } }`
 
 #### 2.4.2 `multipart_sign_part`
 - **Path:** `storage/{bucket}/multipart_sign_part`
@@ -156,7 +160,7 @@ Private 파일 접근을 위한 Presigned URL을 요청한다. (Public 파일은
 규칙:
 - **Roles (OR):** 나열된 역할 중 하나라도 있으면 통과.
 - **Condition (CEL):** `roles` 통과 후, 2차적으로 CEL 표현식이 `true`여야 최종 허용.
-- `public`은 완전 익명 허용이 아니라, Bridge 공통 인증 게이트웨이를 통과한 요청에서 추가 role 제한이 없다는 의미다.
+- `public` 의미는 `plan/spec/auth.md`의 정의를 따른다.
 
 CEL Context 변수:
 - `request.auth.sub`: 사용자 ID

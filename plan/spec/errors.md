@@ -37,7 +37,7 @@
 | `TOO_MANY_REQUESTS` | 429 | 레이트 리밋에 걸림 | 동일 API key로 초당 제한 초과 |
 | `INTERNAL_ERROR` | 500 | 서버 내부 오류(예상치 못한 예외, 의존성 실패 포함) | SQL 실행 중 드라이버 에러 |
 | `SERVICE_UNAVAILABLE` | 503 | 일시적으로 서비스를 제공할 수 없음(필수 의존성 다운, max-stale 초과 등) | Hub 다운으로 릴리즈 stale 초과 |
-| `SCHEMA_VALIDATION_FAILED` | 400 | 이벤트 payload가 토픽 schema를 충족하지 못함 | 필수 필드 누락, 타입 불일치 |
+| `SCHEMA_VALIDATION_FAILED` | 400 | 입력 payload가 선언된 스키마/타입 규칙을 충족하지 못함 | 필수 필드 누락, 타입 불일치 |
 
 ---
 

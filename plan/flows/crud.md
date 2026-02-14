@@ -1,5 +1,9 @@
 # CRUD Flows
 
+번호 규칙:
+- Flow 번호는 카테고리 간 전역 번호를 공유한다.
+- 번호 결번은 기존 합의/삭제 이력으로 유지할 수 있다.
+
 ## Flow 05 — End User: CRUD 호출(Bridge `/call`) + 권한/owner 적용
 
 목표:
