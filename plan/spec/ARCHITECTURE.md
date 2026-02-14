@@ -198,12 +198,12 @@ plan/
 │   ├── cli.md             (CLI 인터페이스)
 │   └── mcp.md             (MCP 통합)
 │
-├── flows/             # 사용자/operator 워크플로우
-│   ├── operator.md    (operator 워크플로우)
-│   ├── crud.md        (CRUD 플로우)
-│   ├── auth.md        (인증 플로우)
-│   ├── logics.md      (커스텀 로직 플로우)
-│   └── security.md    (보안 제어)
+├── capabilities/      # 기능 단위 SoT + 도메인 가이드
+│   ├── operator/README.md (operator 시나리오)
+│   ├── crud/README.md     (CRUD 시나리오)
+│   ├── auth/README.md     (인증 시나리오)
+│   ├── logics/README.md   (커스텀 로직 시나리오)
+│   └── security/README.md (보안 시나리오)
 │
 ├── notes/             # 의사결정 노트
 │   └── open-questions.md (미해결 질문)
@@ -223,8 +223,8 @@ plan/
 
 ### 운영 플레이북
 
-`plan/flows/` 참조:
-- **operator.md** — 일상적인 operator 작업
+`plan/capabilities/operator/README.md` 참조:
+- 일상적인 operator 작업 시나리오
 
 ---
 
@@ -256,7 +256,7 @@ plan/
 ### 보안 검토자용
 
 1. `auth.md` 읽기 — 인증 및 인가 모델
-2. `flows/security.md` 읽기 — 보안 제어 및 위협 모델
+2. `capabilities/security/README.md` 읽기 — 보안 제어 및 위협 모델
 3. `operator-rbac.md` 읽기 — Operator 권한 모델
 4. `errors.md` 검토 — 에러 노출 정책
 
