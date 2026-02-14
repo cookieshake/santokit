@@ -16,14 +16,14 @@ code_refs:
 Operators need to move verified config and runtime state from lower environments to production and quickly restore a prior known-good state on incident; this capability controls release pointers across envs with a safe rollback path.
 
 ## Execution Semantics
-- `release promote` updates the target env release pointer to a selected source/current release.
-- Promotion does not execute schema migrations by itself; DB compatibility must already hold.
-- `release rollback` resets target env pointer to a previous release ID.
-- `release current/list` provides operator visibility for safe selection.
+- `release promote` updates the target env's current release pointer to a selected source release. Promotion copies the release pointer only — it does not re-execute schema migrations. The DB in the target env must already be schema-compatible with the promoted release; if not, promotion is rejected. This design ensures promotion is fast and atomic: it is a metadata operation, not a DDL operation.
+- `release rollback` resets the target env's current release pointer to a previously known release ID. Like promotion, rollback is a pointer update only; it does not undo DDL. The prior release's permissions and runtime config become active immediately for new requests.
+- `release current` shows the active release ID and its metadata for a given env.
+- `release list` enumerates recent releases with their IDs, refs, and timestamps to assist safe selection for promotion or rollback targets.
 
 ## Observable Outcome
-- Target env starts serving policy/schema/runtime behavior from promoted release snapshot.
-- Rollback reverts behavior to known-good snapshot without rebuilding artifacts.
+- Target env starts serving policy/schema/runtime behavior from the promoted release snapshot.
+- Rollback reverts behavior to a known-good snapshot without rebuilding artifacts or re-running migrations.
 
 ## Usage
 - `stk release promote --project <project> --from dev --to prod`
@@ -40,5 +40,5 @@ Operators need to move verified config and runtime state from lower environments
 - [ ] A `/call` request against prod after rollback reflects the rolled-back release behavior.
 
 ## Failure Modes
-- Target env DB/schema incompatibility: promotion is rejected.
-- Unknown or invalid release ID: rollback/promotion by ID fails.
+- Target env DB/schema incompatible with the promoted release: Hub returns HTTP 409; promotion is rejected and CLI exits non-zero.
+- Unknown or invalid release ID: rollback/promotion by ID fails with exit code non-zero and Hub returns HTTP 404.

@@ -17,10 +17,10 @@ code_refs:
 Operators need service credentials for non-human callers (servers, CI pipelines) that can be issued, listed, and revoked without downtime; this capability manages the full API key lifecycle against Bridge-authenticated data-plane access.
 
 ## Execution Semantics
-- `stk apikey create` creates a key record bound to project/env and role set.
-- The plaintext key is emitted once; Hub stores only the managed key entity thereafter.
-- `stk apikey list` queries key metadata (`status`, role bindings, usage timestamps).
-- `stk apikey revoke` marks the key unusable so Bridge auth rejects future use.
+- `stk apikey create` creates a key record bound to project/env and a role set. The plaintext key is printed exactly once at creation time; Hub stores only the hashed key entity afterward and cannot re-emit the plaintext.
+- `stk apikey list` queries key metadata (`status`, role bindings, usage timestamps). It never returns the plaintext key value.
+- `stk apikey revoke` marks the key record as revoked; Bridge rejects any subsequent request carrying that key with HTTP 401.
+- Bridge extracts the key from the `X-Santokit-Api-Key` request header. The key's project/env binding is authoritative: Bridge uses it to select the correct release and enforce authorization.
 
 ## Observable Outcome
 - Service can authenticate to Bridge using `X-Santokit-Api-Key` while key is active.
@@ -31,13 +31,20 @@ Operators need service credentials for non-human callers (servers, CI pipelines)
 - `stk apikey list --project <project> --env <env>`
 - `stk apikey revoke --project <project> --env <env> --key-id <keyId>`
 
+Example `/call` request using the issued key:
+```
+POST /call
+X-Santokit-Api-Key: sk_live_abc123...
+Content-Type: application/json
+```
+
 ## Acceptance Criteria
 - [ ] `stk apikey create` exits 0 and prints the plaintext key exactly once.
 - [ ] `stk apikey list` exits 0 and includes the newly created key with `status: active`.
 - [ ] A `/call` request using the active key in `X-Santokit-Api-Key` returns HTTP 200.
 - [ ] `stk apikey revoke` exits 0 and the key status becomes `revoked`.
-- [ ] A `/call` request using the revoked key returns HTTP 401 or HTTP 403.
+- [ ] A `/call` request using the revoked key returns HTTP 401.
 
 ## Failure Modes
-- Insufficient operator privileges: create/list/revoke fails with authz error.
-- Invalid role bindings: key creation is rejected.
+- Insufficient operator privileges (caller lacks `project:admin`): create/list/revoke exits non-zero; Hub returns HTTP 403.
+- Invalid role bindings (role not valid for the project scope): key creation is rejected with exit code non-zero and HTTP 422.

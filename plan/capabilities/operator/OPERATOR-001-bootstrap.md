@@ -16,14 +16,14 @@ code_refs:
 Operators need a repeatable starting point to make a project fully operational from zero; this capability drives all CLI-based control-plane setup required before any end-user request can be served.
 
 ## Execution Semantics
-- `stk project create` creates the project scope in Hub.
-- `stk env create` allocates environment scopes (`dev`, `prod`) under the project.
-- `stk connections set` stores DB connection metadata for the target env.
-- `stk connections test` verifies Hub can reach and authenticate to the DB.
-- `stk apply` validates schema/permissions input and advances release state for the env.
+- `stk project create` registers the project scope in Hub. If the project name already exists, Hub returns HTTP 409 CONFLICT and the CLI exits non-zero.
+- `stk env create` allocates named environment scopes (`dev`, `prod`) under the project. Each env maintains independent connection records and release state.
+- `stk connections set` stores DB connection metadata (engine, URL) for the target env. The URL is stored encrypted; it is not echoed back after creation.
+- `stk connections test` verifies that Hub can establish and authenticate a connection to the DB using the stored credentials. Exit code 0 means the round-trip succeeded.
+- `stk apply` drives the full release pipeline in order: schema validate → schema plan → schema apply (DDL) → drift check → permissions apply → release create. On success the CLI prints the resulting `releaseId`. A `ref` is a commit SHA (e.g., `abc1234`) that identifies a specific snapshot of schema and permissions inputs; it is stored in the release record for auditability and idempotency.
 
 ## Observable Outcome
-- The environment has a current release pointer and a usable DB connection.
+- The environment has a current `releaseId` and a usable DB connection.
 - Subsequent API key or end-user calls can be authorized against that env context.
 
 ## Usage
@@ -39,9 +39,10 @@ Operators need a repeatable starting point to make a project fully operational f
 - [ ] `stk env create` exits 0 for both `dev` and `prod` environments.
 - [ ] `stk connections set` exits 0 and connection record is stored in Hub for the target env.
 - [ ] `stk connections test` exits 0 and Hub confirms reachability and authentication to the DB.
-- [ ] `stk apply` exits 0 and the env has a valid current release pointer afterward.
+- [ ] `stk apply` exits 0, prints a `releaseId`, and the env has a valid current release pointer afterward.
 - [ ] A subsequent `/call` request authorized against that env returns HTTP 200.
 
 ## Failure Modes
-- Invalid DB URL or unreachable DB: connection test/apply fails.
-- Missing required schema/permissions inputs for apply: release is not created.
+- Duplicate project name: Hub returns HTTP 409 CONFLICT; CLI exits non-zero with a descriptive message.
+- Invalid DB URL or unreachable DB: `stk connections test` and `stk apply` exit non-zero; no release is created.
+- Missing required schema/permissions inputs for apply: validation fails, release pipeline is aborted, and exit code is non-zero.

@@ -16,25 +16,57 @@ code_refs:
 End users need to authenticate against a specific `project/env` and obtain an access token that Bridge can verify offline. Hub issues and validates the token; Bridge enforces context binding before authorizing requests.
 
 ## Execution Semantics
-- Hub creates/validates end-user identity and issues access token bound to `project/env`.
-- Bridge resolves credential context and validates token binding before request authorization.
-- Authorization decision for `/call` is then evaluated against release permissions.
+- Hub creates or validates end-user identity via `POST /api/endusers/signup` or `POST /api/endusers/login` and issues a PASETO v4.local access token bound to the given `project/env`.
+- The token carries claims: `sub` (end-user ID), `roles` (assigned role names), `projectId`, and `envId`. These claims encode the full binding context.
+- Bridge fetches the signing key for the relevant `project/env` from Hub via `GET /internal/keys/{project}/{env}` and caches it locally. Token verification is performed offline using this cached key on each request; Hub is not consulted per-request.
+- After verifying the token, Bridge checks that the token's `projectId` and `envId` match the resolved request context. A mismatch causes immediate rejection before any permission evaluation occurs.
+- Authorization for `/call` is then evaluated against the release permissions using the roles extracted from the verified token claims.
 
 ## Observable Outcome
-- Login endpoint returns usable access token.
-- Same token is accepted by Bridge for the matching context and rejected on mismatch.
+- Login and signup endpoints return HTTP 200 with a JSON body `{ "access_token": "..." }` where the value is a PASETO v4.local token string.
+- The returned token is accepted by Bridge for requests targeting the matching `project/env`.
+- The same token presented to Bridge for a different `project/env` is rejected with an authorization error before any data access occurs.
 
 ## Usage
-- `POST /api/endusers/signup` with `{ project, env, email, password }`
-- `POST /api/endusers/login` with `{ project, env, email, password }`
-- `POST /call` with `Authorization: Bearer <access_token>`
+
+Signup a new end user, then log in and use the token to call Bridge:
+
+```http
+# 1. Sign up
+POST /api/endusers/signup
+Content-Type: application/json
+
+{ "project": "acme", "env": "prod", "email": "alice@example.com", "password": "s3cr3t" }
+
+# Response
+HTTP/1.1 200 OK
+{ "access_token": "v4.local.Abc123..." }
+
+# 2. Log in (subsequent sessions)
+POST /api/endusers/login
+Content-Type: application/json
+
+{ "project": "acme", "env": "prod", "email": "alice@example.com", "password": "s3cr3t" }
+
+# Response
+HTTP/1.1 200 OK
+{ "access_token": "v4.local.Xyz789..." }
+
+# 3. Call Bridge using the token
+POST /call
+Authorization: Bearer v4.local.Xyz789...
+Content-Type: application/json
+
+{ "resource": "posts", "action": "list" }
+```
 
 ## Acceptance Criteria
-- [ ] `POST /api/endusers/signup` with valid credentials returns HTTP 200 and a JSON body containing an `access_token` field.
-- [ ] `POST /api/endusers/login` with correct credentials returns HTTP 200 and a non-empty `access_token`.
-- [ ] The issued token is accepted by Bridge's auth pipeline: `POST /call` with `Authorization: Bearer <access_token>` returns HTTP 200 for the matching `project/env`.
-- [ ] The same token presented to Bridge for a different `project/env` returns HTTP 401 or HTTP 403.
+- [ ] `POST /api/endusers/signup` with valid credentials returns HTTP 200 and a JSON body of the form `{ "access_token": "<paseto-token>" }` where the token is a non-empty PASETO v4.local string.
+- [ ] `POST /api/endusers/login` with correct credentials returns HTTP 200 and a non-empty `access_token` in the same shape.
+- [ ] The issued token is accepted by Bridge's auth pipeline: `POST /call` with `Authorization: Bearer <access_token>` returns HTTP 200 for requests targeting the matching `project/env`.
+- [ ] The same token presented to Bridge for a different `project/env` returns HTTP 403 (binding mismatch).
 
 ## Failure Modes
-- Wrong password or unknown user: login fails.
-- Token context mismatch (`project/env`): Bridge returns authorization failure.
+- Wrong password or unknown user at login: Hub returns HTTP 401. Response body: `{ "error": { "code": "UNAUTHORIZED", "message": "...", "requestId": "..." } }`.
+- Token `projectId`/`envId` does not match the Bridge request context: Bridge returns HTTP 403 before any permission check. Response body follows the same error envelope.
+- No credential provided to Bridge: Bridge returns HTTP 401.
