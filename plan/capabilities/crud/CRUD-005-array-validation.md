@@ -2,13 +2,13 @@
 id: CRUD-005
 domain: crud
 title: Validate array column item types on insert and update
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: ["plan/spec/schema.md", "plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_crud.py::test_crud_array_validation
+  - tests/integration_py/tests/capabilities/crud/test_crud_005_array_validation.py::test_crud_array_validation
 code_refs:
-  - packages/services/bridge/
+  - tests/integration_py/tests/capabilities/crud/test_crud_005_array_validation.py
 ---
 
 ## Intent

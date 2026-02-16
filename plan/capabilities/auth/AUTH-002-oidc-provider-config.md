@@ -2,13 +2,13 @@
 id: AUTH-002
 domain: auth
 title: Configure external OIDC provider in Hub
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_auth.py::test_enduser_login_external_oidc
+  - tests/integration_py/tests/capabilities/auth/test_auth_002_oidc_provider_config.py::test_enduser_login_external_oidc
 code_refs:
-  - packages/services/hub/
+  - tests/integration_py/tests/capabilities/auth/test_auth_002_oidc_provider_config.py
 ---
 
 ## Intent

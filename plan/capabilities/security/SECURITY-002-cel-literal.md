@@ -2,14 +2,13 @@
 id: SECURITY-002
 domain: security
 title: Support CEL resource literal equality filtering
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_security.py::test_cel_resource_literal_condition
+  - tests/integration_py/tests/capabilities/security/test_security_002_cel_literal.py::test_cel_resource_literal_condition
 code_refs:
-  - packages/services/bridge/
-  - packages/libs/sql/
+  - tests/integration_py/tests/capabilities/security/test_security_002_cel_literal.py
 ---
 
 ## Intent

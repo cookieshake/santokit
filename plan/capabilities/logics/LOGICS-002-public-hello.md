@@ -2,13 +2,13 @@
 id: LOGICS-002
 domain: logics
 title: Execute public logic and return greeting
-status: planned
+status: implemented
 depends: [LOGICS-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_logics.py::test_logics_public_hello
+  - tests/integration_py/tests/capabilities/logics/test_logics_002_public_hello.py::test_logics_public_hello
 code_refs:
-  - packages/services/bridge/src/handlers/call.rs
+  - tests/integration_py/tests/capabilities/logics/test_logics_002_public_hello.py
 ---
 
 ## Intent

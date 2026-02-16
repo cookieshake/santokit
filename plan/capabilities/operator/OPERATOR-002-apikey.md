@@ -2,15 +2,13 @@
 id: OPERATOR-002
 domain: operator
 title: Create and use project API key
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: ["plan/spec/cli.md"]
 test_refs:
-  - tests/integration_py/tests/test_operator.py::test_operator_apikey
+  - tests/integration_py/tests/capabilities/operator/test_operator_002_apikey.py::test_operator_apikey
 code_refs:
-  - packages/tools/cli/
-  - packages/services/hub/
-  - packages/services/bridge/
+  - tests/integration_py/tests/capabilities/operator/test_operator_002_apikey.py
 ---
 
 ## Intent

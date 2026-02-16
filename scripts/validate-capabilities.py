@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
+import argparse
 import re
-import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 CAP_ROOT = ROOT / "plan" / "capabilities"
-ALLOWED_DOMAINS = {"operator", "auth", "crud", "security", "logics", "storage", "sdk", "mcp"}
+ALLOWED_DOMAINS = {
+    "operator",
+    "auth",
+    "crud",
+    "security",
+    "logics",
+    "storage",
+    "sdk",
+    "mcp",
+}
+VALID_STATUSES = {"planned", "in_progress", "implemented"}
 
 REQUIRED_SECTIONS = [
     "## Intent",
@@ -19,6 +30,37 @@ REQUIRED_SECTIONS = [
     "## Acceptance Criteria",
     "## Failure Modes",
 ]
+
+
+@dataclass
+class ValidationIssue:
+    code: str
+    path: Path
+    message: str
+    hint: str | None = None
+
+
+@dataclass
+class CapabilityDoc:
+    path: Path
+    domain: str
+    cap_id: str
+    status: str
+    depends: list[str]
+    spec_refs: list[str]
+    test_refs: list[str]
+    code_refs: list[str]
+    body: str
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Validate capability documents.")
+    parser.add_argument(
+        "--relaxed-status",
+        action="store_true",
+        help="Skip status rules (planned/in_progress/implemented field cardinality checks).",
+    )
+    return parser.parse_args()
 
 
 def read_frontmatter(path: Path) -> list[str]:
@@ -46,25 +88,23 @@ def read_body(path: Path) -> str:
 def find_scalar(frontmatter: list[str], key: str) -> str | None:
     pattern = re.compile(rf"^{re.escape(key)}:\s*(.+)\s*$")
     for line in frontmatter:
-        m = pattern.match(line)
-        if m:
-            return m.group(1).strip()
+        matched = pattern.match(line)
+        if matched:
+            return matched.group(1).strip()
     return None
 
 
 def find_inline_list(frontmatter: list[str], key: str) -> list[str]:
     raw = find_scalar(frontmatter, key)
-    if raw is None:
+    if raw is None or raw == "[]":
         return []
-    if raw == "[]":
+    matched = re.match(r"^\[(.*)\]$", raw)
+    if not matched:
         return []
-    m = re.match(r"^\[(.*)\]$", raw)
-    if not m:
-        return []
-    body = m.group(1).strip()
+    body = matched.group(1).strip()
     if not body:
         return []
-    items = []
+    items: list[str] = []
     for part in body.split(","):
         item = part.strip().strip('"').strip("'")
         if item:
@@ -73,10 +113,10 @@ def find_inline_list(frontmatter: list[str], key: str) -> list[str]:
 
 
 def find_block_list(frontmatter: list[str], key: str) -> list[str]:
-    start = None
-    for idx, line in enumerate(frontmatter):
+    start: int | None = None
+    for index, line in enumerate(frontmatter):
         if re.match(rf"^{re.escape(key)}:\s*$", line):
-            start = idx
+            start = index
             break
         if re.match(rf"^{re.escape(key)}:\s*\[\]\s*$", line):
             return []
@@ -87,171 +127,340 @@ def find_block_list(frontmatter: list[str], key: str) -> list[str]:
     for line in frontmatter[start + 1 :]:
         if not line.startswith("  "):
             break
-        m = re.match(r"^\s*-\s*(.+)$", line)
-        if m:
-            items.append(m.group(1).strip().strip('"').strip("'"))
+        matched = re.match(r"^\s*-\s*(.+)$", line)
+        if matched:
+            items.append(matched.group(1).strip().strip('"').strip("'"))
     return items
 
 
-def check_nodeid(nodeid: str, errors: list[str], file_path: Path) -> None:
+def load_capability(path: Path) -> CapabilityDoc:
+    frontmatter = read_frontmatter(path)
+    body = read_body(path)
+    domain = path.parent.name
+    cap_id = (find_scalar(frontmatter, "id") or "").strip().strip('"').strip("'")
+    status = (find_scalar(frontmatter, "status") or "").strip().strip('"').strip("'")
+    depends = find_inline_list(frontmatter, "depends")
+    spec_refs = find_inline_list(frontmatter, "spec_refs")
+    test_refs = find_block_list(frontmatter, "test_refs")
+    code_refs = find_block_list(frontmatter, "code_refs")
+    return CapabilityDoc(
+        path=path,
+        domain=domain,
+        cap_id=cap_id,
+        status=status,
+        depends=depends,
+        spec_refs=spec_refs,
+        test_refs=test_refs,
+        code_refs=code_refs,
+        body=body,
+    )
+
+
+def check_nodeid(nodeid: str, issues: list[ValidationIssue], file_path: Path) -> None:
     if "::" not in nodeid:
-        errors.append(f"{file_path}: invalid test nodeid (missing ::): {nodeid}")
+        issues.append(
+            ValidationIssue(
+                code="TEST_NODEID_INVALID",
+                path=file_path,
+                message=f"invalid test nodeid (missing ::): {nodeid}",
+                hint="Use format tests/integration_py/tests/<file>.py::test_name",
+            )
+        )
         return
     test_file_raw, test_name = nodeid.split("::", 1)
     test_file = (ROOT / test_file_raw).resolve()
     if not test_file.exists():
-        errors.append(f"{file_path}: test file does not exist: {test_file_raw}")
+        issues.append(
+            ValidationIssue(
+                code="TEST_FILE_MISSING",
+                path=file_path,
+                message=f"test file does not exist: {test_file_raw}",
+                hint="Update test_refs or add the missing test file",
+            )
+        )
         return
     content = test_file.read_text(encoding="utf-8")
     pattern = re.compile(rf"^def\s+{re.escape(test_name)}\s*\(", re.MULTILINE)
     if not pattern.search(content):
-        errors.append(
-            f"{file_path}: test function not found in {test_file_raw}: {test_name}"
+        issues.append(
+            ValidationIssue(
+                code="TEST_FUNCTION_MISSING",
+                path=file_path,
+                message=f"test function not found in {test_file_raw}: {test_name}",
+                hint="Rename test_refs entry or create the expected test function",
+            )
         )
 
 
-def check_ref_exists(ref: str, errors: list[str], file_path: Path, field: str) -> None:
+def check_ref_exists(
+    ref: str, issues: list[ValidationIssue], file_path: Path, field: str
+) -> None:
     target = ref.split("#", 1)[0]
     abs_target = (ROOT / target).resolve()
     if not abs_target.exists():
-        errors.append(f"{file_path}: {field} target does not exist: {ref}")
+        issues.append(
+            ValidationIssue(
+                code="REF_MISSING",
+                path=file_path,
+                message=f"{field} target does not exist: {ref}",
+                hint="Fix path in frontmatter or create the referenced file/directory",
+            )
+        )
 
 
-def check_depends(depends: list[str], all_ids: set[str], errors: list[str], file_path: Path) -> None:
+def check_depends(
+    depends: list[str],
+    all_ids: set[str],
+    issues: list[ValidationIssue],
+    file_path: Path,
+) -> None:
     for dep in depends:
         if not re.match(r"^[A-Z]+-\d{3}$", dep):
-            errors.append(f"{file_path}: invalid depends id format: {dep}")
+            issues.append(
+                ValidationIssue(
+                    code="DEPENDS_FORMAT",
+                    path=file_path,
+                    message=f"invalid depends id format: {dep}",
+                    hint="Use DOMAIN-NNN format, for example AUTH-003",
+                )
+            )
         elif dep not in all_ids:
-            errors.append(f"{file_path}: depends references unknown capability: {dep}")
+            issues.append(
+                ValidationIssue(
+                    code="DEPENDS_UNKNOWN",
+                    path=file_path,
+                    message=f"depends references unknown capability: {dep}",
+                    hint="Add the referenced capability file or fix the id",
+                )
+            )
 
 
-def check_body_sections(body: str, errors: list[str], file_path: Path) -> None:
+def check_body_sections(
+    body: str, issues: list[ValidationIssue], file_path: Path
+) -> None:
     for section in REQUIRED_SECTIONS:
         if section not in body:
-            errors.append(f"{file_path}: missing required section: {section}")
+            issues.append(
+                ValidationIssue(
+                    code="SECTION_MISSING",
+                    path=file_path,
+                    message=f"missing required section: {section}",
+                )
+            )
 
-    # Acceptance Criteria must contain at least one checklist item
     if "## Acceptance Criteria" in body:
         ac_start = body.index("## Acceptance Criteria")
         ac_rest = body[ac_start:]
-        # Find next ## or end
         next_section = re.search(r"\n## ", ac_rest[1:])
         ac_block = ac_rest[: next_section.start() + 1] if next_section else ac_rest
         if "- [ ]" not in ac_block:
-            errors.append(f"{file_path}: Acceptance Criteria must use '- [ ]' checklist format")
+            issues.append(
+                ValidationIssue(
+                    code="ACCEPTANCE_FORMAT",
+                    path=file_path,
+                    message="Acceptance Criteria must use '- [ ]' checklist format",
+                )
+            )
 
 
+def validate_file(
+    doc: CapabilityDoc,
+    issues: list[ValidationIssue],
+    all_ids: set[str],
+    strict_status: bool,
+) -> None:
+    path = doc.path
+    domain = doc.domain
 
-def validate_file(path: Path, errors: list[str], all_ids: set[str]) -> None:
-    if path.name == "README.md" and path.parent == CAP_ROOT:
-        return
-
-    domain = path.parent.name
     if domain not in ALLOWED_DOMAINS:
-        errors.append(f"{path}: invalid domain directory: {domain}")
+        issues.append(
+            ValidationIssue(
+                code="DOMAIN_INVALID",
+                path=path,
+                message=f"invalid domain directory: {domain}",
+            )
+        )
         return
-    if path.name == "README.md":
-        return
 
-    frontmatter = read_frontmatter(path)
-    body = read_body(path)
-
-    cap_id = (find_scalar(frontmatter, "id") or "").strip().strip('"').strip("'")
-    status = (find_scalar(frontmatter, "status") or "").strip().strip('"').strip("'")
-    fm_domain = (find_scalar(frontmatter, "domain") or "").strip().strip('"').strip("'")
-
-    if not re.match(r"^[A-Z]+-\d{3}$", cap_id):
-        errors.append(f"{path}: invalid id format: {cap_id}")
+    if not re.match(r"^[A-Z]+-\d{3}$", doc.cap_id):
+        issues.append(
+            ValidationIssue(
+                code="ID_FORMAT",
+                path=path,
+                message=f"invalid id format: {doc.cap_id}",
+            )
+        )
 
     expected_prefix = domain.upper()
-    if cap_id and not cap_id.startswith(expected_prefix + "-"):
-        errors.append(f"{path}: id/domain mismatch: {cap_id} vs {domain}")
-
-    if fm_domain != domain:
-        errors.append(f"{path}: frontmatter domain mismatch: {fm_domain} vs {domain}")
+    if doc.cap_id and not doc.cap_id.startswith(expected_prefix + "-"):
+        issues.append(
+            ValidationIssue(
+                code="ID_DOMAIN_MISMATCH",
+                path=path,
+                message=f"id/domain mismatch: {doc.cap_id} vs {domain}",
+            )
+        )
 
     file_prefix = path.stem.split("-", 2)
     if len(file_prefix) < 3:
-        errors.append(f"{path}: file name must be {{ID}}-{{slug}}.md")
+        issues.append(
+            ValidationIssue(
+                code="FILENAME_FORMAT",
+                path=path,
+                message="file name must be {ID}-{slug}.md",
+            )
+        )
     else:
         file_id = f"{file_prefix[0]}-{file_prefix[1]}"
-        if file_id != cap_id:
-            errors.append(f"{path}: file id prefix does not match frontmatter id")
+        if file_id != doc.cap_id:
+            issues.append(
+                ValidationIssue(
+                    code="FILENAME_ID_MISMATCH",
+                    path=path,
+                    message="file id prefix does not match frontmatter id",
+                )
+            )
 
-    if status not in {"planned", "in_progress", "implemented"}:
-        errors.append(f"{path}: invalid status: {status}")
+    fm_domain = (
+        (find_scalar(read_frontmatter(path), "domain") or "")
+        .strip()
+        .strip('"')
+        .strip("'")
+    )
+    if fm_domain != domain:
+        issues.append(
+            ValidationIssue(
+                code="FRONTMATTER_DOMAIN_MISMATCH",
+                path=path,
+                message=f"frontmatter domain mismatch: {fm_domain} vs {domain}",
+            )
+        )
 
-    # Required fields
-    spec_refs = find_inline_list(frontmatter, "spec_refs")
-    test_refs = find_block_list(frontmatter, "test_refs")
-    code_refs = find_block_list(frontmatter, "code_refs")
-    depends = find_inline_list(frontmatter, "depends")
+    if doc.status not in VALID_STATUSES:
+        issues.append(
+            ValidationIssue(
+                code="STATUS_INVALID",
+                path=path,
+                message=f"invalid status: {doc.status}",
+                hint="Use one of planned, in_progress, implemented",
+            )
+        )
 
-    for ref in spec_refs:
-        check_ref_exists(ref, errors, path, "spec_refs")
+    for ref in doc.spec_refs:
+        check_ref_exists(ref, issues, path, "spec_refs")
 
-    for ref in code_refs:
-        check_ref_exists(ref, errors, path, "code_refs")
+    for ref in doc.code_refs:
+        check_ref_exists(ref, issues, path, "code_refs")
 
-    for nodeid in test_refs:
-        check_nodeid(nodeid, errors, path)
+    for nodeid in doc.test_refs:
+        check_nodeid(nodeid, issues, path)
 
-    # depends validation (deferred to second pass via all_ids)
-    check_depends(depends, all_ids, errors, path)
+    check_depends(doc.depends, all_ids, issues, path)
 
-    # Status-specific rules
-    if status == "planned":
-        if test_refs:
-            errors.append(f"{path}: planned capability must have empty test_refs")
-        if code_refs:
-            errors.append(f"{path}: planned capability must have empty code_refs")
-    elif status == "implemented":
-        if not test_refs:
-            errors.append(f"{path}: implemented requires non-empty test_refs")
-        if not code_refs:
-            errors.append(f"{path}: implemented requires non-empty code_refs")
+    if strict_status:
+        if doc.status == "planned":
+            if doc.test_refs:
+                issues.append(
+                    ValidationIssue(
+                        code="STATUS_PLANNED_HAS_TESTS",
+                        path=path,
+                        message="planned capability must have empty test_refs",
+                        hint="Either clear test_refs or move status to in_progress/implemented",
+                    )
+                )
+            if doc.code_refs:
+                issues.append(
+                    ValidationIssue(
+                        code="STATUS_PLANNED_HAS_CODE",
+                        path=path,
+                        message="planned capability must have empty code_refs",
+                        hint="Either clear code_refs or move status to in_progress/implemented",
+                    )
+                )
+        elif doc.status == "implemented":
+            if not doc.test_refs:
+                issues.append(
+                    ValidationIssue(
+                        code="STATUS_IMPLEMENTED_MISSING_TESTS",
+                        path=path,
+                        message="implemented requires non-empty test_refs",
+                        hint="Add at least one pytest nodeid",
+                    )
+                )
+            if not doc.code_refs:
+                issues.append(
+                    ValidationIssue(
+                        code="STATUS_IMPLEMENTED_MISSING_CODE",
+                        path=path,
+                        message="implemented requires non-empty code_refs",
+                        hint="Add implementation path references",
+                    )
+                )
 
-    # Body section validation
-    check_body_sections(body, errors, path)
+    check_body_sections(doc.body, issues, path)
 
 
-def collect_all_ids(md_files: list[Path]) -> set[str]:
-    ids: set[str] = set()
+def collect_capability_docs(
+    md_files: list[Path], issues: list[ValidationIssue]
+) -> list[CapabilityDoc]:
+    docs: list[CapabilityDoc] = []
     for md in md_files:
         if md.name == "README.md":
             continue
         try:
-            fm = read_frontmatter(md)
-            cap_id = (find_scalar(fm, "id") or "").strip().strip('"').strip("'")
-            if cap_id:
-                ids.add(cap_id)
-        except Exception:
-            pass
-    return ids
+            docs.append(load_capability(md))
+        except Exception as exc:
+            issues.append(
+                ValidationIssue(
+                    code="PARSE_ERROR",
+                    path=md,
+                    message=f"unexpected parse error: {exc}",
+                )
+            )
+    return docs
+
+
+def collect_all_ids(docs: list[CapabilityDoc]) -> set[str]:
+    return {doc.cap_id for doc in docs if doc.cap_id}
+
+
+def print_issues(issues: list[ValidationIssue]) -> None:
+    print("Capability validation failed:")
+    by_code: dict[str, int] = {}
+    for issue in issues:
+        by_code[issue.code] = by_code.get(issue.code, 0) + 1
+        print(f"- [{issue.code}] {issue.path}: {issue.message}")
+        if issue.hint:
+            print(f"  hint: {issue.hint}")
+
+    summary = ", ".join(f"{code}={count}" for code, count in sorted(by_code.items()))
+    print(f"\nTotal issues: {len(issues)} ({summary})")
 
 
 def main() -> int:
+    args = parse_args()
+    strict_status = not args.relaxed_status
+
     if not CAP_ROOT.exists():
         print(f"Capability root not found: {CAP_ROOT}")
         return 1
 
     md_files = sorted(CAP_ROOT.glob("**/*.md"))
-    all_ids = collect_all_ids(md_files)
-    errors: list[str] = []
+    issues: list[ValidationIssue] = []
+    docs = collect_capability_docs(md_files, issues)
+    all_ids = collect_all_ids(docs)
 
-    for md in md_files:
-        try:
-            validate_file(md, errors, all_ids)
-        except Exception as exc:  # pragma: no cover
-            errors.append(f"{md}: unexpected parse error: {exc}")
+    for doc in docs:
+        validate_file(doc, issues, all_ids, strict_status)
 
-    if errors:
-        print("Capability validation failed:")
-        for err in errors:
-            print(f"- {err}")
+    if issues:
+        print_issues(issues)
         return 1
 
-    print(f"Capability validation passed ({len(md_files)} markdown files checked).")
+    mode = "strict" if strict_status else "relaxed"
+    print(
+        f"Capability validation passed ({len(md_files)} markdown files checked, mode={mode})."
+    )
     return 0
 
 

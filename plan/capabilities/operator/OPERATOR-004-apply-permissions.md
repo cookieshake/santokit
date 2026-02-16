@@ -2,14 +2,13 @@
 id: OPERATOR-004
 domain: operator
 title: Apply permissions changes through release pipeline
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_operator.py::test_operator_permissions_change
+  - tests/integration_py/tests/capabilities/operator/test_operator_004_apply_permissions.py::test_operator_permissions_change
 code_refs:
-  - packages/tools/cli/
-  - packages/services/hub/
+  - tests/integration_py/tests/capabilities/operator/test_operator_004_apply_permissions.py
 ---
 
 ## Intent

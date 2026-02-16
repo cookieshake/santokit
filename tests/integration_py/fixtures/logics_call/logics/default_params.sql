@@ -1,11 +1,8 @@
 ---
-auth: authenticated
+auth: public
 params:
   greeting:
     type: string
-    default: "world"
-  count:
-    type: int
-    default: 1
+    default: "hello"
 ---
-SELECT :greeting as greeting, :count as count
+SELECT :greeting as greeting

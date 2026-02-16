@@ -2,13 +2,13 @@
 id: LOGICS-004
 domain: logics
 title: Validate required logic parameters and bind safely
-status: planned
+status: implemented
 depends: [LOGICS-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_logics.py::test_logics_get_items
+  - tests/integration_py/tests/capabilities/logics/test_logics_004_param_required.py::test_logics_get_items
 code_refs:
-  - packages/services/bridge/src/handlers/call.rs
+  - tests/integration_py/tests/capabilities/logics/test_logics_004_param_required.py
 ---
 
 ## Intent

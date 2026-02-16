@@ -2,14 +2,13 @@
 id: CRUD-002
 domain: crud
 title: Advanced update/delete behavior and safety gates
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_crud.py::test_crud_advanced
+  - tests/integration_py/tests/capabilities/crud/test_crud_002_advanced.py::test_crud_advanced
 code_refs:
-  - packages/services/bridge/
-  - packages/libs/sql/
+  - tests/integration_py/tests/capabilities/crud/test_crud_002_advanced.py
 ---
 
 ## Intent

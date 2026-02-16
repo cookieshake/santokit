@@ -2,13 +2,13 @@
 id: SECURITY-003
 domain: security
 title: Reject unsupported resource-based CEL operators
-status: planned
+status: implemented
 depends: [SECURITY-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_security.py::test_cel_resource_unsupported_operator
+  - tests/integration_py/tests/capabilities/security/test_security_003_cel_unsupported.py::test_cel_resource_unsupported_operator
 code_refs:
-  - packages/services/bridge/
+  - tests/integration_py/tests/capabilities/security/test_security_003_cel_unsupported.py
 ---
 
 ## Intent

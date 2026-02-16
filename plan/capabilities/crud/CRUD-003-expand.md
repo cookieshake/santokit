@@ -2,14 +2,13 @@
 id: CRUD-003
 domain: crud
 title: Expand related rows via declared foreign key relation
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: ["plan/spec/schema.md"]
 test_refs:
-  - tests/integration_py/tests/test_crud.py::test_crud_expand
+  - tests/integration_py/tests/capabilities/crud/test_crud_003_expand.py::test_crud_expand
 code_refs:
-  - packages/services/bridge/
-  - packages/libs/sql/
+  - tests/integration_py/tests/capabilities/crud/test_crud_003_expand.py
 ---
 
 ## Intent

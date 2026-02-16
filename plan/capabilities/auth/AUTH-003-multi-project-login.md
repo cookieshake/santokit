@@ -2,14 +2,13 @@
 id: AUTH-003
 domain: auth
 title: Isolate end-user auth across multiple projects
-status: planned
+status: implemented
 depends: [AUTH-001]
 spec_refs: ["plan/spec/bridge-hub-protocol.md"]
 test_refs:
-  - tests/integration_py/tests/test_auth.py::test_enduser_multi_project_login
+  - tests/integration_py/tests/capabilities/auth/test_auth_003_multi_project_login.py::test_enduser_multi_project_login
 code_refs:
-  - packages/services/hub/
-  - packages/services/bridge/
+  - tests/integration_py/tests/capabilities/auth/test_auth_003_multi_project_login.py
 ---
 
 ## Intent

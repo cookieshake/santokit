@@ -2,14 +2,13 @@
 id: OPERATOR-003
 domain: operator
 title: Apply schema changes through release pipeline
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: ["plan/spec/schema.md"]
 test_refs:
-  - tests/integration_py/tests/test_operator.py::test_operator_schema_change
+  - tests/integration_py/tests/capabilities/operator/test_operator_003_apply_schema.py::test_operator_schema_change
 code_refs:
-  - packages/tools/cli/
-  - packages/services/hub/
+  - tests/integration_py/tests/capabilities/operator/test_operator_003_apply_schema.py
 ---
 
 ## Intent

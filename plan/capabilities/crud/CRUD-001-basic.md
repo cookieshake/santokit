@@ -2,14 +2,13 @@
 id: CRUD-001
 domain: crud
 title: Basic insert/select and generated ID behavior
-status: planned
+status: implemented
 depends: [OPERATOR-001, OPERATOR-003, OPERATOR-004]
 spec_refs: ["plan/spec/schema.md", "plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_crud.py::test_crud_basic
+  - tests/integration_py/tests/capabilities/crud/test_crud_001_basic.py::test_crud_basic
 code_refs:
-  - packages/services/bridge/
-  - packages/libs/sql/
+  - tests/integration_py/tests/capabilities/crud/test_crud_001_basic.py
 ---
 
 ## Intent

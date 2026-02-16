@@ -2,13 +2,13 @@
 id: SECURITY-005
 domain: security
 title: Enforce explicit column-level permissions
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_security.py::test_column_permissions
+  - tests/integration_py/tests/capabilities/security/test_security_005_column_permissions.py::test_column_permissions
 code_refs:
-  - packages/services/bridge/
+  - tests/integration_py/tests/capabilities/security/test_security_005_column_permissions.py
 ---
 
 ## Intent

@@ -2,13 +2,13 @@
 id: LOGICS-007
 domain: logics
 title: Return consistent errors for common logic failure modes
-status: planned
+status: implemented
 depends: [LOGICS-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_logics.py::test_logics_error_cases
+  - tests/integration_py/tests/capabilities/logics/test_logics_007_errors.py::test_logics_error_cases
 code_refs:
-  - packages/services/bridge/src/handlers/call.rs
+  - tests/integration_py/tests/capabilities/logics/test_logics_007_errors.py
 ---
 
 ## Intent

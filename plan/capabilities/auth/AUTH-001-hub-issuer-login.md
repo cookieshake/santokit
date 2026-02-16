@@ -2,14 +2,13 @@
 id: AUTH-001
 domain: auth
 title: End-user login with Hub-issued access token
-status: planned
+status: implemented
 depends: [OPERATOR-001, OPERATOR-004]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_auth.py::test_enduser_login_hub_issuer
+  - tests/integration_py/tests/capabilities/auth/test_auth_001_hub_issuer_login.py::test_enduser_login_hub_issuer
 code_refs:
-  - packages/services/hub/
-  - packages/services/bridge/
+  - tests/integration_py/tests/capabilities/auth/test_auth_001_hub_issuer_login.py
 ---
 
 ## Intent

@@ -2,13 +2,13 @@
 id: SECURITY-004
 domain: security
 title: Enforce column visibility via explicit permissions.yaml column lists with test fixture validation
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_security.py::test_column_prefix
+  - tests/integration_py/tests/capabilities/security/test_security_004_column_prefix.py::test_column_prefix
 code_refs:
-  - packages/services/bridge/
+  - tests/integration_py/tests/capabilities/security/test_security_004_column_prefix.py
 ---
 
 ## Intent

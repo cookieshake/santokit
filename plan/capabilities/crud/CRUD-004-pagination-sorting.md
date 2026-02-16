@@ -2,14 +2,13 @@
 id: CRUD-004
 domain: crud
 title: Pagination and sorting on select operations
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: ["plan/spec/conventions.md"]
 test_refs:
-  - tests/integration_py/tests/test_crud.py::test_crud_pagination_sorting
+  - tests/integration_py/tests/capabilities/crud/test_crud_004_pagination_sorting.py::test_crud_pagination_sorting
 code_refs:
-  - packages/services/bridge/
-  - packages/libs/sql/
+  - tests/integration_py/tests/capabilities/crud/test_crud_004_pagination_sorting.py
 ---
 
 ## Intent

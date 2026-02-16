@@ -2,13 +2,13 @@
 id: LOGICS-006
 domain: logics
 title: Enforce role guard on logic execution
-status: planned
+status: implemented
 depends: [LOGICS-001, OPERATOR-002]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_logics.py::test_logics_admin_only
+  - tests/integration_py/tests/capabilities/logics/test_logics_006_role_guard.py::test_logics_admin_only
 code_refs:
-  - packages/services/bridge/src/handlers/call.rs
+  - tests/integration_py/tests/capabilities/logics/test_logics_006_role_guard.py
 ---
 
 ## Intent

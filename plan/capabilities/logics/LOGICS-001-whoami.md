@@ -2,13 +2,13 @@
 id: LOGICS-001
 domain: logics
 title: Return authenticated subject via system variable
-status: planned
+status: implemented
 depends: [OPERATOR-001, OPERATOR-003, OPERATOR-004]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_logics.py::test_logics_whoami
+  - tests/integration_py/tests/capabilities/logics/test_logics_001_whoami.py::test_logics_whoami
 code_refs:
-  - packages/services/bridge/src/handlers/call.rs
+  - tests/integration_py/tests/capabilities/logics/test_logics_001_whoami.py
 ---
 
 ## Intent

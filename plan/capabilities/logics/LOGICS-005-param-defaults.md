@@ -2,13 +2,13 @@
 id: LOGICS-005
 domain: logics
 title: Apply default values for optional logic parameters
-status: planned
+status: implemented
 depends: [LOGICS-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_logics.py::test_logics_default_params
+  - tests/integration_py/tests/capabilities/logics/test_logics_005_param_defaults.py::test_logics_default_params
 code_refs:
-  - packages/services/bridge/src/handlers/call.rs
+  - tests/integration_py/tests/capabilities/logics/test_logics_005_param_defaults.py
 ---
 
 ## Intent

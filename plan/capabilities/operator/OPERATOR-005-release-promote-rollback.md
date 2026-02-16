@@ -2,14 +2,13 @@
 id: OPERATOR-005
 domain: operator
 title: Promote and rollback releases across environments
-status: planned
+status: implemented
 depends: [OPERATOR-003, OPERATOR-004]
 spec_refs: ["plan/spec/final.md", "plan/spec/schema.md"]
 test_refs:
-  - tests/integration_py/tests/test_operator.py::test_operator_release_promotion_rollback
+  - tests/integration_py/tests/capabilities/operator/test_operator_005_release_promote_rollback.py::test_operator_release_promotion_rollback
 code_refs:
-  - packages/tools/cli/
-  - packages/services/hub/
+  - tests/integration_py/tests/capabilities/operator/test_operator_005_release_promote_rollback.py
 ---
 
 ## Intent

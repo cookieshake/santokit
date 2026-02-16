@@ -7,15 +7,19 @@ Planned scenarios (draft):
 - drift gate: snapshot -> drift -> promote blocked -> drift fixed -> promote ok
 - auth/runtime: api key + bearer + cookie access token -> /call
 
-Flow docs mapping (draft):
+Capability mapping:
 
-| Flow doc | Test file |
-|----------|----------|
-| `plan/flows/operator.md` | `tests/integration_py/tests/test_operator.py` |
-| `plan/flows/auth.md` | `tests/integration_py/tests/test_auth.py` |
-| `plan/flows/crud.md` | `tests/integration_py/tests/test_crud.py` |
-| `plan/flows/security.md` | `tests/integration_py/tests/test_security.py` |
-| `plan/flows/logics.md` | `tests/integration_py/tests/test_logics.py` |
+| Capability domain | Test file |
+|-------------------|-----------|
+| `plan/capabilities/operator/*` | `tests/integration_py/tests/capabilities/operator/test_operator_*.py` |
+| `plan/capabilities/auth/*` | `tests/integration_py/tests/capabilities/auth/test_auth_*.py` |
+| `plan/capabilities/crud/*` | `tests/integration_py/tests/capabilities/crud/test_crud_*.py` |
+| `plan/capabilities/security/*` | `tests/integration_py/tests/capabilities/security/test_security_*.py` |
+| `plan/capabilities/logics/*` | `tests/integration_py/tests/capabilities/logics/test_logics_*.py` |
+
+Cross-capability spec contracts:
+- `tests/integration_py/tests/spec/test_spec_*.py`
+- Coverage matrix: `tests/integration_py/tests/spec/coverage_matrix.md`
 
 Prereqs:
 - Docker (for docker-compose + testcontainers)
@@ -33,9 +37,26 @@ One-liner:
 flox activate -- sh -lc 'cd tests/integration_py && uv venv --clear && uv pip install -e . && uv run pytest'
 ```
 
-From repo root:
+From repo root (strict capability validation + full suite):
 ```sh
 ./scripts/run-integration-tests.sh
+```
+
+Run only tests referenced by capability docs:
+```sh
+./scripts/run-integration-tests.sh --from-plan
+```
+
+Run a filtered capability subset:
+```sh
+./scripts/run-integration-tests.sh --domain auth
+./scripts/run-integration-tests.sh --capability AUTH-001
+./scripts/run-integration-tests.sh --status implemented
+```
+
+Run spec-only tests:
+```sh
+flox activate -- sh -lc 'cd tests/integration_py && uv run pytest tests/spec -q'
 ```
 
 Notes:

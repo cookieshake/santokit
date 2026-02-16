@@ -2,13 +2,13 @@
 id: LOGICS-003
 domain: logics
 title: Return affected count for execute-only SQL logic
-status: planned
+status: implemented
 depends: [LOGICS-001, CRUD-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:
-  - tests/integration_py/tests/test_logics.py::test_logics_insert_item
+  - tests/integration_py/tests/capabilities/logics/test_logics_003_exec_affected.py::test_logics_insert_item
 code_refs:
-  - packages/services/bridge/src/handlers/call.rs
+  - tests/integration_py/tests/capabilities/logics/test_logics_003_exec_affected.py
 ---
 
 ## Intent

@@ -2,14 +2,13 @@
 id: SECURITY-001
 domain: security
 title: Inject CEL condition into row-level SQL filtering
-status: planned
+status: implemented
 depends: [CRUD-001]
 spec_refs: []
 test_refs:
-  - tests/integration_py/tests/test_security.py::test_cel_condition
+  - tests/integration_py/tests/capabilities/security/test_security_001_cel_condition.py::test_cel_condition
 code_refs:
-  - packages/services/bridge/
-  - packages/libs/sql/
+  - tests/integration_py/tests/capabilities/security/test_security_001_cel_condition.py
 ---
 
 ## Intent
