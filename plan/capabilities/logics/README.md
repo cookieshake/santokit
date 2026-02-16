@@ -8,7 +8,7 @@ SQL을 실행하고 표준 응답 형식으로 반환한다. Hub는 릴리즈 �
 
 LOGICS-001이 인증 컨텍스트 바인딩이라는 핵심 메커니즘을 확립한다.
 이후 capability는 공개 접근(LOGICS-002), 응답 형식(LOGICS-003), 파라미터 계약(LOGICS-004/005),
-접근 제어(LOGICS-006), 에러 분류(LOGICS-007)를 순서대로 레이어링한다.
+접근 제어(LOGICS-006), 에러 분류(LOGICS-007), 조건 게이트(LOGICS-008)를 순서대로 레이어링한다.
 
 ### 1단계 — 인증 컨텍스트 바인딩: `LOGICS-001`
 
@@ -56,6 +56,14 @@ OPERATOR-002에서 발급한 API key의 역할 바인딩이 이 검사의 입력
 
 - [`LOGICS-007`](LOGICS-007-errors.md) — 공통 에러 분류 및 구조화 응답
 
+### 8단계 — CEL 조건 게이트: `LOGICS-008`
+
+로직 정의에 선언된 `condition` CEL 식을 SQL 실행 전에 평가한다.
+이 단계의 CEL 컨텍스트는 request-scoped(`request.auth.*`, `request.params.*`)로 제한하며,
+`resource.*` 참조는 미지원으로 조기 거부한다.
+
+- [`LOGICS-008`](LOGICS-008-condition-gate.md) — request-scoped CEL 조건 검사 (SQL 실행 전)
+
 ## 컴포넌트 경계 요약
 
 Logics 도메인의 모든 런타임 처리는 Bridge(`bridge/src/handlers/call.rs`)에서 완결된다.
@@ -69,3 +77,4 @@ Hub는 릴리즈에 로직 정의를 포함시키는 역할만 한다.
 | LOGICS-004/005 | 파라미터 검증·기본값 주입 | SQL 바인딩 |
 | LOGICS-006 | 역할 검사 (SQL 실행 전 차단) | 역할 통과 시 실행 |
 | LOGICS-007 | 에러 분류·구조화 | — |
+| LOGICS-008 | CEL 조건 검사(요청 컨텍스트) | 조건 통과 시 실행 |

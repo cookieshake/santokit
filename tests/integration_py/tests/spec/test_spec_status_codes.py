@@ -4,6 +4,7 @@ from dsl import (
     api_key_headers,
     bootstrap_project,
     create_api_key,
+    get_rows,
     jwt_headers,
     signup_and_login,
 )
@@ -48,6 +49,41 @@ def test_spec_status_code_contract_for_common_failures(compose_env):
     assert (
         env.httpToBridge(
             "POST", "/call", json={"path": "logics/get_items"}, headers=api_headers
+        ).status_code
+        == 400
+    )
+
+    whoami = env.httpToBridge(
+        "POST",
+        "/call",
+        json={"path": "logics/whoami"},
+        headers=jwt_headers(token, project),
+    )
+    assert whoami.status_code == 200
+    sub = get_rows(whoami.json())[0]["sub"]
+
+    assert (
+        env.httpToBridge(
+            "POST",
+            "/call",
+            json={
+                "path": "logics/condition_owner_echo",
+                "params": {"owner_id": "someone-else"},
+            },
+            headers=jwt_headers(token, project),
+        ).status_code
+        == 403
+    )
+
+    assert (
+        env.httpToBridge(
+            "POST",
+            "/call",
+            json={
+                "path": "logics/condition_malformed",
+                "params": {"owner_id": sub},
+            },
+            headers=jwt_headers(token, project),
         ).status_code
         == 400
     )
