@@ -2,7 +2,7 @@
 id: CRUD-002
 domain: crud
 title: Advanced update/delete behavior and safety gates
-status: implemented
+status: planned
 depends: [CRUD-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:

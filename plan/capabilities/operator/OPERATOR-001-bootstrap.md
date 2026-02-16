@@ -2,7 +2,7 @@
 id: OPERATOR-001
 domain: operator
 title: Bootstrap project, env, connection, and initial apply
-status: implemented
+status: planned
 depends: []
 spec_refs: ["plan/spec/cli.md", "plan/spec/schema.md"]
 test_refs:

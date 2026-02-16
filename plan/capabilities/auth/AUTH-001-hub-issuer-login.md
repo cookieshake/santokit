@@ -2,7 +2,7 @@
 id: AUTH-001
 domain: auth
 title: End-user login with Hub-issued access token
-status: implemented
+status: planned
 depends: [OPERATOR-001, OPERATOR-004]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:

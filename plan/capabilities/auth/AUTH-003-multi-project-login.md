@@ -2,7 +2,7 @@
 id: AUTH-003
 domain: auth
 title: Isolate end-user auth across multiple projects
-status: implemented
+status: planned
 depends: [AUTH-001]
 spec_refs: ["plan/spec/bridge-hub-protocol.md"]
 test_refs:

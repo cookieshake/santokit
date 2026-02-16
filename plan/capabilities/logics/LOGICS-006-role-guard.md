@@ -2,7 +2,7 @@
 id: LOGICS-006
 domain: logics
 title: Enforce role guard on logic execution
-status: implemented
+status: planned
 depends: [LOGICS-001, OPERATOR-002]
 spec_refs: []
 test_refs:

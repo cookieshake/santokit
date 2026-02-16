@@ -2,7 +2,7 @@
 id: OPERATOR-005
 domain: operator
 title: Promote and rollback releases across environments
-status: implemented
+status: planned
 depends: [OPERATOR-003, OPERATOR-004]
 spec_refs: ["plan/spec/final.md", "plan/spec/schema.md"]
 test_refs:

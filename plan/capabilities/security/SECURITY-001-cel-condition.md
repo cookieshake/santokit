@@ -2,7 +2,7 @@
 id: SECURITY-001
 domain: security
 title: Inject CEL condition into row-level SQL filtering
-status: implemented
+status: planned
 depends: [CRUD-001]
 spec_refs: []
 test_refs:

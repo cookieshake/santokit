@@ -2,7 +2,7 @@
 id: OPERATOR-003
 domain: operator
 title: Apply schema changes through release pipeline
-status: implemented
+status: planned
 depends: [OPERATOR-001]
 spec_refs: ["plan/spec/schema.md"]
 test_refs:

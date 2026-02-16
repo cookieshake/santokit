@@ -2,7 +2,7 @@
 id: CRUD-003
 domain: crud
 title: Expand related rows via declared foreign key relation
-status: implemented
+status: planned
 depends: [CRUD-001]
 spec_refs: ["plan/spec/schema.md"]
 test_refs:

@@ -2,7 +2,7 @@
 id: LOGICS-003
 domain: logics
 title: Return affected count for execute-only SQL logic
-status: implemented
+status: planned
 depends: [LOGICS-001, CRUD-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:

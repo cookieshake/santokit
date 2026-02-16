@@ -2,7 +2,7 @@
 id: LOGICS-005
 domain: logics
 title: Apply default values for optional logic parameters
-status: implemented
+status: planned
 depends: [LOGICS-001]
 spec_refs: []
 test_refs:

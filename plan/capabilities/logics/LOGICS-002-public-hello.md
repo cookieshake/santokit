@@ -2,7 +2,7 @@
 id: LOGICS-002
 domain: logics
 title: Execute public logic and return greeting
-status: implemented
+status: planned
 depends: [LOGICS-001]
 spec_refs: []
 test_refs:

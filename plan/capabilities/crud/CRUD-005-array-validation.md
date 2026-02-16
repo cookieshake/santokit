@@ -2,7 +2,7 @@
 id: CRUD-005
 domain: crud
 title: Validate array column item types on insert and update
-status: implemented
+status: planned
 depends: [CRUD-001]
 spec_refs: ["plan/spec/schema.md", "plan/spec/errors.md"]
 test_refs:

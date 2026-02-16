@@ -2,7 +2,7 @@
 id: CRUD-001
 domain: crud
 title: Basic insert/select and generated ID behavior
-status: implemented
+status: planned
 depends: [OPERATOR-001, OPERATOR-003, OPERATOR-004]
 spec_refs: ["plan/spec/schema.md", "plan/spec/errors.md"]
 test_refs:

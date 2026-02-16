@@ -2,7 +2,7 @@
 id: AUTH-002
 domain: auth
 title: Configure external OIDC provider in Hub
-status: implemented
+status: planned
 depends: [OPERATOR-001]
 spec_refs: []
 test_refs:

@@ -2,7 +2,7 @@
 id: OPERATOR-004
 domain: operator
 title: Apply permissions changes through release pipeline
-status: implemented
+status: planned
 depends: [OPERATOR-001]
 spec_refs: []
 test_refs:

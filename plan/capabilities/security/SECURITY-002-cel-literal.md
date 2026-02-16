@@ -2,7 +2,7 @@
 id: SECURITY-002
 domain: security
 title: Support CEL resource literal equality filtering
-status: implemented
+status: planned
 depends: [CRUD-001]
 spec_refs: []
 test_refs:

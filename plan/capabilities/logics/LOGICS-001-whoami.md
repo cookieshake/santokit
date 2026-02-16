@@ -2,7 +2,7 @@
 id: LOGICS-001
 domain: logics
 title: Return authenticated subject via system variable
-status: implemented
+status: planned
 depends: [OPERATOR-001, OPERATOR-003, OPERATOR-004]
 spec_refs: []
 test_refs:

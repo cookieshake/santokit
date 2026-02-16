@@ -2,7 +2,7 @@
 id: SECURITY-005
 domain: security
 title: Enforce explicit column-level permissions
-status: implemented
+status: planned
 depends: [CRUD-001]
 spec_refs: []
 test_refs:

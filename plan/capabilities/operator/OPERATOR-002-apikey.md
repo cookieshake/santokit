@@ -2,7 +2,7 @@
 id: OPERATOR-002
 domain: operator
 title: Create and use project API key
-status: implemented
+status: planned
 depends: [OPERATOR-001]
 spec_refs: ["plan/spec/cli.md"]
 test_refs:

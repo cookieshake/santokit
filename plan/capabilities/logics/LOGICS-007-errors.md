@@ -2,7 +2,7 @@
 id: LOGICS-007
 domain: logics
 title: Return consistent errors for common logic failure modes
-status: implemented
+status: planned
 depends: [LOGICS-001]
 spec_refs: ["plan/spec/errors.md"]
 test_refs:

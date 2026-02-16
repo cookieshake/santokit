@@ -2,7 +2,7 @@
 id: CRUD-004
 domain: crud
 title: Pagination and sorting on select operations
-status: implemented
+status: planned
 depends: [CRUD-001]
 spec_refs: ["plan/spec/conventions.md"]
 test_refs:
