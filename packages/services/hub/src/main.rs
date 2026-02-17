@@ -8,11 +8,16 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseConnection, DbBackend, ExecResult, QueryResult, Statement,
+    ColumnTrait, Condition, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set, Statement,
 };
+use sea_query::OnConflict;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
+
+mod entities;
+use entities::prelude::*;
 
 #[derive(Clone)]
 struct AppState {
@@ -156,56 +161,6 @@ async fn init_db(db: &DatabaseConnection) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn sqlx_to_sea(v: impl Into<String>) -> sea_orm::Value {
-    sea_orm::Value::String(Some(Box::new(v.into())))
-}
-
-fn sea_i64(v: i64) -> sea_orm::Value {
-    sea_orm::Value::BigInt(Some(v))
-}
-
-async fn db_exec(
-    db: &DatabaseConnection,
-    sql: &str,
-    values: Vec<sea_orm::Value>,
-) -> Result<ExecResult, (StatusCode, Json<ErrorBody>)> {
-    db.execute(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        sql.to_string(),
-        values,
-    ))
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))
-}
-
-async fn db_query_one(
-    db: &DatabaseConnection,
-    sql: &str,
-    values: Vec<sea_orm::Value>,
-) -> Result<Option<QueryResult>, (StatusCode, Json<ErrorBody>)> {
-    db.query_one(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        sql.to_string(),
-        values,
-    ))
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))
-}
-
-async fn db_query_all(
-    db: &DatabaseConnection,
-    sql: &str,
-    values: Vec<sea_orm::Value>,
-) -> Result<Vec<QueryResult>, (StatusCode, Json<ErrorBody>)> {
-    db.query_all(Statement::from_sql_and_values(
-        DbBackend::Sqlite,
-        sql.to_string(),
-        values,
-    ))
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))
-}
-
 async fn health() -> Json<Value> {
     Json(serde_json::json!({"ok": true}))
 }
@@ -241,12 +196,13 @@ async fn project_create(
     Json(req): Json<ProjectReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    db_exec(
-        &state.db,
-        "INSERT OR IGNORE INTO projects(name) VALUES (?1)",
-        vec![sqlx_to_sea(req.project)],
-    )
-    .await?;
+    Project::insert(entities::project::ActiveModel {
+        name: Set(req.project),
+    })
+    .on_conflict(OnConflict::column(entities::project::Column::Name).do_nothing().to_owned())
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -262,12 +218,18 @@ async fn env_create(
     Json(req): Json<EnvReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    db_exec(
-        &state.db,
-        "INSERT OR IGNORE INTO envs(project,name) VALUES (?1,?2)",
-        vec![sqlx_to_sea(req.project), sqlx_to_sea(req.env)],
+    Env::insert(entities::env::ActiveModel {
+        project: Set(req.project),
+        name: Set(req.env),
+    })
+    .on_conflict(
+        OnConflict::columns([entities::env::Column::Project, entities::env::Column::Name])
+            .do_nothing()
+            .to_owned(),
     )
-    .await?;
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -286,19 +248,28 @@ async fn connection_set(
     Json(req): Json<ConnectionSetReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    db_exec(
-        &state.db,
-        "INSERT INTO connections(project,env,name,engine,db_url) VALUES (?1,?2,?3,?4,?5) \
-         ON CONFLICT(project,env,name) DO UPDATE SET engine=excluded.engine, db_url=excluded.db_url",
-        vec![
-            sqlx_to_sea(req.project),
-            sqlx_to_sea(req.env),
-            sqlx_to_sea(req.name),
-            sqlx_to_sea(req.engine),
-            sqlx_to_sea(req.db_url),
-        ],
+    Connection::insert(entities::connection::ActiveModel {
+        project: Set(req.project),
+        env: Set(req.env),
+        name: Set(req.name),
+        engine: Set(req.engine),
+        db_url: Set(req.db_url),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            entities::connection::Column::Project,
+            entities::connection::Column::Env,
+            entities::connection::Column::Name,
+        ])
+        .update_columns([
+            entities::connection::Column::Engine,
+            entities::connection::Column::DbUrl,
+        ])
+        .to_owned(),
     )
-    .await?;
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -315,18 +286,15 @@ async fn connection_test(
     Json(req): Json<ConnectionTestReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    let row = db_query_one(
-        &state.db,
-        "SELECT db_url FROM connections WHERE project=?1 AND env=?2 AND name=?3",
-        vec![
-            sqlx_to_sea(req.project),
-            sqlx_to_sea(req.env),
-            sqlx_to_sea(req.name),
-        ],
-    )
-    .await?
-    .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "connection not found"))?;
-    let db_url: String = row.try_get_by("db_url").unwrap_or_default();
+    let row = Connection::find()
+        .filter(entities::connection::Column::Project.eq(req.project))
+        .filter(entities::connection::Column::Env.eq(req.env))
+        .filter(entities::connection::Column::Name.eq(req.name))
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "connection not found"))?;
+    let db_url = row.db_url;
     if Database::connect(&db_url).await.is_err() {
         return Err(err(
             StatusCode::BAD_REQUEST,
@@ -365,33 +333,37 @@ async fn apply_release(
         .map_err(|e| err(StatusCode::BAD_REQUEST, "BAD_REQUEST", e.to_string()))?;
 
     let release_id = Uuid::new_v4().to_string();
-    db_exec(
-        &state.db,
-        "INSERT INTO releases(id,project,env,ref,schema_json,permissions_yaml,storage_yaml,logics_json,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
-        vec![
-            sqlx_to_sea(&release_id),
-            sqlx_to_sea(&req.project),
-            sqlx_to_sea(&req.env),
-            sqlx_to_sea(&req.r#ref),
-            sqlx_to_sea(schema_json.to_string()),
-            sqlx_to_sea(permissions),
-            sqlx_to_sea(storage),
-            sqlx_to_sea(logics),
-            sqlx_to_sea(Utc::now().to_rfc3339()),
-        ],
-    )
-    .await?;
+    Release::insert(entities::release::ActiveModel {
+        id: Set(release_id.clone()),
+        project: Set(req.project.clone()),
+        env: Set(req.env.clone()),
+        ref_name: Set(req.r#ref.clone()),
+        schema_json: Set(schema_json.to_string()),
+        permissions_yaml: Set(permissions),
+        storage_yaml: Set(storage),
+        logics_json: Set(logics),
+        created_at: Set(Utc::now().to_rfc3339()),
+    })
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
 
-    db_exec(
-        &state.db,
-        "INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id",
-        vec![
-            sqlx_to_sea(&req.project),
-            sqlx_to_sea(&req.env),
-            sqlx_to_sea(&release_id),
-        ],
+    CurrentRelease::insert(entities::current_release::ActiveModel {
+        project: Set(req.project.clone()),
+        env: Set(req.env.clone()),
+        release_id: Set(release_id.clone()),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            entities::current_release::Column::Project,
+            entities::current_release::Column::Env,
+        ])
+        .update_column(entities::current_release::Column::ReleaseId)
+        .to_owned(),
     )
-    .await?;
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
 
     Ok(Json(
         serde_json::json!({"release_id": release_id, "reused": false, "dry_run": false}),
@@ -423,16 +395,17 @@ async fn apply_schema_to_db(
     env: &str,
     schema: &Value,
 ) -> Result<(), (StatusCode, Json<ErrorBody>)> {
-    let row = db_query_one(
-        db,
-        "SELECT db_url FROM connections WHERE project=?1 AND env=?2 AND name='main'",
-        vec![sqlx_to_sea(project), sqlx_to_sea(env)],
-    )
-    .await?;
+    let row = Connection::find()
+        .filter(entities::connection::Column::Project.eq(project))
+        .filter(entities::connection::Column::Env.eq(env))
+        .filter(entities::connection::Column::Name.eq("main"))
+        .one(db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     let Some(row) = row else {
         return Ok(());
     };
-    let db_url: String = row.try_get_by("db_url").unwrap_or_default();
+    let db_url = row.db_url;
     let pg = Database::connect(&db_url).await.map_err(|e| {
         err(
             StatusCode::BAD_REQUEST,
@@ -547,20 +520,32 @@ async fn apikey_create(
     let key_id = req.name.clone();
     let secret = Uuid::new_v4().simple().to_string();
     let api_key = format!("{}.{}", key_id, secret);
-    db_exec(
-        &state.db,
-        "INSERT OR REPLACE INTO apikeys(id,name,project,env,secret,roles_json,revoked,created_at) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",
-        vec![
-            sqlx_to_sea(&key_id),
-            sqlx_to_sea(&req.name),
-            sqlx_to_sea(&req.project),
-            sqlx_to_sea(&req.env),
-            sqlx_to_sea(&secret),
-            sqlx_to_sea(serde_json::to_string(&req.roles).unwrap_or("[]".to_string())),
-            sqlx_to_sea(Utc::now().to_rfc3339()),
-        ],
+    ApiKey::insert(entities::apikey::ActiveModel {
+        id: Set(key_id.clone()),
+        name: Set(req.name),
+        project: Set(req.project),
+        env: Set(req.env),
+        secret: Set(secret),
+        roles_json: Set(serde_json::to_string(&req.roles).unwrap_or("[]".to_string())),
+        revoked: Set(0),
+        created_at: Set(Utc::now().to_rfc3339()),
+    })
+    .on_conflict(
+        OnConflict::column(entities::apikey::Column::Id)
+            .update_columns([
+                entities::apikey::Column::Name,
+                entities::apikey::Column::Project,
+                entities::apikey::Column::Env,
+                entities::apikey::Column::Secret,
+                entities::apikey::Column::RolesJson,
+                entities::apikey::Column::Revoked,
+                entities::apikey::Column::CreatedAt,
+            ])
+            .to_owned(),
     )
-    .await?;
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(
         serde_json::json!({"key_id": key_id, "api_key": api_key}),
     ))
@@ -578,21 +563,16 @@ async fn apikey_list(
     Query(q): Query<ApiKeyListQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    let rows = db_query_all(
-        &state.db,
-        "SELECT id,name,revoked FROM apikeys WHERE project=?1 AND env=?2 ORDER BY created_at DESC",
-        vec![sqlx_to_sea(q.project), sqlx_to_sea(q.env)],
-    )
-    .await?;
+    let rows = ApiKey::find()
+        .filter(entities::apikey::Column::Project.eq(q.project))
+        .filter(entities::apikey::Column::Env.eq(q.env))
+        .order_by_desc(entities::apikey::Column::CreatedAt)
+        .all(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     let list: Vec<Value> = rows
         .into_iter()
-        .map(|r| {
-            serde_json::json!({
-                "id": r.try_get_by::<String,_>("id").unwrap_or_default(),
-                "name": r.try_get_by::<String,_>("name").unwrap_or_default(),
-                "revoked": r.try_get_by::<i64,_>("revoked").unwrap_or(0) == 1
-            })
-        })
+        .map(|r| serde_json::json!({"id": r.id, "name": r.name, "revoked": r.revoked == 1}))
         .collect();
     Ok(Json(Value::Array(list)))
 }
@@ -610,16 +590,18 @@ async fn apikey_revoke(
     Json(req): Json<ApiKeyRevokeReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    db_exec(
-        &state.db,
-        "UPDATE apikeys SET revoked=1 WHERE project=?1 AND env=?2 AND (id=?3 OR name=?3)",
-        vec![
-            sqlx_to_sea(req.project),
-            sqlx_to_sea(req.env),
-            sqlx_to_sea(req.key_id),
-        ],
-    )
-    .await?;
+    ApiKey::update_many()
+        .col_expr(entities::apikey::Column::Revoked, 1.into())
+        .filter(entities::apikey::Column::Project.eq(req.project))
+        .filter(entities::apikey::Column::Env.eq(req.env))
+        .filter(
+            Condition::any()
+                .add(entities::apikey::Column::Id.eq(req.key_id.clone()))
+                .add(entities::apikey::Column::Name.eq(req.key_id)),
+        )
+        .exec(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -636,18 +618,25 @@ async fn enduser_signup(
     Json(req): Json<EndUserReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     let sub = Uuid::new_v4().to_string();
-    db_exec(
-        &state.db,
-        "INSERT OR REPLACE INTO endusers(project,env,email,password,sub) VALUES (?1,?2,?3,?4,?5)",
-        vec![
-            sqlx_to_sea(req.project),
-            sqlx_to_sea(req.env),
-            sqlx_to_sea(req.email),
-            sqlx_to_sea(req.password),
-            sqlx_to_sea(sub),
-        ],
+    EndUser::insert(entities::enduser::ActiveModel {
+        project: Set(req.project),
+        env: Set(req.env),
+        email: Set(req.email),
+        password: Set(req.password),
+        sub: Set(sub),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            entities::enduser::Column::Project,
+            entities::enduser::Column::Env,
+            entities::enduser::Column::Email,
+        ])
+        .update_columns([entities::enduser::Column::Password, entities::enduser::Column::Sub])
+        .to_owned(),
     )
-    .await?;
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -655,45 +644,38 @@ async fn enduser_login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<EndUserReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    let row = db_query_one(
-        &state.db,
-        "SELECT sub,password FROM endusers WHERE project=?1 AND env=?2 AND email=?3",
-        vec![
-            sqlx_to_sea(&req.project),
-            sqlx_to_sea(&req.env),
-            sqlx_to_sea(&req.email),
-        ],
-    )
-    .await?
-    .ok_or_else(|| {
+    let row = EndUser::find()
+        .filter(entities::enduser::Column::Project.eq(&req.project))
+        .filter(entities::enduser::Column::Env.eq(&req.env))
+        .filter(entities::enduser::Column::Email.eq(&req.email))
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| {
         err(
             StatusCode::UNAUTHORIZED,
             "UNAUTHORIZED",
             "invalid credentials",
         )
     })?;
-    let pw: String = row.try_get_by("password").unwrap_or_default();
-    if pw != req.password {
+    if row.password != req.password {
         return Err(err(
             StatusCode::UNAUTHORIZED,
             "UNAUTHORIZED",
             "invalid credentials",
         ));
     }
-    let sub: String = row.try_get_by("sub").unwrap_or_default();
     let token = Uuid::new_v4().to_string();
-    db_exec(
-        &state.db,
-        "INSERT OR REPLACE INTO tokens(token,project,env,sub,roles_json) VALUES (?1,?2,?3,?4,?5)",
-        vec![
-            sqlx_to_sea(&token),
-            sqlx_to_sea(&req.project),
-            sqlx_to_sea(&req.env),
-            sqlx_to_sea(sub),
-            sqlx_to_sea("[\"authenticated\",\"reader\"]"),
-        ],
-    )
-    .await?;
+    Token::insert(entities::token::ActiveModel {
+        token: Set(token.clone()),
+        project: Set(req.project),
+        env: Set(req.env),
+        sub: Set(row.sub),
+        roles_json: Set("[\"authenticated\",\"reader\"]".to_string()),
+    })
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"access_token": token})))
 }
 
@@ -724,17 +706,14 @@ async fn oidc_create(
             "invalid issuer",
         ));
     }
-    let exists = db_query_one(
-        &state.db,
-        "SELECT 1 FROM oidc_providers WHERE project=?1 AND env=?2 AND name=?3",
-        vec![
-            sqlx_to_sea(&req.project),
-            sqlx_to_sea(&req.env),
-            sqlx_to_sea(&req.name),
-        ],
-    )
-    .await?
-    .is_some();
+    let exists = OidcProvider::find()
+        .filter(entities::oidc_provider::Column::Project.eq(&req.project))
+        .filter(entities::oidc_provider::Column::Env.eq(&req.env))
+        .filter(entities::oidc_provider::Column::Name.eq(&req.name))
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .is_some();
     if exists {
         return Err(err(
             StatusCode::CONFLICT,
@@ -743,18 +722,16 @@ async fn oidc_create(
         ));
     }
     let payload = serde_json::to_string(&req).unwrap_or_else(|_| "{}".to_string());
-    db_exec(
-        &state.db,
-        "INSERT INTO oidc_providers(project,env,name,issuer,payload_json) VALUES (?1,?2,?3,?4,?5)",
-        vec![
-            sqlx_to_sea(req.project),
-            sqlx_to_sea(req.env),
-            sqlx_to_sea(req.name),
-            sqlx_to_sea(req.issuer),
-            sqlx_to_sea(payload),
-        ],
-    )
-    .await?;
+    OidcProvider::insert(entities::oidc_provider::ActiveModel {
+        project: Set(req.project),
+        env: Set(req.env),
+        name: Set(req.name),
+        issuer: Set(req.issuer),
+        payload_json: Set(payload),
+    })
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({"ok":true}))))
 }
 
@@ -772,15 +749,17 @@ async fn release_list(
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
     let limit = q.limit.unwrap_or(20);
-    let rows = db_query_all(
-        &state.db,
-        "SELECT id,ref,created_at FROM releases WHERE project=?1 AND env=?2 ORDER BY created_at DESC LIMIT ?3",
-        vec![sqlx_to_sea(q.project), sqlx_to_sea(q.env), sea_i64(limit)],
-    )
-    .await?;
+    let rows = Release::find()
+        .filter(entities::release::Column::Project.eq(q.project))
+        .filter(entities::release::Column::Env.eq(q.env))
+        .order_by_desc(entities::release::Column::CreatedAt)
+        .limit(limit as u64)
+        .all(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     let list: Vec<Value> = rows
         .into_iter()
-        .map(|r| serde_json::json!({"id": r.try_get_by::<String,_>("id").unwrap_or_default(), "ref": r.try_get_by::<String,_>("ref").unwrap_or_default()}))
+        .map(|r| serde_json::json!({"id": r.id, "ref": r.ref_name}))
         .collect();
     Ok(Json(Value::Array(list)))
 }
@@ -798,26 +777,35 @@ async fn release_promote(
     Json(req): Json<PromoteReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    let row = db_query_one(
-        &state.db,
-        "SELECT release_id FROM current_releases WHERE project=?1 AND env=?2",
-        vec![sqlx_to_sea(&req.project), sqlx_to_sea(&req.from)],
-    )
-    .await?
-    .ok_or_else(|| {
+    let row = CurrentRelease::find()
+        .filter(entities::current_release::Column::Project.eq(&req.project))
+        .filter(entities::current_release::Column::Env.eq(&req.from))
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| {
         err(
             StatusCode::NOT_FOUND,
             "NOT_FOUND",
             "source release not found",
         )
     })?;
-    let rid: String = row.try_get_by("release_id").unwrap_or_default();
-    db_exec(
-        &state.db,
-        "INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id",
-        vec![sqlx_to_sea(req.project), sqlx_to_sea(req.to), sqlx_to_sea(rid)],
+    CurrentRelease::insert(entities::current_release::ActiveModel {
+        project: Set(req.project),
+        env: Set(req.to),
+        release_id: Set(row.release_id),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            entities::current_release::Column::Project,
+            entities::current_release::Column::Env,
+        ])
+        .update_column(entities::current_release::Column::ReleaseId)
+        .to_owned(),
     )
-    .await?;
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -834,16 +822,22 @@ async fn release_rollback(
     Json(req): Json<RollbackReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    db_exec(
-        &state.db,
-        "INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id",
-        vec![
-            sqlx_to_sea(req.project),
-            sqlx_to_sea(req.env),
-            sqlx_to_sea(req.to_release_id),
-        ],
+    CurrentRelease::insert(entities::current_release::ActiveModel {
+        project: Set(req.project),
+        env: Set(req.env),
+        release_id: Set(req.to_release_id),
+    })
+    .on_conflict(
+        OnConflict::columns([
+            entities::current_release::Column::Project,
+            entities::current_release::Column::Env,
+        ])
+        .update_column(entities::current_release::Column::ReleaseId)
+        .to_owned(),
     )
-    .await?;
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -857,30 +851,28 @@ async fn internal_apikey_verify(
     State(state): State<Arc<AppState>>,
     Json(req): Json<InternalVerifyApiKeyReq>,
 ) -> Json<Value> {
-    let row = db_query_one(
-        &state.db,
-        "SELECT id,project,env,roles_json,revoked FROM apikeys WHERE id=?1 AND secret=?2",
-        vec![sqlx_to_sea(&req.key_id), sqlx_to_sea(&req.secret)],
-    )
-    .await
-    .ok()
-    .flatten();
+    let row = ApiKey::find()
+        .filter(entities::apikey::Column::Id.eq(&req.key_id))
+        .filter(entities::apikey::Column::Secret.eq(&req.secret))
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten();
     let Some(row) = row else {
         return Json(serde_json::json!({"valid": false}));
     };
-    if row.try_get_by::<i64, _>("revoked").unwrap_or(1) == 1 {
+    if row.revoked == 1 {
         return Json(serde_json::json!({"valid": false}));
     }
-    let roles_json: String = row.try_get_by("roles_json").unwrap_or("[]".to_string());
-    let roles: Vec<String> = serde_json::from_str(&roles_json).unwrap_or_default();
+    let roles: Vec<String> = serde_json::from_str(&row.roles_json).unwrap_or_default();
     Json(serde_json::json!({
         "valid": true,
         "key": {
-            "id": row.try_get_by::<String,_>("id").unwrap_or_default(),
-            "project_id": row.try_get_by::<String,_>("project").unwrap_or_default(),
-            "env_id": row.try_get_by::<String,_>("env").unwrap_or_default(),
-            "project_name": row.try_get_by::<String,_>("project").unwrap_or_default(),
-            "env_name": row.try_get_by::<String,_>("env").unwrap_or_default(),
+            "id": row.id,
+            "project_id": row.project,
+            "env_id": row.env,
+            "project_name": row.project,
+            "env_name": row.env,
             "roles": roles,
         }
     }))
@@ -895,28 +887,21 @@ async fn internal_token_verify(
     State(state): State<Arc<AppState>>,
     Json(req): Json<InternalVerifyTokenReq>,
 ) -> Json<Value> {
-    let row = db_query_one(
-        &state.db,
-        "SELECT project,env,sub,roles_json FROM tokens WHERE token=?1",
-        vec![sqlx_to_sea(req.token)],
-    )
-    .await
-    .ok()
-    .flatten();
+    let row = Token::find_by_id(req.token)
+        .one(&state.db)
+        .await
+        .ok()
+        .flatten();
     let Some(row) = row else {
         return Json(serde_json::json!({"valid": false}));
     };
-    let roles: Vec<String> = serde_json::from_str(
-        &row.try_get_by::<String, _>("roles_json")
-            .unwrap_or("[]".to_string()),
-    )
-    .unwrap_or_default();
+    let roles: Vec<String> = serde_json::from_str(&row.roles_json).unwrap_or_default();
     Json(serde_json::json!({
         "valid": true,
         "claims": {
-            "project": row.try_get_by::<String,_>("project").unwrap_or_default(),
-            "env": row.try_get_by::<String,_>("env").unwrap_or_default(),
-            "sub": row.try_get_by::<String,_>("sub").unwrap_or_default(),
+            "project": row.project,
+            "env": row.env,
+            "sub": row.sub,
             "roles": roles,
         }
     }))
@@ -926,59 +911,53 @@ async fn internal_current_release(
     State(state): State<Arc<AppState>>,
     Path((project, env)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    let current = db_query_one(
-        &state.db,
-        "SELECT release_id FROM current_releases WHERE project=?1 AND env=?2",
-        vec![sqlx_to_sea(&project), sqlx_to_sea(&env)],
-    )
-    .await?
-    .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "no current release"))?;
-    let rid: String = current.try_get_by("release_id").unwrap_or_default();
+    let current = CurrentRelease::find()
+        .filter(entities::current_release::Column::Project.eq(&project))
+        .filter(entities::current_release::Column::Env.eq(&env))
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "no current release"))?;
+    let rel = Release::find_by_id(current.release_id.clone())
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "release not found"))?;
 
-    let rel = db_query_one(
-        &state.db,
-        "SELECT schema_json,permissions_yaml,storage_yaml,logics_json FROM releases WHERE id=?1",
-        vec![sqlx_to_sea(&rid)],
-    )
-    .await?
-    .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "release not found"))?;
-
-    let schema_text: String = rel.try_get_by("schema_json").unwrap_or("{}".to_string());
+    let schema_text = rel.schema_json;
     let schema: Value =
         serde_json::from_str(&schema_text).unwrap_or_else(|_| serde_json::json!({"tables":{}}));
-    let permissions_yaml: String = rel
-        .try_get_by("permissions_yaml")
-        .unwrap_or("tables: {}\n".to_string());
+    let permissions_yaml = rel.permissions_yaml;
     let permissions: Value = serde_yaml::from_str(&permissions_yaml)
         .unwrap_or_else(|_| serde_json::json!({"tables":{}}));
-    let storage_yaml: String = rel.try_get_by("storage_yaml").unwrap_or("{}\n".to_string());
+    let storage_yaml = rel.storage_yaml;
     let storage: Value =
         serde_yaml::from_str(&storage_yaml).unwrap_or_else(|_| serde_json::json!({}));
-    let logics_text: String = rel.try_get_by("logics_json").unwrap_or("{}".to_string());
+    let logics_text = rel.logics_json;
     let logics: Value =
         serde_json::from_str(&logics_text).unwrap_or_else(|_| serde_json::json!({}));
 
-    let conn_rows = db_query_all(
-        &state.db,
-        "SELECT name,engine,db_url FROM connections WHERE project=?1 AND env=?2",
-        vec![sqlx_to_sea(&project), sqlx_to_sea(&env)],
-    )
-    .await?;
+    let conn_rows = Connection::find()
+        .filter(entities::connection::Column::Project.eq(&project))
+        .filter(entities::connection::Column::Env.eq(&env))
+        .all(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     let mut connections = serde_json::Map::new();
     for r in conn_rows {
-        let name: String = r.try_get_by("name").unwrap_or_default();
+        let name = r.name.clone();
         connections.insert(
             name,
             serde_json::json!({
-                "name": r.try_get_by::<String,_>("name").unwrap_or_default(),
-                "engine": r.try_get_by::<String,_>("engine").unwrap_or_default(),
-                "db_url": r.try_get_by::<String,_>("db_url").unwrap_or_default(),
+                "name": r.name,
+                "engine": r.engine,
+                "db_url": r.db_url,
             }),
         );
     }
 
     Ok(Json(serde_json::json!({
-        "release_id": rid,
+        "release_id": current.release_id,
         "schema": schema,
         "permissions": permissions,
         "storage": storage,
@@ -990,59 +969,44 @@ async fn internal_current_release(
 async fn internal_latest_release(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    let row = db_query_one(
-        &state.db,
-        "SELECT c.project AS project, c.env AS env, c.release_id AS release_id \
-         FROM current_releases c \
-         JOIN releases r ON r.id = c.release_id \
-         ORDER BY r.created_at DESC LIMIT 1",
-        vec![],
-    )
-    .await?
-    .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "no current release"))?;
+    let latest = Release::find()
+        .order_by_desc(entities::release::Column::CreatedAt)
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "no current release"))?;
+    let project = latest.project.clone();
+    let env = latest.env.clone();
+    let rid = latest.id.clone();
 
-    let project: String = row.try_get_by("project").unwrap_or_default();
-    let env: String = row.try_get_by("env").unwrap_or_default();
-    let rid: String = row.try_get_by("release_id").unwrap_or_default();
-
-    let rel = db_query_one(
-        &state.db,
-        "SELECT schema_json,permissions_yaml,storage_yaml,logics_json FROM releases WHERE id=?1",
-        vec![sqlx_to_sea(&rid)],
-    )
-    .await?
-    .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "release not found"))?;
-
-    let schema_text: String = rel.try_get_by("schema_json").unwrap_or("{}".to_string());
+    let schema_text = latest.schema_json;
     let schema: Value =
         serde_json::from_str(&schema_text).unwrap_or_else(|_| serde_json::json!({"tables":{}}));
-    let permissions_yaml: String = rel
-        .try_get_by("permissions_yaml")
-        .unwrap_or("tables: {}\n".to_string());
+    let permissions_yaml = latest.permissions_yaml;
     let permissions: Value = serde_yaml::from_str(&permissions_yaml)
         .unwrap_or_else(|_| serde_json::json!({"tables":{}}));
-    let storage_yaml: String = rel.try_get_by("storage_yaml").unwrap_or("{}\n".to_string());
+    let storage_yaml = latest.storage_yaml;
     let storage: Value =
         serde_yaml::from_str(&storage_yaml).unwrap_or_else(|_| serde_json::json!({}));
-    let logics_text: String = rel.try_get_by("logics_json").unwrap_or("{}".to_string());
+    let logics_text = latest.logics_json;
     let logics: Value =
         serde_json::from_str(&logics_text).unwrap_or_else(|_| serde_json::json!({}));
 
-    let conn_rows = db_query_all(
-        &state.db,
-        "SELECT name,engine,db_url FROM connections WHERE project=?1 AND env=?2",
-        vec![sqlx_to_sea(&project), sqlx_to_sea(&env)],
-    )
-    .await?;
+    let conn_rows = Connection::find()
+        .filter(entities::connection::Column::Project.eq(&project))
+        .filter(entities::connection::Column::Env.eq(&env))
+        .all(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     let mut connections = serde_json::Map::new();
     for r in conn_rows {
-        let name: String = r.try_get_by("name").unwrap_or_default();
+        let name = r.name.clone();
         connections.insert(
             name,
             serde_json::json!({
-                "name": r.try_get_by::<String,_>("name").unwrap_or_default(),
-                "engine": r.try_get_by::<String,_>("engine").unwrap_or_default(),
-                "db_url": r.try_get_by::<String,_>("db_url").unwrap_or_default(),
+                "name": r.name,
+                "engine": r.engine,
+                "db_url": r.db_url,
             }),
         );
     }
