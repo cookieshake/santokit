@@ -1,0 +1,6 @@
+[package]
+name = "stk-sql"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
