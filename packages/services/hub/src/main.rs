@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::path::Path as FsPath;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -8,15 +7,16 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::Utc;
+use sea_orm::{
+    ConnectionTrait, Database, DatabaseConnection, DbBackend, ExecResult, QueryResult, Statement,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{Connection, PgConnection, Row, SqlitePool};
 use uuid::Uuid;
 
 #[derive(Clone)]
 struct AppState {
-    db: SqlitePool,
+    db: DatabaseConnection,
 }
 
 #[derive(Serialize)]
@@ -73,30 +73,33 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(4000);
 
-    let options = if let Some(path) = db_url.strip_prefix("sqlite:///") {
+    if let Some(path) = db_url.strip_prefix("sqlite:///") {
         let abs_path = FsPath::new("/").join(path);
         if let Some(parent) = abs_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        SqliteConnectOptions::new()
-            .filename(abs_path)
-            .create_if_missing(true)
     } else if let Some(path) = db_url.strip_prefix("sqlite://") {
         if let Some(parent) = FsPath::new(path).parent() {
             if !parent.as_os_str().is_empty() {
                 std::fs::create_dir_all(parent)?;
             }
         }
-        SqliteConnectOptions::new()
-            .filename(path)
-            .create_if_missing(true)
+    }
+    let connect_url = if let Some(path) = db_url.strip_prefix("sqlite:///") {
+        let path = format!("/{}", path.trim_start_matches('/'));
+        format!("sqlite:{}?mode=rwc", path)
+    } else if let Some(path) = db_url.strip_prefix("sqlite://") {
+        format!("sqlite://{}?mode=rwc", path)
+    } else if db_url.starts_with("sqlite:") {
+        if db_url.contains("?") {
+            format!("{}&mode=rwc", db_url)
+        } else {
+            format!("{}?mode=rwc", db_url)
+        }
     } else {
-        SqliteConnectOptions::from_str(&db_url)?.create_if_missing(true)
+        db_url.clone()
     };
-    let db = SqlitePoolOptions::new()
-        .max_connections(8)
-        .connect_with(options)
-        .await?;
+    let db = Database::connect(&connect_url).await?;
     init_db(&db).await?;
 
     let state = Arc::new(AppState { db });
@@ -134,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn init_db(db: &SqlitePool) -> anyhow::Result<()> {
+async fn init_db(db: &DatabaseConnection) -> anyhow::Result<()> {
     let stmts = [
         "CREATE TABLE IF NOT EXISTS projects (name TEXT PRIMARY KEY)",
         "CREATE TABLE IF NOT EXISTS envs (project TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(project,name))",
@@ -147,9 +150,60 @@ async fn init_db(db: &SqlitePool) -> anyhow::Result<()> {
         "CREATE TABLE IF NOT EXISTS oidc_providers (project TEXT NOT NULL, env TEXT NOT NULL, name TEXT NOT NULL, issuer TEXT NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY(project,env,name))",
     ];
     for s in stmts {
-        sqlx::query(s).execute(db).await?;
+        db.execute(Statement::from_string(DbBackend::Sqlite, s.to_string()))
+            .await?;
     }
     Ok(())
+}
+
+fn sqlx_to_sea(v: impl Into<String>) -> sea_orm::Value {
+    sea_orm::Value::String(Some(Box::new(v.into())))
+}
+
+fn sea_i64(v: i64) -> sea_orm::Value {
+    sea_orm::Value::BigInt(Some(v))
+}
+
+async fn db_exec(
+    db: &DatabaseConnection,
+    sql: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<ExecResult, (StatusCode, Json<ErrorBody>)> {
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        sql.to_string(),
+        values,
+    ))
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))
+}
+
+async fn db_query_one(
+    db: &DatabaseConnection,
+    sql: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<Option<QueryResult>, (StatusCode, Json<ErrorBody>)> {
+    db.query_one(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        sql.to_string(),
+        values,
+    ))
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))
+}
+
+async fn db_query_all(
+    db: &DatabaseConnection,
+    sql: &str,
+    values: Vec<sea_orm::Value>,
+) -> Result<Vec<QueryResult>, (StatusCode, Json<ErrorBody>)> {
+    db.query_all(Statement::from_sql_and_values(
+        DbBackend::Sqlite,
+        sql.to_string(),
+        values,
+    ))
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))
 }
 
 async fn health() -> Json<Value> {
@@ -187,11 +241,12 @@ async fn project_create(
     Json(req): Json<ProjectReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    sqlx::query("INSERT OR IGNORE INTO projects(name) VALUES (?1)")
-        .bind(req.project)
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    db_exec(
+        &state.db,
+        "INSERT OR IGNORE INTO projects(name) VALUES (?1)",
+        vec![sqlx_to_sea(req.project)],
+    )
+    .await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -207,12 +262,12 @@ async fn env_create(
     Json(req): Json<EnvReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    sqlx::query("INSERT OR IGNORE INTO envs(project,name) VALUES (?1,?2)")
-        .bind(req.project)
-        .bind(req.env)
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    db_exec(
+        &state.db,
+        "INSERT OR IGNORE INTO envs(project,name) VALUES (?1,?2)",
+        vec![sqlx_to_sea(req.project), sqlx_to_sea(req.env)],
+    )
+    .await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -231,18 +286,19 @@ async fn connection_set(
     Json(req): Json<ConnectionSetReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    sqlx::query(
+    db_exec(
+        &state.db,
         "INSERT INTO connections(project,env,name,engine,db_url) VALUES (?1,?2,?3,?4,?5) \
          ON CONFLICT(project,env,name) DO UPDATE SET engine=excluded.engine, db_url=excluded.db_url",
+        vec![
+            sqlx_to_sea(req.project),
+            sqlx_to_sea(req.env),
+            sqlx_to_sea(req.name),
+            sqlx_to_sea(req.engine),
+            sqlx_to_sea(req.db_url),
+        ],
     )
-    .bind(req.project)
-    .bind(req.env)
-    .bind(req.name)
-    .bind(req.engine)
-    .bind(req.db_url)
-    .execute(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    .await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -259,17 +315,19 @@ async fn connection_test(
     Json(req): Json<ConnectionTestReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    let row = sqlx::query("SELECT db_url FROM connections WHERE project=?1 AND env=?2 AND name=?3")
-        .bind(req.project)
-        .bind(req.env)
-        .bind(req.name)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
-        .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "connection not found"))?;
-    let db_url: String = row.try_get("db_url").unwrap_or_default();
-    let ok = PgConnection::connect(&db_url).await.is_ok();
-    if !ok {
+    let row = db_query_one(
+        &state.db,
+        "SELECT db_url FROM connections WHERE project=?1 AND env=?2 AND name=?3",
+        vec![
+            sqlx_to_sea(req.project),
+            sqlx_to_sea(req.env),
+            sqlx_to_sea(req.name),
+        ],
+    )
+    .await?
+    .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "connection not found"))?;
+    let db_url: String = row.try_get_by("db_url").unwrap_or_default();
+    if Database::connect(&db_url).await.is_err() {
         return Err(err(
             StatusCode::BAD_REQUEST,
             "BAD_REQUEST",
@@ -307,27 +365,33 @@ async fn apply_release(
         .map_err(|e| err(StatusCode::BAD_REQUEST, "BAD_REQUEST", e.to_string()))?;
 
     let release_id = Uuid::new_v4().to_string();
-    sqlx::query("INSERT INTO releases(id,project,env,ref,schema_json,permissions_yaml,storage_yaml,logics_json,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)")
-        .bind(&release_id)
-        .bind(&req.project)
-        .bind(&req.env)
-        .bind(&req.r#ref)
-        .bind(schema_json.to_string())
-        .bind(permissions)
-        .bind(storage)
-        .bind(logics)
-        .bind(Utc::now().to_rfc3339())
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    db_exec(
+        &state.db,
+        "INSERT INTO releases(id,project,env,ref,schema_json,permissions_yaml,storage_yaml,logics_json,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        vec![
+            sqlx_to_sea(&release_id),
+            sqlx_to_sea(&req.project),
+            sqlx_to_sea(&req.env),
+            sqlx_to_sea(&req.r#ref),
+            sqlx_to_sea(schema_json.to_string()),
+            sqlx_to_sea(permissions),
+            sqlx_to_sea(storage),
+            sqlx_to_sea(logics),
+            sqlx_to_sea(Utc::now().to_rfc3339()),
+        ],
+    )
+    .await?;
 
-    sqlx::query("INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id")
-        .bind(&req.project)
-        .bind(&req.env)
-        .bind(&release_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    db_exec(
+        &state.db,
+        "INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id",
+        vec![
+            sqlx_to_sea(&req.project),
+            sqlx_to_sea(&req.env),
+            sqlx_to_sea(&release_id),
+        ],
+    )
+    .await?;
 
     Ok(Json(
         serde_json::json!({"release_id": release_id, "reused": false, "dry_run": false}),
@@ -354,33 +418,28 @@ fn merge_schema(inputs: &[String]) -> Result<Value, (StatusCode, Json<ErrorBody>
 }
 
 async fn apply_schema_to_db(
-    db: &SqlitePool,
+    db: &DatabaseConnection,
     project: &str,
     env: &str,
     schema: &Value,
 ) -> Result<(), (StatusCode, Json<ErrorBody>)> {
-    let row =
-        sqlx::query("SELECT db_url FROM connections WHERE project=?1 AND env=?2 AND name='main'")
-            .bind(project)
-            .bind(env)
-            .fetch_optional(db)
-            .await
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    let row = db_query_one(
+        db,
+        "SELECT db_url FROM connections WHERE project=?1 AND env=?2 AND name='main'",
+        vec![sqlx_to_sea(project), sqlx_to_sea(env)],
+    )
+    .await?;
     let Some(row) = row else {
         return Ok(());
     };
-    let db_url: String = row.try_get("db_url").unwrap_or_default();
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .connect(&db_url)
-        .await
-        .map_err(|e| {
-            err(
-                StatusCode::BAD_REQUEST,
-                "BAD_REQUEST",
-                format!("db connect failed: {}", e),
-            )
-        })?;
+    let db_url: String = row.try_get_by("db_url").unwrap_or_default();
+    let pg = Database::connect(&db_url).await.map_err(|e| {
+        err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            format!("db connect failed: {}", e),
+        )
+    })?;
 
     let tables = schema
         .get("tables")
@@ -435,8 +494,7 @@ async fn apply_schema_to_db(
             table,
             cols.join(", ")
         );
-        sqlx::query(&create)
-            .execute(&pool)
+        pg.execute(Statement::from_string(DbBackend::Postgres, create))
             .await
             .map_err(|e| err(StatusCode::BAD_REQUEST, "BAD_REQUEST", e.to_string()))?;
         if let Some(obj) = def.get("columns").and_then(|v| v.as_object()) {
@@ -463,7 +521,9 @@ async fn apply_schema_to_db(
                     "ALTER TABLE \"{}\" ADD COLUMN IF NOT EXISTS \"{}\" {}",
                     table, name, sql_t
                 );
-                let _ = sqlx::query(&alter).execute(&pool).await;
+                let _ = pg
+                    .execute(Statement::from_string(DbBackend::Postgres, alter))
+                    .await;
             }
         }
     }
@@ -487,17 +547,20 @@ async fn apikey_create(
     let key_id = req.name.clone();
     let secret = Uuid::new_v4().simple().to_string();
     let api_key = format!("{}.{}", key_id, secret);
-    sqlx::query("INSERT OR REPLACE INTO apikeys(id,name,project,env,secret,roles_json,revoked,created_at) VALUES (?1,?2,?3,?4,?5,?6,0,?7)")
-        .bind(&key_id)
-        .bind(&req.name)
-        .bind(&req.project)
-        .bind(&req.env)
-        .bind(&secret)
-        .bind(serde_json::to_string(&req.roles).unwrap_or("[]".to_string()))
-        .bind(Utc::now().to_rfc3339())
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    db_exec(
+        &state.db,
+        "INSERT OR REPLACE INTO apikeys(id,name,project,env,secret,roles_json,revoked,created_at) VALUES (?1,?2,?3,?4,?5,?6,0,?7)",
+        vec![
+            sqlx_to_sea(&key_id),
+            sqlx_to_sea(&req.name),
+            sqlx_to_sea(&req.project),
+            sqlx_to_sea(&req.env),
+            sqlx_to_sea(&secret),
+            sqlx_to_sea(serde_json::to_string(&req.roles).unwrap_or("[]".to_string())),
+            sqlx_to_sea(Utc::now().to_rfc3339()),
+        ],
+    )
+    .await?;
     Ok(Json(
         serde_json::json!({"key_id": key_id, "api_key": api_key}),
     ))
@@ -515,21 +578,19 @@ async fn apikey_list(
     Query(q): Query<ApiKeyListQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    let rows = sqlx::query(
+    let rows = db_query_all(
+        &state.db,
         "SELECT id,name,revoked FROM apikeys WHERE project=?1 AND env=?2 ORDER BY created_at DESC",
+        vec![sqlx_to_sea(q.project), sqlx_to_sea(q.env)],
     )
-    .bind(q.project)
-    .bind(q.env)
-    .fetch_all(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    .await?;
     let list: Vec<Value> = rows
         .into_iter()
         .map(|r| {
             serde_json::json!({
-                "id": r.try_get::<String,_>("id").unwrap_or_default(),
-                "name": r.try_get::<String,_>("name").unwrap_or_default(),
-                "revoked": r.try_get::<i64,_>("revoked").unwrap_or(0) == 1
+                "id": r.try_get_by::<String,_>("id").unwrap_or_default(),
+                "name": r.try_get_by::<String,_>("name").unwrap_or_default(),
+                "revoked": r.try_get_by::<i64,_>("revoked").unwrap_or(0) == 1
             })
         })
         .collect();
@@ -549,13 +610,16 @@ async fn apikey_revoke(
     Json(req): Json<ApiKeyRevokeReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    sqlx::query("UPDATE apikeys SET revoked=1 WHERE project=?1 AND env=?2 AND (id=?3 OR name=?3)")
-        .bind(req.project)
-        .bind(req.env)
-        .bind(req.key_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    db_exec(
+        &state.db,
+        "UPDATE apikeys SET revoked=1 WHERE project=?1 AND env=?2 AND (id=?3 OR name=?3)",
+        vec![
+            sqlx_to_sea(req.project),
+            sqlx_to_sea(req.env),
+            sqlx_to_sea(req.key_id),
+        ],
+    )
+    .await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -572,17 +636,18 @@ async fn enduser_signup(
     Json(req): Json<EndUserReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     let sub = Uuid::new_v4().to_string();
-    sqlx::query(
+    db_exec(
+        &state.db,
         "INSERT OR REPLACE INTO endusers(project,env,email,password,sub) VALUES (?1,?2,?3,?4,?5)",
+        vec![
+            sqlx_to_sea(req.project),
+            sqlx_to_sea(req.env),
+            sqlx_to_sea(req.email),
+            sqlx_to_sea(req.password),
+            sqlx_to_sea(sub),
+        ],
     )
-    .bind(req.project)
-    .bind(req.env)
-    .bind(req.email)
-    .bind(req.password)
-    .bind(sub)
-    .execute(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    .await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -590,22 +655,24 @@ async fn enduser_login(
     State(state): State<Arc<AppState>>,
     Json(req): Json<EndUserReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    let row =
-        sqlx::query("SELECT sub,password FROM endusers WHERE project=?1 AND env=?2 AND email=?3")
-            .bind(&req.project)
-            .bind(&req.env)
-            .bind(&req.email)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
-            .ok_or_else(|| {
-                err(
-                    StatusCode::UNAUTHORIZED,
-                    "UNAUTHORIZED",
-                    "invalid credentials",
-                )
-            })?;
-    let pw: String = row.try_get("password").unwrap_or_default();
+    let row = db_query_one(
+        &state.db,
+        "SELECT sub,password FROM endusers WHERE project=?1 AND env=?2 AND email=?3",
+        vec![
+            sqlx_to_sea(&req.project),
+            sqlx_to_sea(&req.env),
+            sqlx_to_sea(&req.email),
+        ],
+    )
+    .await?
+    .ok_or_else(|| {
+        err(
+            StatusCode::UNAUTHORIZED,
+            "UNAUTHORIZED",
+            "invalid credentials",
+        )
+    })?;
+    let pw: String = row.try_get_by("password").unwrap_or_default();
     if pw != req.password {
         return Err(err(
             StatusCode::UNAUTHORIZED,
@@ -613,19 +680,20 @@ async fn enduser_login(
             "invalid credentials",
         ));
     }
-    let sub: String = row.try_get("sub").unwrap_or_default();
+    let sub: String = row.try_get_by("sub").unwrap_or_default();
     let token = Uuid::new_v4().to_string();
-    sqlx::query(
+    db_exec(
+        &state.db,
         "INSERT OR REPLACE INTO tokens(token,project,env,sub,roles_json) VALUES (?1,?2,?3,?4,?5)",
+        vec![
+            sqlx_to_sea(&token),
+            sqlx_to_sea(&req.project),
+            sqlx_to_sea(&req.env),
+            sqlx_to_sea(sub),
+            sqlx_to_sea("[\"authenticated\",\"reader\"]"),
+        ],
     )
-    .bind(&token)
-    .bind(&req.project)
-    .bind(&req.env)
-    .bind(sub)
-    .bind("[\"authenticated\",\"reader\"]")
-    .execute(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    .await?;
     Ok(Json(serde_json::json!({"access_token": token})))
 }
 
@@ -656,15 +724,17 @@ async fn oidc_create(
             "invalid issuer",
         ));
     }
-    let exists =
-        sqlx::query("SELECT 1 FROM oidc_providers WHERE project=?1 AND env=?2 AND name=?3")
-            .bind(&req.project)
-            .bind(&req.env)
-            .bind(&req.name)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
-            .is_some();
+    let exists = db_query_one(
+        &state.db,
+        "SELECT 1 FROM oidc_providers WHERE project=?1 AND env=?2 AND name=?3",
+        vec![
+            sqlx_to_sea(&req.project),
+            sqlx_to_sea(&req.env),
+            sqlx_to_sea(&req.name),
+        ],
+    )
+    .await?
+    .is_some();
     if exists {
         return Err(err(
             StatusCode::CONFLICT,
@@ -673,17 +743,18 @@ async fn oidc_create(
         ));
     }
     let payload = serde_json::to_string(&req).unwrap_or_else(|_| "{}".to_string());
-    sqlx::query(
+    db_exec(
+        &state.db,
         "INSERT INTO oidc_providers(project,env,name,issuer,payload_json) VALUES (?1,?2,?3,?4,?5)",
+        vec![
+            sqlx_to_sea(req.project),
+            sqlx_to_sea(req.env),
+            sqlx_to_sea(req.name),
+            sqlx_to_sea(req.issuer),
+            sqlx_to_sea(payload),
+        ],
     )
-    .bind(req.project)
-    .bind(req.env)
-    .bind(req.name)
-    .bind(req.issuer)
-    .bind(payload)
-    .execute(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    .await?;
     Ok((StatusCode::CREATED, Json(serde_json::json!({"ok":true}))))
 }
 
@@ -701,16 +772,15 @@ async fn release_list(
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
     let limit = q.limit.unwrap_or(20);
-    let rows = sqlx::query("SELECT id,ref,created_at FROM releases WHERE project=?1 AND env=?2 ORDER BY created_at DESC LIMIT ?3")
-        .bind(q.project)
-        .bind(q.env)
-        .bind(limit)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    let rows = db_query_all(
+        &state.db,
+        "SELECT id,ref,created_at FROM releases WHERE project=?1 AND env=?2 ORDER BY created_at DESC LIMIT ?3",
+        vec![sqlx_to_sea(q.project), sqlx_to_sea(q.env), sea_i64(limit)],
+    )
+    .await?;
     let list: Vec<Value> = rows
         .into_iter()
-        .map(|r| serde_json::json!({"id": r.try_get::<String,_>("id").unwrap_or_default(), "ref": r.try_get::<String,_>("ref").unwrap_or_default()}))
+        .map(|r| serde_json::json!({"id": r.try_get_by::<String,_>("id").unwrap_or_default(), "ref": r.try_get_by::<String,_>("ref").unwrap_or_default()}))
         .collect();
     Ok(Json(Value::Array(list)))
 }
@@ -728,27 +798,26 @@ async fn release_promote(
     Json(req): Json<PromoteReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    let row = sqlx::query("SELECT release_id FROM current_releases WHERE project=?1 AND env=?2")
-        .bind(&req.project)
-        .bind(&req.from)
-        .fetch_optional(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
-        .ok_or_else(|| {
-            err(
-                StatusCode::NOT_FOUND,
-                "NOT_FOUND",
-                "source release not found",
-            )
-        })?;
-    let rid: String = row.try_get("release_id").unwrap_or_default();
-    sqlx::query("INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id")
-        .bind(req.project)
-        .bind(req.to)
-        .bind(rid)
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    let row = db_query_one(
+        &state.db,
+        "SELECT release_id FROM current_releases WHERE project=?1 AND env=?2",
+        vec![sqlx_to_sea(&req.project), sqlx_to_sea(&req.from)],
+    )
+    .await?
+    .ok_or_else(|| {
+        err(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "source release not found",
+        )
+    })?;
+    let rid: String = row.try_get_by("release_id").unwrap_or_default();
+    db_exec(
+        &state.db,
+        "INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id",
+        vec![sqlx_to_sea(req.project), sqlx_to_sea(req.to), sqlx_to_sea(rid)],
+    )
+    .await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -765,13 +834,16 @@ async fn release_rollback(
     Json(req): Json<RollbackReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
     require_operator(&headers)?;
-    sqlx::query("INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id")
-        .bind(req.project)
-        .bind(req.env)
-        .bind(req.to_release_id)
-        .execute(&state.db)
-        .await
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    db_exec(
+        &state.db,
+        "INSERT INTO current_releases(project,env,release_id) VALUES (?1,?2,?3) ON CONFLICT(project,env) DO UPDATE SET release_id=excluded.release_id",
+        vec![
+            sqlx_to_sea(req.project),
+            sqlx_to_sea(req.env),
+            sqlx_to_sea(req.to_release_id),
+        ],
+    )
+    .await?;
     Ok(Json(serde_json::json!({"ok":true})))
 }
 
@@ -785,31 +857,30 @@ async fn internal_apikey_verify(
     State(state): State<Arc<AppState>>,
     Json(req): Json<InternalVerifyApiKeyReq>,
 ) -> Json<Value> {
-    let row = sqlx::query(
+    let row = db_query_one(
+        &state.db,
         "SELECT id,project,env,roles_json,revoked FROM apikeys WHERE id=?1 AND secret=?2",
+        vec![sqlx_to_sea(&req.key_id), sqlx_to_sea(&req.secret)],
     )
-    .bind(&req.key_id)
-    .bind(&req.secret)
-    .fetch_optional(&state.db)
     .await
     .ok()
     .flatten();
     let Some(row) = row else {
         return Json(serde_json::json!({"valid": false}));
     };
-    if row.try_get::<i64, _>("revoked").unwrap_or(1) == 1 {
+    if row.try_get_by::<i64, _>("revoked").unwrap_or(1) == 1 {
         return Json(serde_json::json!({"valid": false}));
     }
-    let roles_json: String = row.try_get("roles_json").unwrap_or("[]".to_string());
+    let roles_json: String = row.try_get_by("roles_json").unwrap_or("[]".to_string());
     let roles: Vec<String> = serde_json::from_str(&roles_json).unwrap_or_default();
     Json(serde_json::json!({
         "valid": true,
         "key": {
-            "id": row.try_get::<String,_>("id").unwrap_or_default(),
-            "project_id": row.try_get::<String,_>("project").unwrap_or_default(),
-            "env_id": row.try_get::<String,_>("env").unwrap_or_default(),
-            "project_name": row.try_get::<String,_>("project").unwrap_or_default(),
-            "env_name": row.try_get::<String,_>("env").unwrap_or_default(),
+            "id": row.try_get_by::<String,_>("id").unwrap_or_default(),
+            "project_id": row.try_get_by::<String,_>("project").unwrap_or_default(),
+            "env_id": row.try_get_by::<String,_>("env").unwrap_or_default(),
+            "project_name": row.try_get_by::<String,_>("project").unwrap_or_default(),
+            "env_name": row.try_get_by::<String,_>("env").unwrap_or_default(),
             "roles": roles,
         }
     }))
@@ -824,26 +895,28 @@ async fn internal_token_verify(
     State(state): State<Arc<AppState>>,
     Json(req): Json<InternalVerifyTokenReq>,
 ) -> Json<Value> {
-    let row = sqlx::query("SELECT project,env,sub,roles_json FROM tokens WHERE token=?1")
-        .bind(req.token)
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten();
+    let row = db_query_one(
+        &state.db,
+        "SELECT project,env,sub,roles_json FROM tokens WHERE token=?1",
+        vec![sqlx_to_sea(req.token)],
+    )
+    .await
+    .ok()
+    .flatten();
     let Some(row) = row else {
         return Json(serde_json::json!({"valid": false}));
     };
     let roles: Vec<String> = serde_json::from_str(
-        &row.try_get::<String, _>("roles_json")
+        &row.try_get_by::<String, _>("roles_json")
             .unwrap_or("[]".to_string()),
     )
     .unwrap_or_default();
     Json(serde_json::json!({
         "valid": true,
         "claims": {
-            "project": row.try_get::<String,_>("project").unwrap_or_default(),
-            "env": row.try_get::<String,_>("env").unwrap_or_default(),
-            "sub": row.try_get::<String,_>("sub").unwrap_or_default(),
+            "project": row.try_get_by::<String,_>("project").unwrap_or_default(),
+            "env": row.try_get_by::<String,_>("env").unwrap_or_default(),
+            "sub": row.try_get_by::<String,_>("sub").unwrap_or_default(),
             "roles": roles,
         }
     }))
@@ -853,56 +926,53 @@ async fn internal_current_release(
     State(state): State<Arc<AppState>>,
     Path((project, env)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    let current =
-        sqlx::query("SELECT release_id FROM current_releases WHERE project=?1 AND env=?2")
-            .bind(&project)
-            .bind(&env)
-            .fetch_optional(&state.db)
-            .await
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
-            .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "no current release"))?;
-    let rid: String = current.try_get("release_id").unwrap_or_default();
-
-    let rel = sqlx::query(
-        "SELECT schema_json,permissions_yaml,storage_yaml,logics_json FROM releases WHERE id=?1",
+    let current = db_query_one(
+        &state.db,
+        "SELECT release_id FROM current_releases WHERE project=?1 AND env=?2",
+        vec![sqlx_to_sea(&project), sqlx_to_sea(&env)],
     )
-    .bind(&rid)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+    .await?
+    .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "no current release"))?;
+    let rid: String = current.try_get_by("release_id").unwrap_or_default();
+
+    let rel = db_query_one(
+        &state.db,
+        "SELECT schema_json,permissions_yaml,storage_yaml,logics_json FROM releases WHERE id=?1",
+        vec![sqlx_to_sea(&rid)],
+    )
+    .await?
     .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "release not found"))?;
 
-    let schema_text: String = rel.try_get("schema_json").unwrap_or("{}".to_string());
+    let schema_text: String = rel.try_get_by("schema_json").unwrap_or("{}".to_string());
     let schema: Value =
         serde_json::from_str(&schema_text).unwrap_or_else(|_| serde_json::json!({"tables":{}}));
     let permissions_yaml: String = rel
-        .try_get("permissions_yaml")
+        .try_get_by("permissions_yaml")
         .unwrap_or("tables: {}\n".to_string());
     let permissions: Value = serde_yaml::from_str(&permissions_yaml)
         .unwrap_or_else(|_| serde_json::json!({"tables":{}}));
-    let storage_yaml: String = rel.try_get("storage_yaml").unwrap_or("{}\n".to_string());
+    let storage_yaml: String = rel.try_get_by("storage_yaml").unwrap_or("{}\n".to_string());
     let storage: Value =
         serde_yaml::from_str(&storage_yaml).unwrap_or_else(|_| serde_json::json!({}));
-    let logics_text: String = rel.try_get("logics_json").unwrap_or("{}".to_string());
+    let logics_text: String = rel.try_get_by("logics_json").unwrap_or("{}".to_string());
     let logics: Value =
         serde_json::from_str(&logics_text).unwrap_or_else(|_| serde_json::json!({}));
 
-    let conn_rows =
-        sqlx::query("SELECT name,engine,db_url FROM connections WHERE project=?1 AND env=?2")
-            .bind(&project)
-            .bind(&env)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    let conn_rows = db_query_all(
+        &state.db,
+        "SELECT name,engine,db_url FROM connections WHERE project=?1 AND env=?2",
+        vec![sqlx_to_sea(&project), sqlx_to_sea(&env)],
+    )
+    .await?;
     let mut connections = serde_json::Map::new();
     for r in conn_rows {
-        let name: String = r.try_get("name").unwrap_or_default();
+        let name: String = r.try_get_by("name").unwrap_or_default();
         connections.insert(
             name,
             serde_json::json!({
-                "name": r.try_get::<String,_>("name").unwrap_or_default(),
-                "engine": r.try_get::<String,_>("engine").unwrap_or_default(),
-                "db_url": r.try_get::<String,_>("db_url").unwrap_or_default(),
+                "name": r.try_get_by::<String,_>("name").unwrap_or_default(),
+                "engine": r.try_get_by::<String,_>("engine").unwrap_or_default(),
+                "db_url": r.try_get_by::<String,_>("db_url").unwrap_or_default(),
             }),
         );
     }
@@ -920,61 +990,59 @@ async fn internal_current_release(
 async fn internal_latest_release(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    let row = sqlx::query(
+    let row = db_query_one(
+        &state.db,
         "SELECT c.project AS project, c.env AS env, c.release_id AS release_id \
          FROM current_releases c \
          JOIN releases r ON r.id = c.release_id \
          ORDER BY r.created_at DESC LIMIT 1",
+        vec![],
     )
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+    .await?
     .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "no current release"))?;
 
-    let project: String = row.try_get("project").unwrap_or_default();
-    let env: String = row.try_get("env").unwrap_or_default();
-    let rid: String = row.try_get("release_id").unwrap_or_default();
+    let project: String = row.try_get_by("project").unwrap_or_default();
+    let env: String = row.try_get_by("env").unwrap_or_default();
+    let rid: String = row.try_get_by("release_id").unwrap_or_default();
 
-    let rel = sqlx::query(
+    let rel = db_query_one(
+        &state.db,
         "SELECT schema_json,permissions_yaml,storage_yaml,logics_json FROM releases WHERE id=?1",
+        vec![sqlx_to_sea(&rid)],
     )
-    .bind(&rid)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+    .await?
     .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "release not found"))?;
 
-    let schema_text: String = rel.try_get("schema_json").unwrap_or("{}".to_string());
+    let schema_text: String = rel.try_get_by("schema_json").unwrap_or("{}".to_string());
     let schema: Value =
         serde_json::from_str(&schema_text).unwrap_or_else(|_| serde_json::json!({"tables":{}}));
     let permissions_yaml: String = rel
-        .try_get("permissions_yaml")
+        .try_get_by("permissions_yaml")
         .unwrap_or("tables: {}\n".to_string());
     let permissions: Value = serde_yaml::from_str(&permissions_yaml)
         .unwrap_or_else(|_| serde_json::json!({"tables":{}}));
-    let storage_yaml: String = rel.try_get("storage_yaml").unwrap_or("{}\n".to_string());
+    let storage_yaml: String = rel.try_get_by("storage_yaml").unwrap_or("{}\n".to_string());
     let storage: Value =
         serde_yaml::from_str(&storage_yaml).unwrap_or_else(|_| serde_json::json!({}));
-    let logics_text: String = rel.try_get("logics_json").unwrap_or("{}".to_string());
+    let logics_text: String = rel.try_get_by("logics_json").unwrap_or("{}".to_string());
     let logics: Value =
         serde_json::from_str(&logics_text).unwrap_or_else(|_| serde_json::json!({}));
 
-    let conn_rows =
-        sqlx::query("SELECT name,engine,db_url FROM connections WHERE project=?1 AND env=?2")
-            .bind(&project)
-            .bind(&env)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    let conn_rows = db_query_all(
+        &state.db,
+        "SELECT name,engine,db_url FROM connections WHERE project=?1 AND env=?2",
+        vec![sqlx_to_sea(&project), sqlx_to_sea(&env)],
+    )
+    .await?;
     let mut connections = serde_json::Map::new();
     for r in conn_rows {
-        let name: String = r.try_get("name").unwrap_or_default();
+        let name: String = r.try_get_by("name").unwrap_or_default();
         connections.insert(
             name,
             serde_json::json!({
-                "name": r.try_get::<String,_>("name").unwrap_or_default(),
-                "engine": r.try_get::<String,_>("engine").unwrap_or_default(),
-                "db_url": r.try_get::<String,_>("db_url").unwrap_or_default(),
+                "name": r.try_get_by::<String,_>("name").unwrap_or_default(),
+                "engine": r.try_get_by::<String,_>("engine").unwrap_or_default(),
+                "db_url": r.try_get_by::<String,_>("db_url").unwrap_or_default(),
             }),
         );
     }

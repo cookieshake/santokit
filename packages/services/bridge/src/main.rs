@@ -5,9 +5,10 @@ use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use sea_orm::sea_query::{Alias, ArrayType, Expr, Order, PostgresQueryBuilder, Query};
+use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, ExecResult, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sqlx::{Column, Row};
 
 #[derive(Clone)]
 struct AppState {
@@ -548,9 +549,7 @@ async fn handle_db(
     if conn.engine != "postgres" {
         return Err(AppError::internal("unsupported engine"));
     }
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .connect(&conn.db_url)
+    let db = Database::connect(&conn.db_url)
         .await
         .map_err(|e| AppError::internal(e.to_string()))?;
 
@@ -624,15 +623,7 @@ async fn handle_db(
                 names.join(", "),
                 placeholders.join(", ")
             );
-            let rows = bind_values(sqlx::query::<sqlx::Postgres>(&sql), vals)
-                .fetch_all(&pool)
-                .await
-                .map_err(|e| AppError::internal(e.to_string()))?;
-            let row = rows
-                .into_iter()
-                .next()
-                .map(row_to_json)
-                .unwrap_or(Value::Null);
+            let row = fetch_first_json_row(&db, &sql, vals).await?;
             Ok(row)
         }
         "select" => {
@@ -646,15 +637,11 @@ async fn handle_db(
                 conditions.push(f);
             }
 
-            let mut sql = format!("SELECT * FROM \"{}\"", table);
-            let mut vals = Vec::new();
-            if !conditions.is_empty() {
-                let mut parts = Vec::new();
-                for (idx, (k, v)) in conditions.iter().enumerate() {
-                    parts.push(format!("\"{}\" = ${}", k, idx + 1));
-                    vals.push(v.clone());
-                }
-                sql.push_str(&format!(" WHERE {}", parts.join(" AND ")));
+            let mut query = Query::select();
+            query.from(Alias::new(table));
+            query.expr(Expr::cust("*"));
+            for (k, v) in &conditions {
+                query.and_where(Expr::col(Alias::new(k)).eq(json_to_sq_value(v.clone())));
             }
             if let Some(ob) = params.get("orderBy").and_then(|v| v.as_object()) {
                 if let Some((k, dirv)) = ob.iter().next() {
@@ -662,29 +649,29 @@ async fn handle_db(
                     if dir != "asc" && dir != "desc" {
                         return Err(AppError::bad_request("Invalid orderBy direction"));
                     }
-                    sql.push_str(&format!(" ORDER BY \"{}\" {}", k, dir.to_uppercase()));
+                    let order = if dir == "asc" {
+                        Order::Asc
+                    } else {
+                        Order::Desc
+                    };
+                    query.order_by(Alias::new(k), order);
                 }
             }
             if let Some(limit) = params.get("limit").and_then(|v| v.as_i64()) {
                 if limit < 0 {
                     return Err(AppError::bad_request("limit must be non-negative"));
                 }
-                sql.push_str(&format!(" LIMIT {}", limit));
+                query.limit(limit as u64);
             }
             if let Some(offset) = params.get("offset").and_then(|v| v.as_i64()) {
                 if offset < 0 {
                     return Err(AppError::bad_request("offset must be non-negative"));
                 }
-                sql.push_str(&format!(" OFFSET {}", offset));
+                query.offset(offset as u64);
             }
+            let (sql, sq_values) = query.build(PostgresQueryBuilder);
 
-            let mut rows: Vec<Value> = bind_values(sqlx::query::<sqlx::Postgres>(&sql), vals)
-                .fetch_all(&pool)
-                .await
-                .map_err(|e| AppError::internal(e.to_string()))?
-                .into_iter()
-                .map(row_to_json)
-                .collect();
+            let mut rows = fetch_json_rows_sea(&db, &sql, sq_values).await?;
 
             if let Some(expands) = params.get("expand").and_then(|v| v.as_array()) {
                 for ex in expands {
@@ -722,12 +709,7 @@ async fn handle_db(
                             "SELECT * FROM \"{}\" WHERE \"id\" = $1 LIMIT 1",
                             target_table
                         );
-                        let one = bind_values(sqlx::query::<sqlx::Postgres>(&q), vec![fk])
-                            .fetch_optional(&pool)
-                            .await
-                            .map_err(|e| AppError::internal(e.to_string()))?
-                            .map(row_to_json)
-                            .unwrap_or(Value::Null);
+                        let one = fetch_first_json_row(&db, &q, vec![fk]).await?;
                         if let Some(obj) = row.as_object_mut() {
                             obj.insert(rel.to_string(), one);
                         }
@@ -804,10 +786,7 @@ async fn handle_db(
                 set_parts.join(", "),
                 where_parts.join(" AND ")
             );
-            let result = bind_values(sqlx::query::<sqlx::Postgres>(&sql), vals)
-                .execute(&pool)
-                .await
-                .map_err(|e| AppError::internal(e.to_string()))?;
+            let result = execute_sql(&db, &sql, vals).await?;
             Ok(serde_json::json!({"affected": result.rows_affected()}))
         }
         "delete" => {
@@ -838,10 +817,7 @@ async fn handle_db(
                 table,
                 where_parts.join(" AND ")
             );
-            let result = bind_values(sqlx::query::<sqlx::Postgres>(&sql), vals)
-                .execute(&pool)
-                .await
-                .map_err(|e| AppError::internal(e.to_string()))?;
+            let result = execute_sql(&db, &sql, vals).await?;
             Ok(serde_json::json!({"affected": result.rows_affected()}))
         }
         _ => Err(AppError::bad_request("Unknown CRUD operation")),
@@ -1065,106 +1041,207 @@ async fn handle_logic(
         .connections
         .get("main")
         .ok_or_else(|| AppError::internal("main connection missing"))?;
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .connect(&conn.db_url)
+    let db = Database::connect(&conn.db_url)
         .await
         .map_err(|e| AppError::internal(e.to_string()))?;
     let (sql, vals) = build_logic_sql(&doc.sql, principal, &p)?;
     let lower = sql.trim_start().to_lowercase();
     if lower.starts_with("select") || lower.starts_with("with") || lower.contains("returning") {
-        let rows = bind_values(sqlx::query::<sqlx::Postgres>(&sql), vals)
-            .fetch_all(&pool)
-            .await
-            .map_err(|e| AppError::internal(e.to_string()))?;
-        let data = rows.into_iter().map(row_to_json).collect::<Vec<_>>();
+        let data = fetch_json_rows(&db, &sql, vals).await?;
         Ok(serde_json::json!({"data": data}))
     } else {
-        let r = bind_values(sqlx::query::<sqlx::Postgres>(&sql), vals)
-            .execute(&pool)
-            .await
-            .map_err(|e| AppError::internal(e.to_string()))?;
+        let r = execute_sql(&db, &sql, vals).await?;
         Ok(serde_json::json!({"affected": r.rows_affected()}))
     }
 }
 
-fn bind_values<'a>(
-    mut q: sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments>,
-    vals: Vec<Value>,
-) -> sqlx::query::Query<'a, sqlx::Postgres, sqlx::postgres::PgArguments> {
-    for v in vals {
-        q = match v {
-            Value::Null => {
-                let vv: Option<String> = None;
-                q.bind(vv)
-            }
-            Value::Bool(b) => q.bind(b),
-            Value::Number(n) => {
-                if let Some(i) = n.as_i64() {
-                    q.bind(i)
-                } else if let Some(f) = n.as_f64() {
-                    q.bind(f)
-                } else {
-                    q.bind(n.to_string())
-                }
-            }
-            Value::String(s) => q.bind(s),
-            Value::Array(arr) => {
-                if arr.iter().all(|item| item.is_string()) {
-                    let out: Vec<String> = arr
-                        .into_iter()
-                        .filter_map(|item| item.as_str().map(ToString::to_string))
-                        .collect();
-                    q.bind(out)
-                } else if arr.iter().all(|item| item.is_i64() || item.is_u64()) {
-                    let mut out: Vec<i64> = Vec::with_capacity(arr.len());
-                    for item in arr {
-                        if let Some(v) = item.as_i64() {
-                            out.push(v);
-                        } else if let Some(v) = item.as_u64() {
-                            out.push(v as i64);
-                        }
-                    }
-                    q.bind(out)
-                } else {
-                    q.bind(sqlx::types::Json(Value::Array(arr)))
-                }
-            }
-            Value::Object(_) => q.bind(sqlx::types::Json(v)),
-        };
-    }
-    q
+async fn execute_sql(db: &DatabaseConnection, sql: &str, vals: Vec<Value>) -> Result<ExecResult> {
+    db.execute(Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        sql.to_string(),
+        to_sea_values(vals),
+    ))
+    .await
+    .map_err(|e| AppError::internal(e.to_string()))
 }
 
-fn row_to_json(row: sqlx::postgres::PgRow) -> Value {
-    let mut out = serde_json::Map::new();
-    for c in row.columns() {
-        let n = c.name();
-        let v = row
-            .try_get::<Option<String>, _>(n)
-            .ok()
-            .flatten()
-            .map(Value::String)
-            .or_else(|| {
-                row.try_get::<Option<i64>, _>(n)
-                    .ok()
-                    .flatten()
-                    .map(|x| Value::Number(x.into()))
-            })
-            .or_else(|| {
-                row.try_get::<Option<f64>, _>(n)
-                    .ok()
-                    .flatten()
-                    .and_then(|f| serde_json::Number::from_f64(f).map(Value::Number))
-            })
-            .or_else(|| {
-                row.try_get::<Option<bool>, _>(n)
-                    .ok()
-                    .flatten()
-                    .map(Value::Bool)
-            })
-            .unwrap_or(Value::Null);
-        out.insert(n.to_string(), v);
+async fn fetch_json_rows(
+    db: &DatabaseConnection,
+    sql: &str,
+    vals: Vec<Value>,
+) -> Result<Vec<Value>> {
+    let wrapped = format!(
+        "SELECT COALESCE(json_agg(row_to_json(_q))::text, '[]') AS data FROM ({}) _q",
+        sql
+    );
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            wrapped,
+            to_sea_values(vals),
+        ))
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?
+        .ok_or_else(|| AppError::internal("query did not return a row"))?;
+    let text: String = row
+        .try_get_by("data")
+        .map_err(|e| AppError::internal(e.to_string()))?;
+    let parsed: Value =
+        serde_json::from_str(&text).map_err(|e| AppError::internal(e.to_string()))?;
+    Ok(parsed.as_array().cloned().unwrap_or_default())
+}
+
+async fn fetch_json_rows_sea(
+    db: &DatabaseConnection,
+    sql: &str,
+    values: sea_orm::sea_query::Values,
+) -> Result<Vec<Value>> {
+    let wrapped = format!(
+        "SELECT COALESCE(json_agg(row_to_json(_q))::text, '[]') AS data FROM ({}) _q",
+        sql
+    );
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            wrapped,
+            values,
+        ))
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?
+        .ok_or_else(|| AppError::internal("query did not return a row"))?;
+    let text: String = row
+        .try_get_by("data")
+        .map_err(|e| AppError::internal(e.to_string()))?;
+    let parsed: Value =
+        serde_json::from_str(&text).map_err(|e| AppError::internal(e.to_string()))?;
+    Ok(parsed.as_array().cloned().unwrap_or_default())
+}
+
+async fn fetch_first_json_row(
+    db: &DatabaseConnection,
+    sql: &str,
+    vals: Vec<Value>,
+) -> Result<Value> {
+    let wrapped = format!(
+        "WITH _q AS ({}) SELECT COALESCE(row_to_json(_q)::text, 'null') AS data FROM _q LIMIT 1",
+        sql
+    );
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            wrapped,
+            to_sea_values(vals),
+        ))
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?;
+    let Some(row) = row else {
+        return Ok(Value::Null);
+    };
+    let text: String = row
+        .try_get_by("data")
+        .map_err(|e| AppError::internal(e.to_string()))?;
+    serde_json::from_str(&text).map_err(|e| AppError::internal(e.to_string()))
+}
+
+fn to_sea_values(vals: Vec<Value>) -> Vec<sea_orm::Value> {
+    vals.into_iter().map(json_to_sea_value).collect()
+}
+
+fn json_to_sq_value(v: Value) -> sea_orm::sea_query::Value {
+    match v {
+        Value::Null => sea_orm::sea_query::Value::String(None),
+        Value::Bool(b) => sea_orm::sea_query::Value::Bool(Some(b)),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                sea_orm::sea_query::Value::BigInt(Some(i))
+            } else if let Some(f) = n.as_f64() {
+                sea_orm::sea_query::Value::Double(Some(f))
+            } else {
+                sea_orm::sea_query::Value::String(Some(Box::new(n.to_string())))
+            }
+        }
+        Value::String(s) => sea_orm::sea_query::Value::String(Some(Box::new(s))),
+        Value::Array(arr) => {
+            if arr.iter().all(|item| item.is_string()) {
+                let items = arr
+                    .into_iter()
+                    .map(|item| {
+                        sea_orm::sea_query::Value::String(Some(Box::new(
+                            item.as_str().unwrap_or_default().to_string(),
+                        )))
+                    })
+                    .collect::<Vec<_>>();
+                sea_orm::sea_query::Value::Array(ArrayType::String, Some(Box::new(items)))
+            } else if arr.iter().all(|item| item.is_i64() || item.is_u64()) {
+                let items = arr
+                    .into_iter()
+                    .map(|item| {
+                        if let Some(v) = item.as_i64() {
+                            sea_orm::sea_query::Value::BigInt(Some(v))
+                        } else {
+                            sea_orm::sea_query::Value::BigInt(Some(
+                                item.as_u64().unwrap_or_default() as i64,
+                            ))
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                sea_orm::sea_query::Value::Array(ArrayType::BigInt, Some(Box::new(items)))
+            } else {
+                sea_orm::sea_query::Value::String(Some(Box::new(
+                    serde_json::to_string(&Value::Array(arr)).unwrap_or_else(|_| "[]".to_string()),
+                )))
+            }
+        }
+        Value::Object(_) => sea_orm::sea_query::Value::String(Some(Box::new(
+            serde_json::to_string(&v).unwrap_or_else(|_| "{}".to_string()),
+        ))),
     }
-    Value::Object(out)
+}
+
+fn json_to_sea_value(v: Value) -> sea_orm::Value {
+    match v {
+        Value::Null => sea_orm::Value::String(None),
+        Value::Bool(b) => sea_orm::Value::Bool(Some(b)),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                sea_orm::Value::BigInt(Some(i))
+            } else if let Some(f) = n.as_f64() {
+                sea_orm::Value::Double(Some(f))
+            } else {
+                sea_orm::Value::String(Some(Box::new(n.to_string())))
+            }
+        }
+        Value::String(s) => sea_orm::Value::String(Some(Box::new(s))),
+        Value::Array(arr) => {
+            if arr.iter().all(|item| item.is_string()) {
+                let items = arr
+                    .into_iter()
+                    .map(|item| {
+                        let s = item.as_str().unwrap_or_default().to_string();
+                        sea_orm::Value::String(Some(Box::new(s)))
+                    })
+                    .collect::<Vec<_>>();
+                sea_orm::Value::Array(ArrayType::String, Some(Box::new(items)))
+            } else if arr.iter().all(|item| item.is_i64() || item.is_u64()) {
+                let items = arr
+                    .into_iter()
+                    .map(|item| {
+                        if let Some(v) = item.as_i64() {
+                            sea_orm::Value::BigInt(Some(v))
+                        } else {
+                            sea_orm::Value::BigInt(Some(item.as_u64().unwrap_or_default() as i64))
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                sea_orm::Value::Array(ArrayType::BigInt, Some(Box::new(items)))
+            } else {
+                sea_orm::Value::String(Some(Box::new(
+                    serde_json::to_string(&Value::Array(arr)).unwrap_or_else(|_| "[]".to_string()),
+                )))
+            }
+        }
+        Value::Object(_) => sea_orm::Value::String(Some(Box::new(
+            serde_json::to_string(&v).unwrap_or_else(|_| "{}".to_string()),
+        ))),
+    }
 }

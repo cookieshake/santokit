@@ -26,8 +26,8 @@ tower-http = { version = "0.6", features = ["cors", "trace", "compression-gzip"]
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "json", "chrono", "uuid"] }
-sea-query = { version = "0.32", features = ["backend-postgres", "with-chrono", "with-json", "with-uuid"] }
-sea-query-binder = { version = "0.7", features = ["sqlx-postgres"] }
+sea-query = { version = "0.32", features = ["backend-postgres"] }
+sea-orm = { version = "1.1", default-features = false, features = ["macros", "runtime-tokio-rustls", "sqlx-postgres", "sqlx-sqlite"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
