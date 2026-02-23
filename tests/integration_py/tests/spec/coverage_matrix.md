@@ -18,6 +18,8 @@ Legend:
 | AUTH-002 | `tests/integration_py/tests/capabilities/auth/test_auth_002_oidc_provider_config.py::test_enduser_login_external_oidc` | pass | provider create/duplicate/malformed issuer covered |
 | AUTH-003 | `tests/integration_py/tests/capabilities/auth/test_auth_003_multi_project_login.py::test_enduser_multi_project_login` | pass | multi-project token isolation covered |
 | AUTH-004 | `tests/integration_py/tests/capabilities/auth/test_auth_004_oidc_link.py::test_enduser_explicit_oidc_link` | pass | explicit link flow + linked login resolution + conflict + invalid code covered |
+| STORAGE-001 | `tests/integration_py/tests/capabilities/storage/test_storage_001_upload_sign.py::test_storage_upload_sign` | pass | upload sign policy/key validation/role/CEL/file constraints covered |
+| STORAGE-006 | `tests/integration_py/tests/capabilities/storage/test_storage_006_path_variable_binding.py::test_storage_path_variable_binding` | pass | path variable extraction + owner/admin bypass + undefined path var error covered |
 | CRUD-001 | `tests/integration_py/tests/capabilities/crud/test_crud_001_basic.py::test_crud_basic` | pass | insert/select/id policy/rejection covered |
 | CRUD-002 | `tests/integration_py/tests/capabilities/crud/test_crud_002_advanced.py::test_crud_advanced` | pass | update/delete + where safety gate covered |
 | CRUD-003 | `tests/integration_py/tests/capabilities/crud/test_crud_003_expand.py::test_crud_expand` | pass | expand success/no-expand/invalid expand covered |

@@ -261,6 +261,14 @@ async fn call(
         let data = handle_logic(&release, &principal, name, req.params).await?;
         return Ok(Json(CallResp { data }));
     }
+    if let Some(rest) = req.path.strip_prefix("storage/") {
+        let parts: Vec<&str> = rest.split('/').collect();
+        if parts.len() != 2 {
+            return Err(AppError::bad_request("Invalid storage path"));
+        }
+        let data = handle_storage(&release, &principal, parts[0], parts[1], req.params).await?;
+        return Ok(Json(CallResp { data }));
+    }
 
     Err(AppError::not_found("path not found"))
 }
@@ -409,6 +417,308 @@ fn principal_roles(p: &Principal) -> Vec<String> {
         Principal::ApiKey { roles, .. } | Principal::EndUser { roles, .. } => roles.clone(),
         Principal::Anonymous => vec![],
     }
+}
+
+fn has_control_chars(s: &str) -> bool {
+    s.chars().any(|c| c.is_control())
+}
+
+fn normalize_storage_key(raw: &str) -> Result<String> {
+    let key = raw.trim();
+    if key.is_empty() {
+        return Err(AppError::bad_request("Invalid storage key"));
+    }
+    if key.starts_with('/') || key.contains("//") || key.contains("..") || has_control_chars(key) {
+        return Err(AppError::bad_request("Invalid storage key"));
+    }
+    Ok(key.to_string())
+}
+
+fn parse_size_bytes(raw: &str) -> Result<i64> {
+    let t = raw.trim().to_ascii_uppercase();
+    if t.is_empty() {
+        return Err(AppError::bad_request("Invalid maxSize"));
+    }
+    let (num_str, mul) = if let Some(n) = t.strip_suffix("KB") {
+        (n.trim(), 1024_i64)
+    } else if let Some(n) = t.strip_suffix("MB") {
+        (n.trim(), 1024_i64 * 1024)
+    } else if let Some(n) = t.strip_suffix("GB") {
+        (n.trim(), 1024_i64 * 1024 * 1024)
+    } else if let Some(n) = t.strip_suffix('B') {
+        (n.trim(), 1_i64)
+    } else {
+        (t.as_str(), 1_i64)
+    };
+    let num = num_str
+        .parse::<i64>()
+        .map_err(|_| AppError::bad_request("Invalid maxSize"))?;
+    Ok(num.saturating_mul(mul))
+}
+
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let p = pattern.as_bytes();
+    let s = text.as_bytes();
+    let (mut pi, mut si) = (0usize, 0usize);
+    let (mut star, mut star_si) = (None::<usize>, 0usize);
+
+    while si < s.len() {
+        if pi < p.len() && p[pi] == s[si] {
+            pi += 1;
+            si += 1;
+        } else if pi < p.len() && p[pi] == b'*' {
+            star = Some(pi);
+            pi += 1;
+            star_si = si;
+        } else if let Some(star_pos) = star {
+            pi = star_pos + 1;
+            star_si += 1;
+            si = star_si;
+        } else {
+            return false;
+        }
+    }
+
+    while pi < p.len() && p[pi] == b'*' {
+        pi += 1;
+    }
+    pi == p.len()
+}
+
+fn match_storage_pattern(pattern: &str, key: &str) -> Option<HashMap<String, String>> {
+    let pattern_segs = pattern.split('/').collect::<Vec<_>>();
+    let key_segs = key.split('/').collect::<Vec<_>>();
+    if pattern_segs.len() != key_segs.len() {
+        return None;
+    }
+
+    let mut bindings = HashMap::new();
+    for (p, k) in pattern_segs.iter().zip(key_segs.iter()) {
+        if *p == "*" {
+            continue;
+        }
+        if p.starts_with('{') && p.ends_with('}') && p.len() > 2 {
+            let name = &p[1..p.len() - 1];
+            if name.is_empty() {
+                return None;
+            }
+            bindings.insert(name.to_string(), (*k).to_string());
+            continue;
+        }
+        if !glob_match(p, k) {
+            return None;
+        }
+    }
+    Some(bindings)
+}
+
+fn match_storage_policy<'a>(
+    storage: &'a Value,
+    key: &str,
+) -> Option<(&'a str, &'a Value, HashMap<String, String>)> {
+    let policies = storage.get("policies")?.as_object()?;
+    for (pattern, policy) in policies {
+        if let Some(bindings) = match_storage_pattern(pattern, key) {
+            return Some((pattern.as_str(), policy, bindings));
+        }
+    }
+    None
+}
+
+fn principal_sub(p: &Principal) -> String {
+    match p {
+        Principal::EndUser { sub, .. } => sub.clone(),
+        Principal::ApiKey { key_id, .. } => key_id.clone(),
+        Principal::Anonymous => String::new(),
+    }
+}
+
+fn eval_storage_condition(
+    condition: &str,
+    principal: &Principal,
+    key: &str,
+    content_length: Option<i64>,
+    path_bindings: &HashMap<String, String>,
+) -> Result<bool> {
+    let cond = condition.trim();
+    if cond.eq_ignore_ascii_case("true") {
+        return Ok(true);
+    }
+    if cond.eq_ignore_ascii_case("false") {
+        return Ok(false);
+    }
+
+    let resolve = |token: &str| -> Result<Value> {
+        let t = token.trim();
+        if t == "request.auth.sub" {
+            return Ok(Value::String(principal_sub(principal)));
+        }
+        if t == "request.auth.roles" {
+            return Ok(Value::Array(
+                principal_roles(principal)
+                    .into_iter()
+                    .map(Value::String)
+                    .collect(),
+            ));
+        }
+        if t == "request.params.key" {
+            return Ok(Value::String(key.to_string()));
+        }
+        if t == "request.params.contentLength" {
+            return Ok(content_length.map(Value::from).unwrap_or(Value::Null));
+        }
+        if let Some(path_name) = t.strip_prefix("path.") {
+            let Some(bound) = path_bindings.get(path_name) else {
+                return Err(AppError::bad_request(format!(
+                    "undefined path variable: {}",
+                    path_name
+                )));
+            };
+            return Ok(Value::String(bound.clone()));
+        }
+        if t.starts_with('"') && t.ends_with('"') {
+            return Ok(Value::String(t.trim_matches('"').to_string()));
+        }
+        if t.starts_with('\'') && t.ends_with('\'') {
+            return Ok(Value::String(t.trim_matches('"').trim_matches('\'').to_string()));
+        }
+        if let Ok(n) = t.parse::<i64>() {
+            return Ok(Value::from(n));
+        }
+        Err(AppError::bad_request("unsupported storage condition token"))
+    };
+
+    let eval_clause = |clause: &str| -> Result<bool> {
+        let c = clause.trim();
+        if let Some((needle, haystack)) = c.split_once(" in ") {
+            let l = resolve(needle)?;
+            let r = resolve(haystack)?;
+            if let (Value::String(needle_val), Value::Array(arr)) = (l, r) {
+                return Ok(arr
+                    .iter()
+                    .any(|v| v.as_str().map(|x| x == needle_val).unwrap_or(false)));
+            }
+            return Err(AppError::bad_request("unsupported storage condition"));
+        }
+        let Some((left, right)) = c.split_once("==") else {
+            return Err(AppError::bad_request("unsupported storage condition"));
+        };
+        let l = resolve(left)?;
+        let r = resolve(right)?;
+        let passed = match (&l, &r) {
+            (Value::Array(arr), Value::String(s)) => {
+                arr.iter().any(|v| v.as_str().map(|x| x == s).unwrap_or(false))
+            }
+            (Value::String(s), Value::Array(arr)) => {
+                arr.iter().any(|v| v.as_str().map(|x| x == s).unwrap_or(false))
+            }
+            _ => l == r,
+        };
+        Ok(passed)
+    };
+
+    for clause in cond.split("||") {
+        if eval_clause(clause)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+async fn handle_storage(
+    release: &ReleasePayload,
+    principal: &Principal,
+    bucket: &str,
+    op: &str,
+    params: Value,
+) -> Result<Value> {
+    if op != "upload_sign" {
+        return Err(AppError::not_found("storage operation not found"));
+    }
+
+    let key_raw = params
+        .get("key")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| AppError::bad_request("Missing key"))?;
+    let key = normalize_storage_key(key_raw)?;
+
+    let Some((_matched_pattern, policy, path_bindings)) = match_storage_policy(&release.storage, &key) else {
+        return Err(AppError::forbidden("No matching storage policy"));
+    };
+    let action = policy
+        .get("upload_sign")
+        .ok_or_else(|| AppError::forbidden("No matching storage policy"))?;
+
+    let role_list = action
+        .get("roles")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let principal_role_names = principal_roles(principal);
+
+    let mut role_matched = false;
+    for r in role_list {
+        if let Some(name) = r.as_str() {
+            if name == "public"
+                || principal_role_names.iter().any(|x| x == name)
+            {
+                role_matched = true;
+                break;
+            }
+        }
+    }
+
+    if !role_matched {
+        if matches!(principal, Principal::Anonymous) {
+            return Err(AppError::unauthorized("Authentication required"));
+        }
+        return Err(AppError::forbidden("Access denied"));
+    }
+
+    let content_length = params.get("contentLength").and_then(|v| v.as_i64());
+    let content_type = params.get("contentType").and_then(|v| v.as_str());
+
+    if let Some(max_size_raw) = action.get("maxSize").and_then(|v| v.as_str()) {
+        let max_size = parse_size_bytes(max_size_raw)?;
+        let provided = content_length
+            .ok_or_else(|| AppError::bad_request("contentLength is required"))?;
+        if provided > max_size {
+            return Err(AppError::bad_request("contentLength exceeds maxSize"));
+        }
+    }
+
+    if let Some(allowed_types) = action.get("allowedTypes").and_then(|v| v.as_array()) {
+        let provided = content_type.ok_or_else(|| AppError::bad_request("contentType is required"))?;
+        let allowed = allowed_types
+            .iter()
+            .filter_map(|v| v.as_str())
+            .any(|v| v == provided);
+        if !allowed {
+            return Err(AppError::bad_request("contentType is not allowed"));
+        }
+    }
+
+    if let Some(cond) = action.get("condition").and_then(|v| v.as_str()) {
+        if !eval_storage_condition(cond, principal, &key, content_length, &path_bindings)? {
+            return Err(AppError::forbidden("Condition failed"));
+        }
+    }
+
+    let expires = 300;
+    let url = format!(
+        "https://storage.local/{}/{}?X-Santokit-Op=upload_sign&expires={}",
+        bucket, key, expires
+    );
+    let headers = match content_type {
+        Some(ct) => serde_json::json!({"Content-Type": ct}),
+        None => serde_json::json!({}),
+    };
+
+    Ok(serde_json::json!({
+        "url": url,
+        "method": "PUT",
+        "headers": headers,
+    }))
 }
 
 fn is_enduser(p: &Principal) -> bool {

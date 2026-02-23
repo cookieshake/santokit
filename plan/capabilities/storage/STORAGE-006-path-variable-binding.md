@@ -2,11 +2,13 @@
 id: STORAGE-006
 domain: storage
 title: Path variable binding in storage CEL conditions
-status: planned
+status: implemented
 depends: [STORAGE-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/storage/test_storage_006_path_variable_binding.py::test_storage_path_variable_binding
+code_refs:
+  - packages/services/bridge/src/main.rs
 ---
 
 ## Intent

@@ -2,11 +2,13 @@
 id: STORAGE-001
 domain: storage
 title: Upload sign — presigned URL for file upload
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/storage/test_storage_001_upload_sign.py::test_storage_upload_sign
+code_refs:
+  - packages/services/bridge/src/main.rs
 ---
 
 ## Intent
