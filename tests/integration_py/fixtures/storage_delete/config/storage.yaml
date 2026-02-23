@@ -1,0 +1,14 @@
+policies:
+  "docs/{userId}/*":
+    upload_sign:
+      roles: [authenticated]
+      condition: "path.userId == request.auth.sub"
+    download_sign:
+      roles: [authenticated]
+      condition: "path.userId == request.auth.sub || 'admin' in request.auth.roles"
+    delete:
+      roles: [authenticated, admin]
+      condition: "path.userId == request.auth.sub || 'admin' in request.auth.roles"
+  "avatars/*":
+    upload_sign:
+      roles: [authenticated]

@@ -19,6 +19,9 @@ Legend:
 | AUTH-003 | `tests/integration_py/tests/capabilities/auth/test_auth_003_multi_project_login.py::test_enduser_multi_project_login` | pass | multi-project token isolation covered |
 | AUTH-004 | `tests/integration_py/tests/capabilities/auth/test_auth_004_oidc_link.py::test_enduser_explicit_oidc_link` | pass | explicit link flow + linked login resolution + conflict + invalid code covered |
 | STORAGE-001 | `tests/integration_py/tests/capabilities/storage/test_storage_001_upload_sign.py::test_storage_upload_sign` | pass | upload sign policy/key validation/role/CEL/file constraints covered |
+| STORAGE-002 | `tests/integration_py/tests/capabilities/storage/test_storage_002_download_sign.py::test_storage_download_sign` | pass | public/private download sign, TTL guard, role/CEL/key validation covered |
+| STORAGE-003 | `tests/integration_py/tests/capabilities/storage/test_storage_003_delete.py::test_storage_delete` | pass | delete rule enforcement, owner/admin CEL, auth and key validation covered |
+| STORAGE-004 | `tests/integration_py/tests/capabilities/storage/test_storage_004_multipart_upload.py::test_storage_multipart_upload` | pass | multipart create/sign/complete/abort and constraints/authz failure cases covered |
 | STORAGE-006 | `tests/integration_py/tests/capabilities/storage/test_storage_006_path_variable_binding.py::test_storage_path_variable_binding` | pass | path variable extraction + owner/admin bypass + undefined path var error covered |
 | CRUD-001 | `tests/integration_py/tests/capabilities/crud/test_crud_001_basic.py::test_crud_basic` | pass | insert/select/id policy/rejection covered |
 | CRUD-002 | `tests/integration_py/tests/capabilities/crud/test_crud_002_advanced.py::test_crud_advanced` | pass | update/delete + where safety gate covered |

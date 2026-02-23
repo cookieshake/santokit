@@ -2,11 +2,13 @@
 id: STORAGE-002
 domain: storage
 title: Download sign — presigned URL for file download
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/storage/test_storage_002_download_sign.py::test_storage_download_sign
+code_refs:
+  - packages/services/bridge/src/main.rs
 ---
 
 ## Intent

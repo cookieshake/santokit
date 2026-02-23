@@ -1,0 +1,8 @@
+policies:
+  "avatars/*":
+    download_sign:
+      roles: [public]
+  "docs/{userId}/*":
+    download_sign:
+      roles: [authenticated]
+      condition: "path.userId == request.auth.sub || 'admin' in request.auth.roles"

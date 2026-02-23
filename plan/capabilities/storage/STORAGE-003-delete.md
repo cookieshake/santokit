@@ -2,11 +2,13 @@
 id: STORAGE-003
 domain: storage
 title: Delete file from storage
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/storage/test_storage_003_delete.py::test_storage_delete
+code_refs:
+  - packages/services/bridge/src/main.rs
 ---
 
 ## Intent

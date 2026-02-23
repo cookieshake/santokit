@@ -1,0 +1,13 @@
+policies:
+  "videos/*":
+    upload_sign:
+      roles: [authenticated]
+      condition: "true"
+      maxSize: 20MB
+      allowedTypes: ["video/mp4"]
+  "denied/*":
+    upload_sign:
+      roles: [authenticated]
+      condition: "false"
+      maxSize: 20MB
+      allowedTypes: ["video/mp4"]

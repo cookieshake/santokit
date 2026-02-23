@@ -9,11 +9,18 @@ use sea_orm::sea_query::{Alias, ArrayType, Expr, Order, PostgresQueryBuilder, Qu
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, ExecResult, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::sync::Mutex;
 
-#[derive(Clone)]
 struct AppState {
     hub_url: String,
     client: reqwest::Client,
+    multipart_uploads: Mutex<HashMap<String, MultipartSession>>,
+}
+
+#[derive(Debug, Clone)]
+struct MultipartSession {
+    bucket: String,
+    key: String,
 }
 
 #[derive(Debug)]
@@ -128,6 +135,7 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(AppState {
         hub_url,
         client: reqwest::Client::new(),
+        multipart_uploads: Mutex::new(HashMap::new()),
     });
     let app = Router::new()
         .route("/health", get(health))
@@ -266,7 +274,7 @@ async fn call(
         if parts.len() != 2 {
             return Err(AppError::bad_request("Invalid storage path"));
         }
-        let data = handle_storage(&release, &principal, parts[0], parts[1], req.params).await?;
+        let data = handle_storage(&state, &release, &principal, parts[0], parts[1], req.params).await?;
         return Ok(Json(CallResp { data }));
     }
 
@@ -626,13 +634,21 @@ fn eval_storage_condition(
 }
 
 async fn handle_storage(
+    state: &AppState,
     release: &ReleasePayload,
     principal: &Principal,
     bucket: &str,
     op: &str,
     params: Value,
 ) -> Result<Value> {
-    if op != "upload_sign" {
+    if op != "upload_sign"
+        && op != "download_sign"
+        && op != "delete"
+        && op != "multipart_create"
+        && op != "multipart_sign_part"
+        && op != "multipart_complete"
+        && op != "multipart_abort"
+    {
         return Err(AppError::not_found("storage operation not found"));
     }
 
@@ -645,8 +661,13 @@ async fn handle_storage(
     let Some((_matched_pattern, policy, path_bindings)) = match_storage_policy(&release.storage, &key) else {
         return Err(AppError::forbidden("No matching storage policy"));
     };
+    let policy_op = if op.starts_with("multipart_") {
+        "upload_sign"
+    } else {
+        op
+    };
     let action = policy
-        .get("upload_sign")
+        .get(policy_op)
         .ok_or_else(|| AppError::forbidden("No matching storage policy"))?;
 
     let role_list = action
@@ -678,23 +699,26 @@ async fn handle_storage(
     let content_length = params.get("contentLength").and_then(|v| v.as_i64());
     let content_type = params.get("contentType").and_then(|v| v.as_str());
 
-    if let Some(max_size_raw) = action.get("maxSize").and_then(|v| v.as_str()) {
-        let max_size = parse_size_bytes(max_size_raw)?;
-        let provided = content_length
-            .ok_or_else(|| AppError::bad_request("contentLength is required"))?;
-        if provided > max_size {
-            return Err(AppError::bad_request("contentLength exceeds maxSize"));
+    if op == "upload_sign" || op == "multipart_create" {
+        if let Some(max_size_raw) = action.get("maxSize").and_then(|v| v.as_str()) {
+            let max_size = parse_size_bytes(max_size_raw)?;
+            let provided = content_length
+                .ok_or_else(|| AppError::bad_request("contentLength is required"))?;
+            if provided > max_size {
+                return Err(AppError::bad_request("contentLength exceeds maxSize"));
+            }
         }
-    }
 
-    if let Some(allowed_types) = action.get("allowedTypes").and_then(|v| v.as_array()) {
-        let provided = content_type.ok_or_else(|| AppError::bad_request("contentType is required"))?;
-        let allowed = allowed_types
-            .iter()
-            .filter_map(|v| v.as_str())
-            .any(|v| v == provided);
-        if !allowed {
-            return Err(AppError::bad_request("contentType is not allowed"));
+        if let Some(allowed_types) = action.get("allowedTypes").and_then(|v| v.as_array()) {
+            let provided =
+                content_type.ok_or_else(|| AppError::bad_request("contentType is required"))?;
+            let allowed = allowed_types
+                .iter()
+                .filter_map(|v| v.as_str())
+                .any(|v| v == provided);
+            if !allowed {
+                return Err(AppError::bad_request("contentType is not allowed"));
+            }
         }
     }
 
@@ -704,21 +728,120 @@ async fn handle_storage(
         }
     }
 
-    let expires = 300;
-    let url = format!(
-        "https://storage.local/{}/{}?X-Santokit-Op=upload_sign&expires={}",
-        bucket, key, expires
-    );
-    let headers = match content_type {
-        Some(ct) => serde_json::json!({"Content-Type": ct}),
-        None => serde_json::json!({}),
-    };
+    if op == "multipart_create" {
+        let upload_id = format!("mpu_{}", uuid::Uuid::new_v4().simple());
+        let mut map = state.multipart_uploads.lock().await;
+        map.insert(
+            upload_id.clone(),
+            MultipartSession {
+                bucket: bucket.to_string(),
+                key: key.clone(),
+            },
+        );
+        return Ok(serde_json::json!({"uploadId": upload_id}));
+    }
 
-    Ok(serde_json::json!({
-        "url": url,
-        "method": "PUT",
-        "headers": headers,
-    }))
+    if op == "multipart_sign_part" {
+        let upload_id = params
+            .get("uploadId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::bad_request("uploadId is required"))?;
+        let part_number = params
+            .get("partNumber")
+            .and_then(|v| v.as_i64())
+            .ok_or_else(|| AppError::bad_request("partNumber is required"))?;
+        if part_number <= 0 {
+            return Err(AppError::bad_request("partNumber must be positive"));
+        }
+        let map = state.multipart_uploads.lock().await;
+        let Some(sess) = map.get(upload_id) else {
+            return Err(AppError::bad_request("invalid uploadId"));
+        };
+        if sess.bucket != bucket || sess.key != key {
+            return Err(AppError::bad_request("invalid uploadId"));
+        }
+        let url = format!(
+            "https://storage.local/{}/{}?X-Santokit-Op=multipart_sign_part&uploadId={}&partNumber={}&expires=300",
+            bucket, key, upload_id, part_number
+        );
+        return Ok(serde_json::json!({"url": url, "method": "PUT"}));
+    }
+
+    if op == "multipart_complete" {
+        let upload_id = params
+            .get("uploadId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::bad_request("uploadId is required"))?;
+        let parts = params
+            .get("parts")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| AppError::bad_request("parts is required"))?;
+        if parts.is_empty() {
+            return Err(AppError::bad_request("parts is required"));
+        }
+        for part in parts {
+            let pn = part.get("partNumber").and_then(|v| v.as_i64());
+            let etag = part.get("etag").and_then(|v| v.as_str());
+            if pn.unwrap_or(0) <= 0 || etag.unwrap_or("").is_empty() {
+                return Err(AppError::bad_request("invalid parts"));
+            }
+        }
+        let mut map = state.multipart_uploads.lock().await;
+        let Some(sess) = map.get(upload_id) else {
+            return Err(AppError::bad_request("invalid uploadId"));
+        };
+        if sess.bucket != bucket || sess.key != key {
+            return Err(AppError::bad_request("invalid uploadId"));
+        }
+        map.remove(upload_id);
+        return Ok(serde_json::json!({}));
+    }
+
+    if op == "multipart_abort" {
+        let upload_id = params
+            .get("uploadId")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| AppError::bad_request("uploadId is required"))?;
+        let mut map = state.multipart_uploads.lock().await;
+        let Some(sess) = map.get(upload_id) else {
+            return Err(AppError::bad_request("invalid uploadId"));
+        };
+        if sess.bucket != bucket || sess.key != key {
+            return Err(AppError::bad_request("invalid uploadId"));
+        }
+        map.remove(upload_id);
+        return Ok(serde_json::json!({}));
+    }
+
+    if op == "delete" {
+        return Ok(serde_json::json!({}));
+    }
+
+    let (method, expires, op_name) = if op == "upload_sign" {
+        ("PUT", 300_i64, "upload_sign")
+    } else {
+        ("GET", 60_i64, "download_sign")
+    };
+    let url = format!(
+        "https://storage.local/{}/{}?X-Santokit-Op={}&expires={}",
+        bucket, key, op_name, expires
+    );
+    if op == "upload_sign" {
+        let headers = match content_type {
+            Some(ct) => serde_json::json!({"Content-Type": ct}),
+            None => serde_json::json!({}),
+        };
+        Ok(serde_json::json!({
+            "url": url,
+            "method": method,
+            "headers": headers,
+        }))
+    } else {
+        Ok(serde_json::json!({
+            "url": url,
+            "method": method,
+        }))
+    }
 }
 
 fn is_enduser(p: &Principal) -> bool {

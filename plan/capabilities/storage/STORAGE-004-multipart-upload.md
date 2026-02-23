@@ -2,11 +2,13 @@
 id: STORAGE-004
 domain: storage
 title: Multipart upload flow
-status: planned
+status: implemented
 depends: [STORAGE-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/storage/test_storage_004_multipart_upload.py::test_storage_multipart_upload
+code_refs:
+  - packages/services/bridge/src/main.rs
 ---
 
 ## Intent
