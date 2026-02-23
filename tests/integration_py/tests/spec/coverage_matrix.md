@@ -13,6 +13,7 @@ Legend:
 | OPERATOR-003 | `tests/integration_py/tests/capabilities/operator/test_operator_003_apply_schema.py::test_operator_schema_change` | pass | schema re-apply path covered |
 | OPERATOR-004 | `tests/integration_py/tests/capabilities/operator/test_operator_004_apply_permissions.py::test_operator_permissions_change` | pass | permissions re-apply path covered |
 | OPERATOR-005 | `tests/integration_py/tests/capabilities/operator/test_operator_005_release_promote_rollback.py::test_operator_release_promotion_rollback` | pass | promote + rollback pointer flow covered |
+| OPERATOR-007 | `tests/integration_py/tests/capabilities/operator/test_operator_007_health.py::test_operator_health_and_readiness` | pass | hub/bridge healthz + readiness success/failure checks covered |
 | AUTH-001 | `tests/integration_py/tests/capabilities/auth/test_auth_001_hub_issuer_login.py::test_enduser_login_hub_issuer` | pass | signup/login + bridge success + context mismatch rejection covered |
 | AUTH-002 | `tests/integration_py/tests/capabilities/auth/test_auth_002_oidc_provider_config.py::test_enduser_login_external_oidc` | pass | provider create/duplicate/malformed issuer covered |
 | AUTH-003 | `tests/integration_py/tests/capabilities/auth/test_auth_003_multi_project_login.py::test_enduser_multi_project_login` | pass | multi-project token isolation covered |

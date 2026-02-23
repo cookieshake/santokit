@@ -110,6 +110,9 @@ async fn main() -> anyhow::Result<()> {
     let state = Arc::new(AppState { db });
     let app = Router::new()
         .route("/health", get(health))
+        .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
+        .route("/internal/healthz", get(internal_healthz))
         .route("/api/auth/login", post(operator_login))
         .route("/api/projects", post(project_create))
         .route("/api/envs", post(env_create))
@@ -169,6 +172,30 @@ async fn init_db(db: &DatabaseConnection) -> anyhow::Result<()> {
 
 async fn health() -> Json<Value> {
     Json(serde_json::json!({"ok": true}))
+}
+
+async fn healthz() -> Json<Value> {
+    Json(serde_json::json!({"ok": true}))
+}
+
+async fn internal_healthz() -> Json<Value> {
+    Json(serde_json::json!({"ok": true}))
+}
+
+async fn readyz(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Value>) {
+    let ok = state
+        .db
+        .query_one(Statement::from_string(DbBackend::Sqlite, "SELECT 1".to_string()))
+        .await
+        .is_ok();
+    if ok {
+        (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"ok": false})),
+        )
+    }
 }
 
 #[derive(Deserialize)]

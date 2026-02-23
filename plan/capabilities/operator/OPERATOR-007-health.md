@@ -2,11 +2,14 @@
 id: OPERATOR-007
 domain: operator
 title: Expose health and readiness endpoints
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: ["plan/spec/architecture.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/operator/test_operator_007_health.py::test_operator_health_and_readiness
+code_refs:
+  - packages/services/hub/src/main.rs
+  - packages/services/bridge/src/main.rs
 ---
 
 ## Intent

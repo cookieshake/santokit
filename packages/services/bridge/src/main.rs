@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use sea_orm::sea_query::{Alias, ArrayType, Expr, Order, PostgresQueryBuilder, Query};
+use sea_orm::sea_query::{Alias, ArrayType, Expr, Order, PostgresQueryBuilder, Query as SeaQuery};
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, DbBackend, ExecResult, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -131,6 +131,8 @@ async fn main() -> anyhow::Result<()> {
     });
     let app = Router::new()
         .route("/health", get(health))
+        .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
         .route("/call", post(call))
         .with_state(state);
 
@@ -141,6 +143,48 @@ async fn main() -> anyhow::Result<()> {
 
 async fn health() -> Json<Value> {
     Json(serde_json::json!({"ok": true}))
+}
+
+async fn healthz() -> Json<Value> {
+    Json(serde_json::json!({"ok": true}))
+}
+
+#[derive(Deserialize)]
+struct ReadyzQuery {
+    project: Option<String>,
+    env: Option<String>,
+}
+
+async fn readyz(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<ReadyzQuery>,
+) -> (StatusCode, Json<Value>) {
+    let release = if let (Some(project), Some(env)) = (q.project, q.env) {
+        load_release(&state, &project, &env).await
+    } else {
+        load_latest_release(&state).await
+    };
+    let Ok(release) = release else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"ok": false})),
+        );
+    };
+    let Some(conn) = release.connections.get("main") else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"ok": false})),
+        );
+    };
+    let reachable = Database::connect(&conn.db_url).await.is_ok();
+    if reachable {
+        (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({"ok": false})),
+        )
+    }
 }
 
 async fn call(
@@ -637,7 +681,7 @@ async fn handle_db(
                 conditions.push(f);
             }
 
-            let mut query = Query::select();
+            let mut query = SeaQuery::select();
             query.from(Alias::new(table));
             query.expr(Expr::cust("*"));
             for (k, v) in &conditions {
