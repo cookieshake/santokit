@@ -3,10 +3,10 @@ use std::path::Path as FsPath;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{header::LOCATION, HeaderMap, HeaderValue, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use sea_orm::{
     ColumnTrait, Condition, ConnectionTrait, Database, DatabaseConnection, DbBackend, EntityTrait,
     QueryFilter, QueryOrder, QuerySelect, Set, Statement,
@@ -122,6 +122,9 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/endusers/signup", post(enduser_signup))
         .route("/api/endusers/login", post(enduser_login))
         .route("/api/oidc/providers", post(oidc_create))
+        .route("/oidc/{provider}/start", get(oidc_start))
+        .route("/oidc/{provider}/callback", get(oidc_callback))
+        .route("/oidc/{provider}/exchange", post(oidc_exchange))
         .route("/api/releases", get(release_list))
         .route("/api/releases/promote", post(release_promote))
         .route("/api/releases/rollback", post(release_rollback))
@@ -153,6 +156,9 @@ async fn init_db(db: &DatabaseConnection) -> anyhow::Result<()> {
         "CREATE TABLE IF NOT EXISTS endusers (project TEXT NOT NULL, env TEXT NOT NULL, email TEXT NOT NULL, password TEXT NOT NULL, sub TEXT NOT NULL, PRIMARY KEY(project,env,email))",
         "CREATE TABLE IF NOT EXISTS tokens (token TEXT PRIMARY KEY, project TEXT NOT NULL, env TEXT NOT NULL, sub TEXT NOT NULL, roles_json TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS oidc_providers (project TEXT NOT NULL, env TEXT NOT NULL, name TEXT NOT NULL, issuer TEXT NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY(project,env,name))",
+        "CREATE TABLE IF NOT EXISTS oidc_links (project TEXT NOT NULL, env TEXT NOT NULL, provider TEXT NOT NULL, subject TEXT NOT NULL, user_sub TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(project,env,provider,subject))",
+        "CREATE TABLE IF NOT EXISTS oidc_states (state TEXT PRIMARY KEY, project TEXT NOT NULL, env TEXT NOT NULL, provider TEXT NOT NULL, mode TEXT NOT NULL, user_sub TEXT NULL, redirect_uri TEXT NOT NULL, created_at TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS oidc_exchanges (exchange_code TEXT PRIMARY KEY, project TEXT NOT NULL, env TEXT NOT NULL, provider TEXT NOT NULL, subject TEXT NOT NULL, mode TEXT NOT NULL, user_sub TEXT NULL, redirect_uri TEXT NOT NULL, expires_at TEXT NOT NULL, consumed INTEGER NOT NULL DEFAULT 0)",
     ];
     for s in stmts {
         db.execute(Statement::from_string(DbBackend::Sqlite, s.to_string()))
@@ -677,6 +683,336 @@ async fn enduser_login(
     .await
     .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"access_token": token})))
+}
+
+fn extract_session_token(headers: &HeaderMap) -> Option<String> {
+    if let Some(token) = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        return Some(token.to_string());
+    }
+    let cookie = headers.get("cookie").and_then(|v| v.to_str().ok())?;
+    for part in cookie.split(';') {
+        let kv = part.trim();
+        if let Some((name, value)) = kv.split_once('=') {
+            if name.starts_with("stk_access_") && !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+async fn resolve_session(
+    db: &DatabaseConnection,
+    headers: &HeaderMap,
+    project: &str,
+    env: &str,
+) -> Option<entities::token::Model> {
+    let token = extract_session_token(headers)?;
+    let row = Token::find_by_id(token).one(db).await.ok()??;
+    if row.project == project && row.env == env {
+        Some(row)
+    } else {
+        None
+    }
+}
+
+#[derive(Deserialize)]
+struct OidcStartQuery {
+    mode: String,
+    project: String,
+    env: String,
+    redirect_uri: String,
+}
+
+#[derive(Deserialize)]
+struct OidcCallbackQuery {
+    state: String,
+    subject: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OidcExchangeReq {
+    exchange_code: String,
+}
+
+#[derive(Deserialize)]
+struct OidcProviderPayload {
+    auth_url: String,
+    redirect_uris: Vec<String>,
+}
+
+fn parse_provider_payload(payload_json: &str) -> Result<OidcProviderPayload, (StatusCode, Json<ErrorBody>)> {
+    serde_json::from_str(payload_json).map_err(|e| {
+        err(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "INTERNAL",
+            format!("invalid provider payload: {}", e),
+        )
+    })
+}
+
+async fn oidc_start(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    Query(q): Query<OidcStartQuery>,
+) -> Result<(StatusCode, HeaderMap), (StatusCode, Json<ErrorBody>)> {
+    if q.mode != "link" && q.mode != "login" {
+        return Err(err(StatusCode::BAD_REQUEST, "BAD_REQUEST", "unsupported mode"));
+    }
+
+    let prov = OidcProvider::find()
+        .filter(entities::oidc_provider::Column::Project.eq(&q.project))
+        .filter(entities::oidc_provider::Column::Env.eq(&q.env))
+        .filter(entities::oidc_provider::Column::Name.eq(&provider))
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "NOT_FOUND", "provider not found"))?;
+
+    let payload = parse_provider_payload(&prov.payload_json)?;
+    if !payload.redirect_uris.iter().any(|u| u == &q.redirect_uri) {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            "redirect_uri not allowed",
+        ));
+    }
+
+    let session = resolve_session(&state.db, &headers, &q.project, &q.env).await;
+    let user_sub = if q.mode == "link" {
+        let Some(session) = session else {
+            return Err(err(
+                StatusCode::UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "active session required for account linking",
+            ));
+        };
+        Some(session.sub)
+    } else {
+        None
+    };
+
+    let state_token = format!("st_{}", Uuid::new_v4().simple());
+    OidcState::insert(entities::oidc_state::ActiveModel {
+        state: Set(state_token.clone()),
+        project: Set(q.project),
+        env: Set(q.env),
+        provider: Set(provider.clone()),
+        mode: Set(q.mode),
+        user_sub: Set(user_sub),
+        redirect_uri: Set(q.redirect_uri),
+        created_at: Set(Utc::now().to_rfc3339()),
+    })
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+
+    let location = format!("{}?state={}", payload.auth_url, state_token);
+    let mut out_headers = HeaderMap::new();
+    out_headers.insert(
+        LOCATION,
+        HeaderValue::from_str(&location)
+            .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", "invalid redirect location"))?,
+    );
+    Ok((StatusCode::FOUND, out_headers))
+}
+
+async fn oidc_callback(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    Query(q): Query<OidcCallbackQuery>,
+) -> Result<(StatusCode, HeaderMap), (StatusCode, Json<ErrorBody>)> {
+    let Some(pending) = OidcState::find_by_id(q.state.clone())
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+    else {
+        return Err(err(StatusCode::BAD_REQUEST, "BAD_REQUEST", "invalid state"));
+    };
+
+    if pending.provider != provider {
+        return Err(err(StatusCode::BAD_REQUEST, "BAD_REQUEST", "invalid state"));
+    }
+
+    let subject = q.subject.ok_or_else(|| {
+        err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            "missing provider subject",
+        )
+    })?;
+
+    let exchange_code = format!("ekc_{}", Uuid::new_v4().simple());
+    OidcExchange::insert(entities::oidc_exchange::ActiveModel {
+        exchange_code: Set(exchange_code.clone()),
+        project: Set(pending.project.clone()),
+        env: Set(pending.env.clone()),
+        provider: Set(provider),
+        subject: Set(subject),
+        mode: Set(pending.mode),
+        user_sub: Set(pending.user_sub),
+        redirect_uri: Set(pending.redirect_uri.clone()),
+        expires_at: Set((Utc::now() + Duration::minutes(5)).to_rfc3339()),
+        consumed: Set(0),
+    })
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+
+    let _ = OidcState::delete_by_id(q.state)
+        .exec(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+
+    let sep = if pending.redirect_uri.contains('?') { '&' } else { '?' };
+    let location = format!(
+        "{}{}exchange_code={}",
+        pending.redirect_uri, sep, exchange_code
+    );
+    let mut out_headers = HeaderMap::new();
+    out_headers.insert(
+        LOCATION,
+        HeaderValue::from_str(&location)
+            .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", "invalid redirect location"))?,
+    );
+    Ok((StatusCode::FOUND, out_headers))
+}
+
+async fn oidc_exchange(
+    State(state): State<Arc<AppState>>,
+    Path(provider): Path<String>,
+    headers: HeaderMap,
+    Json(req): Json<OidcExchangeReq>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+    let Some(ex) = OidcExchange::find_by_id(req.exchange_code.clone())
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+    else {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            "invalid or expired exchange_code",
+        ));
+    };
+
+    if ex.provider != provider || ex.consumed == 1 {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            "invalid or expired exchange_code",
+        ));
+    }
+
+    let expires = DateTime::parse_from_rfc3339(&ex.expires_at)
+        .map_err(|_| err(StatusCode::BAD_REQUEST, "BAD_REQUEST", "invalid or expired exchange_code"))?
+        .with_timezone(&Utc);
+    if Utc::now() > expires {
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            "invalid or expired exchange_code",
+        ));
+    }
+
+    if ex.mode == "link" {
+        let Some(session) = resolve_session(&state.db, &headers, &ex.project, &ex.env).await else {
+            return Err(err(
+                StatusCode::UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "active session required for account linking",
+            ));
+        };
+
+        if ex.user_sub.as_deref() != Some(&session.sub) {
+            return Err(err(
+                StatusCode::UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "active session required for account linking",
+            ));
+        }
+
+        if let Some(existing) = OidcLink::find()
+            .filter(entities::oidc_link::Column::Project.eq(&ex.project))
+            .filter(entities::oidc_link::Column::Env.eq(&ex.env))
+            .filter(entities::oidc_link::Column::Provider.eq(&ex.provider))
+            .filter(entities::oidc_link::Column::Subject.eq(&ex.subject))
+            .one(&state.db)
+            .await
+            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        {
+            if existing.user_sub != session.sub {
+                return Err(err(
+                    StatusCode::CONFLICT,
+                    "CONFLICT",
+                    "provider subject already linked to another account",
+                ));
+            }
+        } else {
+            OidcLink::insert(entities::oidc_link::ActiveModel {
+                project: Set(ex.project.clone()),
+                env: Set(ex.env.clone()),
+                provider: Set(ex.provider.clone()),
+                subject: Set(ex.subject.clone()),
+                user_sub: Set(session.sub),
+                created_at: Set(Utc::now().to_rfc3339()),
+            })
+            .exec(&state.db)
+            .await
+            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+        }
+
+        OidcExchange::update_many()
+            .col_expr(entities::oidc_exchange::Column::Consumed, 1.into())
+            .filter(entities::oidc_exchange::Column::ExchangeCode.eq(&req.exchange_code))
+            .exec(&state.db)
+            .await
+            .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+
+        return Ok(Json(
+            serde_json::json!({"linked": true, "provider": ex.provider}),
+        ));
+    }
+
+    let link = OidcLink::find()
+        .filter(entities::oidc_link::Column::Project.eq(&ex.project))
+        .filter(entities::oidc_link::Column::Env.eq(&ex.env))
+        .filter(entities::oidc_link::Column::Provider.eq(&ex.provider))
+        .filter(entities::oidc_link::Column::Subject.eq(&ex.subject))
+        .one(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
+        .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "UNAUTHORIZED", "provider identity is not linked"))?;
+
+    let token = Uuid::new_v4().to_string();
+    Token::insert(entities::token::ActiveModel {
+        token: Set(token.clone()),
+        project: Set(ex.project),
+        env: Set(ex.env),
+        sub: Set(link.user_sub.clone()),
+        roles_json: Set("[\"authenticated\",\"reader\"]".to_string()),
+    })
+    .exec(&state.db)
+    .await
+    .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+
+    OidcExchange::update_many()
+        .col_expr(entities::oidc_exchange::Column::Consumed, 1.into())
+        .filter(entities::oidc_exchange::Column::ExchangeCode.eq(&req.exchange_code))
+        .exec(&state.db)
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+
+    Ok(Json(serde_json::json!({
+        "access_token": token,
+        "sub": link.user_sub,
+        "provider": ex.provider,
+    })))
 }
 
 #[derive(Deserialize, Serialize)]

@@ -16,6 +16,7 @@ Legend:
 | AUTH-001 | `tests/integration_py/tests/capabilities/auth/test_auth_001_hub_issuer_login.py::test_enduser_login_hub_issuer` | pass | signup/login + bridge success + context mismatch rejection covered |
 | AUTH-002 | `tests/integration_py/tests/capabilities/auth/test_auth_002_oidc_provider_config.py::test_enduser_login_external_oidc` | pass | provider create/duplicate/malformed issuer covered |
 | AUTH-003 | `tests/integration_py/tests/capabilities/auth/test_auth_003_multi_project_login.py::test_enduser_multi_project_login` | pass | multi-project token isolation covered |
+| AUTH-004 | `tests/integration_py/tests/capabilities/auth/test_auth_004_oidc_link.py::test_enduser_explicit_oidc_link` | pass | explicit link flow + linked login resolution + conflict + invalid code covered |
 | CRUD-001 | `tests/integration_py/tests/capabilities/crud/test_crud_001_basic.py::test_crud_basic` | pass | insert/select/id policy/rejection covered |
 | CRUD-002 | `tests/integration_py/tests/capabilities/crud/test_crud_002_advanced.py::test_crud_advanced` | pass | update/delete + where safety gate covered |
 | CRUD-003 | `tests/integration_py/tests/capabilities/crud/test_crud_003_expand.py::test_crud_expand` | pass | expand success/no-expand/invalid expand covered |
@@ -33,6 +34,7 @@ Legend:
 | LOGICS-005 | `tests/integration_py/tests/capabilities/logics/test_logics_005_param_defaults.py::test_logics_default_params` | pass | optional default + override + wrong-type validation covered |
 | LOGICS-006 | `tests/integration_py/tests/capabilities/logics/test_logics_006_role_guard.py::test_logics_admin_only` | pass | 401/403/200 role guard split covered |
 | LOGICS-007 | `tests/integration_py/tests/capabilities/logics/test_logics_007_errors.py::test_logics_error_cases` | pass | 400/401/403/404 + structured error body covered |
+| LOGICS-008 | `tests/integration_py/tests/capabilities/logics/test_logics_008_condition_gate.py::test_logics_condition_gate` | pass | request-scoped CEL gate + role context + pre-SQL deny covered |
 
 ## Cross-spec coverage
 

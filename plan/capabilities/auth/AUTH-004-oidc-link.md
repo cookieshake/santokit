@@ -2,11 +2,13 @@
 id: AUTH-004
 domain: auth
 title: Explicit OIDC account linking for authenticated user
-status: planned
+status: implemented
 depends: [AUTH-002]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/auth/test_auth_004_oidc_link.py::test_enduser_explicit_oidc_link
+code_refs:
+  - packages/services/hub/src/main.rs
 ---
 
 ## Intent

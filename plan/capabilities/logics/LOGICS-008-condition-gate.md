@@ -2,7 +2,7 @@
 id: LOGICS-008
 domain: logics
 title: Evaluate CEL condition gate before logic execution
-status: in_progress
+status: implemented
 depends: [LOGICS-001, LOGICS-004]
 spec_refs: ["plan/spec/errors.md", "plan/spec/final.md"]
 test_refs:

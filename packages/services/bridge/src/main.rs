@@ -947,6 +947,13 @@ fn eval_logic_condition(
         if let Some(name) = t.strip_prefix("request.params.") {
             return Ok(params.get(name).cloned().unwrap_or(Value::Null));
         }
+        if t == "request.auth.roles" {
+            let roles = principal_roles(p)
+                .into_iter()
+                .map(Value::String)
+                .collect::<Vec<_>>();
+            return Ok(Value::Array(roles));
+        }
         if t == "request.auth.sub" {
             let s = match p {
                 Principal::EndUser { sub, .. } => sub.clone(),
@@ -962,7 +969,16 @@ fn eval_logic_condition(
     };
     let l = resolve(left, p, params)?;
     let r = resolve(right, p, params)?;
-    if l == r {
+    let passed = match (&l, &r) {
+        (Value::Array(arr), Value::String(s)) => {
+            arr.iter().any(|v| v.as_str().map(|x| x == s).unwrap_or(false))
+        }
+        (Value::String(s), Value::Array(arr)) => {
+            arr.iter().any(|v| v.as_str().map(|x| x == s).unwrap_or(false))
+        }
+        _ => l == r,
+    };
+    if passed {
         Ok(())
     } else {
         Err(AppError::forbidden("Condition failed"))
