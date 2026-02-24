@@ -1,0 +1,8 @@
+tables:
+  files:
+    select:
+      roles: [authenticated]
+    insert:
+      roles: [authenticated]
+    delete:
+      roles: [authenticated]

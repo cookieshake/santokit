@@ -102,7 +102,7 @@ enum Principal {
     EndUser { sub: String, roles: Vec<String> },
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct ReleasePayload {
     release_id: String,
     #[serde(default)]
@@ -262,7 +262,8 @@ async fn call(
         if parts.len() != 2 {
             return Err(AppError::bad_request("Invalid db path"));
         }
-        let data = handle_db(&release, &principal, parts[0], parts[1], req.params).await?;
+        let data = handle_db(state.clone(), &release, &principal, parts[0], parts[1], req.params)
+            .await?;
         return Ok(Json(CallResp { data }));
     }
     if let Some(name) = req.path.strip_prefix("logics/") {
@@ -1002,6 +1003,7 @@ fn eval_permissions(
 }
 
 async fn handle_db(
+    state: Arc<AppState>,
     release: &ReleasePayload,
     principal: &Principal,
     table: &str,
@@ -1289,12 +1291,80 @@ async fn handle_db(
                 where_parts.push(format!("\"{}\" = ${}", k, idx));
                 vals.push(v);
             }
+
+            let cascade_file_columns = cols_def
+                .iter()
+                .filter_map(|(name, cdef)| {
+                    let is_file = cdef.get("type").and_then(|v| v.as_str()) == Some("file");
+                    let on_delete = cdef
+                        .get("onDelete")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("preserve");
+                    if !is_file || on_delete != "cascade" {
+                        return None;
+                    }
+                    let bucket = cdef
+                        .get("bucket")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("main")
+                        .to_string();
+                    Some((name.clone(), bucket))
+                })
+                .collect::<Vec<_>>();
+
+            let pre_delete_rows = if cascade_file_columns.is_empty() {
+                Vec::new()
+            } else {
+                let selected_cols = cascade_file_columns
+                    .iter()
+                    .map(|(name, _)| format!("\"{}\"", name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let pre_sql = format!(
+                    "SELECT {} FROM \"{}\" WHERE {}",
+                    selected_cols,
+                    table,
+                    where_parts.join(" AND ")
+                );
+                fetch_json_rows(&db, &pre_sql, vals.clone()).await?
+            };
+
             let sql = format!(
                 "DELETE FROM \"{}\" WHERE {}",
                 table,
                 where_parts.join(" AND ")
             );
             let result = execute_sql(&db, &sql, vals).await?;
+
+            if !cascade_file_columns.is_empty() && result.rows_affected() > 0 {
+                for row in pre_delete_rows {
+                    for (col_name, bucket) in &cascade_file_columns {
+                        let Some(key) = row.get(col_name).and_then(|v| v.as_str()) else {
+                            continue;
+                        };
+                        if key.trim().is_empty() {
+                            continue;
+                        }
+                        let state_cloned = state.clone();
+                        let release_cloned = release.clone();
+                        let principal_cloned = principal.clone();
+                        let bucket_cloned = bucket.clone();
+                        let key_cloned = key.to_string();
+                        tokio::spawn(async move {
+                            let _ = handle_storage(
+                                &state_cloned,
+                                &release_cloned,
+                                &principal_cloned,
+                                &bucket_cloned,
+                                "delete",
+                                serde_json::json!({"key": key_cloned}),
+                            )
+                            .await;
+                        });
+                    }
+                }
+            }
+
             Ok(serde_json::json!({"affected": result.rows_affected()}))
         }
         _ => Err(AppError::bad_request("Unknown CRUD operation")),

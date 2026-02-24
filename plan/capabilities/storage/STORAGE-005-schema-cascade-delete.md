@@ -2,11 +2,13 @@
 id: STORAGE-005
 domain: storage
 title: Schema integration — cascade delete on file column
-status: planned
+status: implemented
 depends: [STORAGE-003, CRUD-002]
 spec_refs: ["plan/spec/schema.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/storage/test_storage_005_schema_cascade_delete.py::test_storage_schema_cascade_delete
+code_refs:
+  - packages/services/bridge/src/main.rs
 ---
 
 ## Intent
