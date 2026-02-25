@@ -34,7 +34,13 @@ class SantokitDsl:
     def set_auth_token(self, token: str) -> None:
         self._auth_token = token
 
-    def runStkCli(self, command: str, workdir: str, env: Optional[Dict[str, str]] = None) -> ExecResult:
+    def runStkCli(
+        self,
+        command: str,
+        workdir: str,
+        env: Optional[Dict[str, str]] = None,
+        check: bool = True,
+    ) -> ExecResult:
         container = self.docker_client.containers.get(self.cli_container_id)
         merged_env = {
             "STK_HUB_URL": "http://hub:4000",
@@ -46,20 +52,40 @@ class SantokitDsl:
         exec_cmd = ["/bin/sh", "-lc", f"cd {workdir} && {command}"]
         result = container.exec_run(exec_cmd, environment=merged_env)
         output = result.output.decode("utf-8", errors="replace")
-        if result.exit_code != 0:
-            raise RuntimeError(f"stk command failed ({result.exit_code}): {command}\n{output}")
+        if check and result.exit_code != 0:
+            raise RuntimeError(
+                f"stk command failed ({result.exit_code}): {command}\n{output}"
+            )
         return ExecResult(exit_code=result.exit_code, output=output)
 
-    def httpToHub(self, method: str, path: str, json: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> requests.Response:
+    def httpToHub(
+        self,
+        method: str,
+        path: str,
+        json: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> requests.Response:
         url = f"{self.hub_base}{path}"
-        return requests.request(method, url, json=json, headers=headers, timeout=20, allow_redirects=False)
+        return requests.request(
+            method, url, json=json, headers=headers, timeout=20, allow_redirects=False
+        )
 
-    def httpToBridge(self, method: str, path: str, json: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> requests.Response:
+    def httpToBridge(
+        self,
+        method: str,
+        path: str,
+        json: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> requests.Response:
         url = f"{self.bridge_base}{path}"
-        return requests.request(method, url, json=json, headers=headers, timeout=20, allow_redirects=False)
+        return requests.request(
+            method, url, json=json, headers=headers, timeout=20, allow_redirects=False
+        )
 
     def login_operator(self, email: str, password: str) -> str:
-        resp = self.httpToHub("POST", "/api/auth/login", json={"email": email, "password": password})
+        resp = self.httpToHub(
+            "POST", "/api/auth/login", json={"email": email, "password": password}
+        )
         resp.raise_for_status()
         token = resp.json()["token"]
         self.set_auth_token(token)
@@ -81,12 +107,14 @@ class SantokitDsl:
             "psql -U stk -d postgres -tAc "
             f"\"SELECT 1 FROM pg_database WHERE datname='{safe_name}'\" "
             "| grep -q 1 || "
-            f"psql -U stk -d postgres -c \"CREATE DATABASE {safe_name};\""
+            f'psql -U stk -d postgres -c "CREATE DATABASE {safe_name};"'
         )
         result = container.exec_run(["/bin/sh", "-lc", cmd])
         output = result.output.decode("utf-8", errors="replace")
         if result.exit_code != 0:
-            raise RuntimeError(f"db init failed ({result.exit_code}): {safe_name}\n{output}")
+            raise RuntimeError(
+                f"db init failed ({result.exit_code}): {safe_name}\n{output}"
+            )
 
 
 def wait_for_http(url: str, timeout: int = 60) -> None:
@@ -132,9 +160,16 @@ def project_db_name(project: str) -> str:
     return sanitize_db_name(f"stk_{safe}")
 
 
-def create_api_key(env: "SantokitDsl", project: str, fixture_dir: str, name: str = "server", roles: str = "admin") -> str:
+def create_api_key(
+    env: "SantokitDsl",
+    project: str,
+    fixture_dir: str,
+    name: str = "server",
+    roles: str = "admin",
+) -> str:
     """API key 생성 후 키 문자열 반환"""
     import re
+
     create = env.runStkCli(
         f"stk apikey create --project {project} --env dev --name {name} --roles {roles}",
         workdir=fixture_dir,
@@ -160,17 +195,37 @@ def jwt_headers(token: str, project: str, env_name: str = "dev") -> dict:
     }
 
 
-def signup_and_login(env: "SantokitDsl", project: str, email: str, password: str, env_name: str = "dev") -> str:
+def signup_and_login(
+    env: "SantokitDsl", project: str, email: str, password: str, env_name: str = "dev"
+) -> str:
     """Signup + login, returns access_token"""
-    env.httpToHub("POST", "/api/endusers/signup",
-        json={"project": project, "env": env_name, "email": email, "password": password})
-    login = env.httpToHub("POST", "/api/endusers/login",
-        json={"project": project, "env": env_name, "email": email, "password": password})
+    env.httpToHub(
+        "POST",
+        "/api/endusers/signup",
+        json={
+            "project": project,
+            "env": env_name,
+            "email": email,
+            "password": password,
+        },
+    )
+    login = env.httpToHub(
+        "POST",
+        "/api/endusers/login",
+        json={
+            "project": project,
+            "env": env_name,
+            "email": email,
+            "password": password,
+        },
+    )
     assert login.status_code == 200
     return login.json()["access_token"]
 
 
-def bootstrap_project(env: "SantokitDsl", fixture_dir: str, prefix: str, ref: str, env_name: str = "dev") -> str:
+def bootstrap_project(
+    env: "SantokitDsl", fixture_dir: str, prefix: str, ref: str, env_name: str = "dev"
+) -> str:
     """공통 setup: project create → env create → DB → connection → apply. Returns project name."""
     project = unique_project(prefix)
     env.runStkCli(f"stk project create {project}", workdir=fixture_dir)

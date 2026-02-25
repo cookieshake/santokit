@@ -2,11 +2,13 @@
 id: SDK-001
 domain: sdk
 title: Generate TypeScript client from release schema
-status: planned
+status: implemented
 depends: [OPERATOR-001, OPERATOR-003]
 spec_refs: ["plan/spec/schema.md", "plan/spec/cli.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/sdk/test_sdk_001_generate_typescript_client.py::test_sdk_generate_typescript_client
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

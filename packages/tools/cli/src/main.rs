@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env;
+use std::path::Path;
 
 use anyhow::{Context, anyhow};
 use serde_json::Value;
@@ -163,6 +164,24 @@ async fn main() -> anyhow::Result<()> {
         "schema" if args.get(2).map(|s| s.as_str()) == Some("snapshot") => {
             println!("snapshot ok");
         }
+        "gen" if args.get(2).map(|s| s.as_str()) == Some("client") => {
+            let lang = get_flag(&args, "--lang").context("missing --lang")?;
+            if lang != "typescript" {
+                return Err(anyhow!("unsupported language: {}", lang));
+            }
+            let output = get_flag(&args, "--output").context("missing --output")?;
+            let project = get_flag(&args, "--project")
+                .or_else(|| env::var("STK_PROJECT").ok())
+                .context("missing --project (or STK_PROJECT)")?;
+            let env_name = get_flag(&args, "--env")
+                .or_else(|| env::var("STK_ENV").ok())
+                .unwrap_or_else(|| "dev".to_string());
+
+            let release = get_current_release(&client, &hub, &project, &env_name).await?;
+            let rendered = render_typescript_client(&release)?;
+            write_output(&output, &rendered)?;
+            println!("generated {}", output);
+        }
         other => {
             return Err(anyhow!("unsupported command: {}", other));
         }
@@ -176,6 +195,210 @@ fn get_flag(args: &[String], flag: &str) -> Option<String> {
         .position(|a| a == flag)
         .and_then(|i| args.get(i + 1))
         .cloned()
+}
+
+async fn get_current_release(
+    client: &reqwest::Client,
+    hub: &str,
+    project: &str,
+    env_name: &str,
+) -> anyhow::Result<Value> {
+    let url = format!(
+        "{}/internal/releases/{}/{}/current",
+        hub, project, env_name
+    );
+    let resp = client.get(url).send().await?;
+    if !resp.status().is_success() {
+        return Err(anyhow!(
+            "failed to load current release for {}/{}: {}",
+            project,
+            env_name,
+            resp.status()
+        ));
+    }
+    Ok(resp.json().await?)
+}
+
+fn write_output(path: &str, content: &str) -> anyhow::Result<()> {
+    let out = Path::new(path);
+    if let Some(parent) = out.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(out, content)?;
+    Ok(())
+}
+
+fn ts_type_from_column(col: &Value) -> &'static str {
+    match col.get("type").and_then(|v| v.as_str()).unwrap_or("string") {
+        "string" | "file" => "string",
+        "int" | "integer" | "float" | "number" => "number",
+        "bool" | "boolean" => "boolean",
+        "timestamp" | "datetime" => "string",
+        "array" => "unknown[]",
+        _ => "unknown",
+    }
+}
+
+fn to_pascal_case(s: &str) -> String {
+    s.split(['_', '-', ' '])
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut chars = p.chars();
+            let first = chars
+                .next()
+                .map(|c| c.to_ascii_uppercase().to_string())
+                .unwrap_or_default();
+            let rest = chars.as_str().to_ascii_lowercase();
+            format!("{}{}", first, rest)
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+fn render_typescript_client(release: &Value) -> anyhow::Result<String> {
+    let release_id = release
+        .get("release_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let schema = release
+        .get("schema")
+        .and_then(|v| v.get("tables"))
+        .and_then(|v| v.as_object())
+        .context("release schema.tables is missing")?;
+
+    let mut out = String::new();
+    out.push_str("/* eslint-disable */\n");
+    out.push_str(&format!("// releaseId: {}\n", release_id));
+    out.push_str(&format!(
+        "// generatedBy: stk@{}\n\n",
+        env!("CARGO_PKG_VERSION")
+    ));
+    out.push_str(&format!("export const releaseId = \"{}\"\n", release_id));
+    out.push_str(&format!(
+        "export const generatedBy = \"stk@{}\"\n\n",
+        env!("CARGO_PKG_VERSION")
+    ));
+
+    out.push_str("type CallResult<T> = Promise<{ data: T }>\n\n");
+
+    for (table_name, table_def) in schema {
+        let iface = to_pascal_case(table_name);
+        let cols = table_def
+            .get("columns")
+            .and_then(|v| v.as_object())
+            .cloned()
+            .unwrap_or_default();
+        let id_name = table_def
+            .get("id")
+            .and_then(|v| v.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("id");
+        let id_generate = table_def
+            .get("id")
+            .and_then(|v| v.get("generate"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("ulid");
+
+        out.push_str(&format!("export interface {}Row {{\n", iface));
+        out.push_str(&format!("  {}: string\n", id_name));
+        for (col_name, col_def) in &cols {
+            let ts = ts_type_from_column(col_def);
+            let nullable = col_def
+                .get("nullable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if nullable {
+                out.push_str(&format!("  {}: {} | null\n", col_name, ts));
+            } else {
+                out.push_str(&format!("  {}: {}\n", col_name, ts));
+            }
+        }
+        out.push_str("}\n\n");
+
+        out.push_str(&format!("export interface {}Insert {{\n", iface));
+        if id_generate != "none" {
+            out.push_str(&format!("  {}?: string\n", id_name));
+        } else {
+            out.push_str(&format!("  {}: string\n", id_name));
+        }
+        for (col_name, col_def) in &cols {
+            let ts = ts_type_from_column(col_def);
+            let nullable = col_def
+                .get("nullable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let has_default = col_def.get("default").is_some();
+            let optional = nullable || has_default;
+            if optional {
+                out.push_str(&format!("  {}?: {}\n", col_name, ts));
+            } else {
+                out.push_str(&format!("  {}: {}\n", col_name, ts));
+            }
+        }
+        out.push_str("}\n\n");
+    }
+
+    out.push_str(
+        "class TableApi<TRow, TInsert extends Record<string, unknown>> {\n\
+  constructor(private readonly call: (path: string, params: Record<string, unknown>) => Promise<any>, private readonly table: string) {}\n\
+  select(params: Record<string, unknown> = {}): CallResult<TRow[]> {\n\
+    return this.call(`db/${this.table}/select`, params)\n\
+  }\n\
+  insert(data: TInsert): CallResult<TRow> {\n\
+    return this.call(`db/${this.table}/insert`, { data })\n\
+  }\n\
+  update(where: Record<string, unknown>, data: Partial<TInsert>): CallResult<{ affected: number }> {\n\
+    return this.call(`db/${this.table}/update`, { where, data })\n\
+  }\n\
+  delete(where: Record<string, unknown>): CallResult<{ affected: number }> {\n\
+    return this.call(`db/${this.table}/delete`, { where })\n\
+  }\n\
+}\n\n",
+    );
+
+    out.push_str(
+        "export interface SantokitClientOptions {\n\
+  baseUrl: string\n\
+  project: string\n\
+  env: string\n\
+  getAccessToken?: () => string | undefined\n\
+}\n\n",
+    );
+
+    out.push_str(
+        "export function createClient(options: SantokitClientOptions) {\n\
+  const call = async (path: string, params: Record<string, unknown>) => {\n\
+    const headers: Record<string, string> = {\n\
+      \"Content-Type\": \"application/json\",\n\
+      \"X-Santokit-Project\": options.project,\n\
+      \"X-Santokit-Env\": options.env,\n\
+    }\n\
+    const token = options.getAccessToken?.()\n\
+    if (token) headers.Authorization = `Bearer ${token}`\n\
+    const res = await fetch(`${options.baseUrl}/call`, {\n\
+      method: \"POST\",\n\
+      headers,\n\
+      body: JSON.stringify({ path, params }),\n\
+    })\n\
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`)\n\
+    return res.json()\n\
+  }\n\
+  return {\n\
+    db: {\n",
+    );
+
+    for (table_name, _table_def) in schema {
+        let iface = to_pascal_case(table_name);
+        out.push_str(&format!(
+            "      {}: new TableApi<{}Row, {}Insert>(call, \"{}\"),\n",
+            table_name, iface, iface, table_name
+        ));
+    }
+
+    out.push_str("    },\n  }\n}\n");
+    Ok(out)
 }
 
 async fn post_auth(

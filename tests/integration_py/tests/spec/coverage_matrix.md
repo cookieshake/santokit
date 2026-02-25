@@ -24,6 +24,7 @@ Legend:
 | STORAGE-004 | `tests/integration_py/tests/capabilities/storage/test_storage_004_multipart_upload.py::test_storage_multipart_upload` | pass | multipart create/sign/complete/abort and constraints/authz failure cases covered |
 | STORAGE-005 | `tests/integration_py/tests/capabilities/storage/test_storage_005_schema_cascade_delete.py::test_storage_schema_cascade_delete` | pass | file-column cascade delete best-effort behavior and delete safety gate covered |
 | STORAGE-006 | `tests/integration_py/tests/capabilities/storage/test_storage_006_path_variable_binding.py::test_storage_path_variable_binding` | pass | path variable extraction + owner/admin bypass + undefined path var error covered |
+| SDK-001 | `tests/integration_py/tests/capabilities/sdk/test_sdk_001_generate_typescript_client.py::test_sdk_generate_typescript_client` | pass | typescript client generation, metadata embedding, and no-release failure path covered |
 | CRUD-001 | `tests/integration_py/tests/capabilities/crud/test_crud_001_basic.py::test_crud_basic` | pass | insert/select/id policy/rejection covered |
 | CRUD-002 | `tests/integration_py/tests/capabilities/crud/test_crud_002_advanced.py::test_crud_advanced` | pass | update/delete + where safety gate covered |
 | CRUD-003 | `tests/integration_py/tests/capabilities/crud/test_crud_003_expand.py::test_crud_expand` | pass | expand success/no-expand/invalid expand covered |
