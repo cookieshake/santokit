@@ -2,11 +2,13 @@
 id: SDK-002
 domain: sdk
 title: Type mapping from schema to TypeScript
-status: planned
+status: implemented
 depends: [SDK-001]
 spec_refs: ["plan/spec/schema.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/sdk/test_sdk_002_type_mapping.py::test_sdk_type_mapping
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

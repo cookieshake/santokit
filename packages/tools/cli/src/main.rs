@@ -230,14 +230,42 @@ fn write_output(path: &str, content: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn ts_type_from_column(col: &Value) -> &'static str {
-    match col.get("type").and_then(|v| v.as_str()).unwrap_or("string") {
-        "string" | "file" => "string",
-        "int" | "integer" | "float" | "number" => "number",
-        "bool" | "boolean" => "boolean",
-        "timestamp" | "datetime" => "string",
-        "array" => "unknown[]",
-        _ => "unknown",
+fn map_ts_type_token(token: &str, col_name: &str) -> anyhow::Result<String> {
+    let t = token.trim();
+    if let Some(inner) = t.strip_prefix("array<").and_then(|s| s.strip_suffix('>')) {
+        let inner_ts = map_ts_type_token(inner, col_name)?;
+        return Ok(format!("{}[]", inner_ts));
+    }
+    match t {
+        "string" => Ok("string".to_string()),
+        "int" | "integer" => Ok("number".to_string()),
+        "bigint" => Ok("string".to_string()),
+        "float" | "number" => Ok("number".to_string()),
+        "decimal" => Ok("string".to_string()),
+        "boolean" | "bool" => Ok("boolean".to_string()),
+        "json" => Ok("unknown".to_string()),
+        "timestamp" | "datetime" => Ok("string".to_string()),
+        "bytes" => Ok("string".to_string()),
+        "file" => Ok("string".to_string()),
+        _ => Err(anyhow!(
+            "unknown schema type '{}' for column '{}'",
+            t,
+            col_name
+        )),
+    }
+}
+
+fn ts_type_from_column(col_name: &str, col: &Value) -> anyhow::Result<String> {
+    let raw = col.get("type").and_then(|v| v.as_str()).unwrap_or("string");
+    if raw == "array" {
+        let item = col
+            .get("items")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("array column '{}' is missing items", col_name))?;
+        let inner = map_ts_type_token(item, col_name)?;
+        Ok(format!("{}[]", inner))
+    } else {
+        map_ts_type_token(raw, col_name)
     }
 }
 
@@ -301,10 +329,17 @@ fn render_typescript_client(release: &Value) -> anyhow::Result<String> {
             .and_then(|v| v.as_str())
             .unwrap_or("ulid");
 
+        let id_type_raw = table_def
+            .get("id")
+            .and_then(|v| v.get("type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| if id_generate == "auto_increment" { "bigint" } else { "string" });
+        let id_ts = map_ts_type_token(id_type_raw, id_name)?;
+
         out.push_str(&format!("export interface {}Row {{\n", iface));
-        out.push_str(&format!("  {}: string\n", id_name));
+        out.push_str(&format!("  {}: {}\n", id_name, id_ts));
         for (col_name, col_def) in &cols {
-            let ts = ts_type_from_column(col_def);
+            let ts = ts_type_from_column(col_name, col_def)?;
             let nullable = col_def
                 .get("nullable")
                 .and_then(|v| v.as_bool())
@@ -319,22 +354,27 @@ fn render_typescript_client(release: &Value) -> anyhow::Result<String> {
 
         out.push_str(&format!("export interface {}Insert {{\n", iface));
         if id_generate != "none" {
-            out.push_str(&format!("  {}?: string\n", id_name));
+            out.push_str(&format!("  {}?: {}\n", id_name, id_ts));
         } else {
-            out.push_str(&format!("  {}: string\n", id_name));
+            out.push_str(&format!("  {}: {}\n", id_name, id_ts));
         }
         for (col_name, col_def) in &cols {
-            let ts = ts_type_from_column(col_def);
+            let ts = ts_type_from_column(col_name, col_def)?;
             let nullable = col_def
                 .get("nullable")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let has_default = col_def.get("default").is_some();
             let optional = nullable || has_default;
-            if optional {
-                out.push_str(&format!("  {}?: {}\n", col_name, ts));
+            let ts_with_nullable = if nullable {
+                format!("{} | null", ts)
             } else {
-                out.push_str(&format!("  {}: {}\n", col_name, ts));
+                ts
+            };
+            if optional {
+                out.push_str(&format!("  {}?: {}\n", col_name, ts_with_nullable));
+            } else {
+                out.push_str(&format!("  {}: {}\n", col_name, ts_with_nullable));
             }
         }
         out.push_str("}\n\n");

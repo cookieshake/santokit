@@ -1,0 +1,11 @@
+version: 1
+tables:
+  broken:
+    connection: main
+    id:
+      name: id
+      generate: ulid
+    columns:
+      mystery:
+        type: uuidish
+        nullable: false
