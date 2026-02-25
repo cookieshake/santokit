@@ -2,11 +2,13 @@
 id: SDK-003
 domain: sdk
 title: Generated CRUD API shape
-status: planned
+status: implemented
 depends: [SDK-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/sdk/test_sdk_003_crud_api_shape.py::test_sdk_crud_api_shape
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

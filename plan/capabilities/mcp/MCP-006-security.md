@@ -2,11 +2,13 @@
 id: MCP-006
 domain: mcp
 title: Security — sensitive data filtering and RBAC enforcement
-status: planned
+status: implemented
 depends: [MCP-001]
 spec_refs: ["plan/spec/operator-rbac.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/mcp/test_mcp_006_security.py::test_mcp_security
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

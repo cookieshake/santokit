@@ -2,11 +2,13 @@
 id: MCP-005
 domain: mcp
 title: Logic tools — list and get logic details
-status: planned
+status: implemented
 depends: [MCP-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/mcp/test_mcp_005_logic_tools.py::test_mcp_logic_tools
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

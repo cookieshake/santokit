@@ -3,7 +3,7 @@ use std::path::Path as FsPath;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::{header::LOCATION, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header::LOCATION};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Duration, Utc};
@@ -53,19 +53,139 @@ fn err(
     )
 }
 
-fn require_operator(headers: &HeaderMap) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+#[derive(Clone)]
+struct OperatorPrincipal {
+    email: String,
+    is_owner: bool,
+}
+
+fn parse_operator(headers: &HeaderMap) -> Result<OperatorPrincipal, (StatusCode, Json<ErrorBody>)> {
     let token = headers
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "));
-    if token == Some("operator-token") {
-        Ok(())
-    } else {
-        Err(err(
+    match token {
+        Some("operator-token") => Ok(OperatorPrincipal {
+            email: "owner@example.com".to_string(),
+            is_owner: true,
+        }),
+        Some(t) if t.starts_with("operator:") => {
+            let email = t.trim_start_matches("operator:");
+            if email.is_empty() {
+                return Err(err(
+                    StatusCode::UNAUTHORIZED,
+                    "UNAUTHORIZED",
+                    "operator auth required",
+                ));
+            }
+            Ok(OperatorPrincipal {
+                email: email.to_string(),
+                is_owner: false,
+            })
+        }
+        _ => Err(err(
             StatusCode::UNAUTHORIZED,
             "UNAUTHORIZED",
             "operator auth required",
-        ))
+        )),
+    }
+}
+
+fn require_operator(headers: &HeaderMap) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+    parse_operator(headers).map(|_| ())
+}
+
+fn sql_escape(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
+async fn ensure_owner_org_membership(
+    state: &Arc<AppState>,
+) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+    let stmt = format!(
+        "INSERT OR IGNORE INTO org_memberships (org, email, role, status) VALUES ('default', '{}', 'owner', 'active')",
+        sql_escape("owner@example.com")
+    );
+    state
+        .db
+        .execute(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(())
+}
+
+async fn project_role(
+    state: &Arc<AppState>,
+    project: &str,
+    email: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorBody>)> {
+    let stmt = format!(
+        "SELECT role FROM project_memberships WHERE project='{}' AND email='{}' AND status='active' LIMIT 1",
+        sql_escape(project),
+        sql_escape(email)
+    );
+    let row = state
+        .db
+        .query_one(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(row.and_then(|r| r.try_get::<String>("", "role").ok()))
+}
+
+async fn org_role(
+    state: &Arc<AppState>,
+    email: &str,
+) -> Result<Option<String>, (StatusCode, Json<ErrorBody>)> {
+    let stmt = format!(
+        "SELECT role FROM org_memberships WHERE org='default' AND email='{}' AND status='active' LIMIT 1",
+        sql_escape(email)
+    );
+    let row = state
+        .db
+        .query_one(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(row.and_then(|r| r.try_get::<String>("", "role").ok()))
+}
+
+async fn require_project_role(
+    state: &Arc<AppState>,
+    headers: &HeaderMap,
+    project: &str,
+    allowed_roles: &[&str],
+) -> Result<OperatorPrincipal, (StatusCode, Json<ErrorBody>)> {
+    let principal = parse_operator(headers)?;
+    if principal.is_owner {
+        return Ok(principal);
+    }
+    if let Some(org_role_name) = org_role(state, &principal.email).await? {
+        if org_role_name == "owner" || org_role_name == "admin" {
+            return Ok(principal);
+        }
+    }
+    if let Some(project_role_name) = project_role(state, project, &principal.email).await? {
+        if allowed_roles.iter().any(|r| *r == project_role_name) {
+            return Ok(principal);
+        }
+    }
+    Err(err(StatusCode::FORBIDDEN, "FORBIDDEN", "insufficient role"))
+}
+
+async fn require_org_admin(
+    state: &Arc<AppState>,
+    headers: &HeaderMap,
+) -> Result<OperatorPrincipal, (StatusCode, Json<ErrorBody>)> {
+    let principal = parse_operator(headers)?;
+    if principal.is_owner {
+        return Ok(principal);
+    }
+    let Some(role_name) = org_role(state, &principal.email).await? else {
+        return Err(err(StatusCode::FORBIDDEN, "FORBIDDEN", "insufficient role"));
+    };
+    if role_name == "owner" || role_name == "admin" {
+        Ok(principal)
+    } else {
+        Err(err(StatusCode::FORBIDDEN, "FORBIDDEN", "insufficient role"))
     }
 }
 
@@ -125,6 +245,12 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/endusers/signup", post(enduser_signup))
         .route("/api/endusers/login", post(enduser_login))
         .route("/api/oidc/providers", post(oidc_create))
+        .route("/api/org/invite", post(org_invite))
+        .route("/api/org/members/set-role", post(org_set_role))
+        .route("/api/org/remove", post(org_remove))
+        .route("/api/project/invite", post(project_invite))
+        .route("/api/project/members/set-role", post(project_set_role))
+        .route("/api/project/remove", post(project_remove))
         .route("/oidc/{provider}/start", get(oidc_start))
         .route("/oidc/{provider}/callback", get(oidc_callback))
         .route("/oidc/{provider}/exchange", post(oidc_exchange))
@@ -162,6 +288,8 @@ async fn init_db(db: &DatabaseConnection) -> anyhow::Result<()> {
         "CREATE TABLE IF NOT EXISTS oidc_links (project TEXT NOT NULL, env TEXT NOT NULL, provider TEXT NOT NULL, subject TEXT NOT NULL, user_sub TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(project,env,provider,subject))",
         "CREATE TABLE IF NOT EXISTS oidc_states (state TEXT PRIMARY KEY, project TEXT NOT NULL, env TEXT NOT NULL, provider TEXT NOT NULL, mode TEXT NOT NULL, user_sub TEXT NULL, redirect_uri TEXT NOT NULL, created_at TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS oidc_exchanges (exchange_code TEXT PRIMARY KEY, project TEXT NOT NULL, env TEXT NOT NULL, provider TEXT NOT NULL, subject TEXT NOT NULL, mode TEXT NOT NULL, user_sub TEXT NULL, redirect_uri TEXT NOT NULL, expires_at TEXT NOT NULL, consumed INTEGER NOT NULL DEFAULT 0)",
+        "CREATE TABLE IF NOT EXISTS org_memberships (org TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(org,email))",
+        "CREATE TABLE IF NOT EXISTS project_memberships (project TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(project,email))",
     ];
     for s in stmts {
         db.execute(Statement::from_string(DbBackend::Sqlite, s.to_string()))
@@ -185,7 +313,10 @@ async fn internal_healthz() -> Json<Value> {
 async fn readyz(State(state): State<Arc<AppState>>) -> (StatusCode, Json<Value>) {
     let ok = state
         .db
-        .query_one(Statement::from_string(DbBackend::Sqlite, "SELECT 1".to_string()))
+        .query_one(Statement::from_string(
+            DbBackend::Sqlite,
+            "SELECT 1".to_string(),
+        ))
         .await
         .is_ok();
     if ok {
@@ -205,15 +336,21 @@ struct OperatorLoginReq {
 }
 
 async fn operator_login(
+    State(state): State<Arc<AppState>>,
     Json(req): Json<OperatorLoginReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    if req.email == "owner@example.com" && req.password == "password" {
-        Ok(Json(serde_json::json!({"token":"operator-token"})))
-    } else {
+    if req.password != "password" {
         Err(err(
             StatusCode::UNAUTHORIZED,
             "UNAUTHORIZED",
             "invalid operator credentials",
+        ))
+    } else if req.email == "owner@example.com" {
+        ensure_owner_org_membership(&state).await?;
+        Ok(Json(serde_json::json!({"token":"operator-token"})))
+    } else {
+        Ok(Json(
+            serde_json::json!({"token": format!("operator:{}", req.email)}),
         ))
     }
 }
@@ -228,11 +365,15 @@ async fn project_create(
     headers: HeaderMap,
     Json(req): Json<ProjectReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
     Project::insert(entities::project::ActiveModel {
         name: Set(req.project),
     })
-    .on_conflict(OnConflict::column(entities::project::Column::Name).do_nothing().to_owned())
+    .on_conflict(
+        OnConflict::column(entities::project::Column::Name)
+            .do_nothing()
+            .to_owned(),
+    )
     .exec(&state.db)
     .await
     .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
@@ -250,7 +391,7 @@ async fn env_create(
     headers: HeaderMap,
     Json(req): Json<EnvReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
     Env::insert(entities::env::ActiveModel {
         project: Set(req.project),
         name: Set(req.env),
@@ -280,7 +421,7 @@ async fn connection_set(
     headers: HeaderMap,
     Json(req): Json<ConnectionSetReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
     Connection::insert(entities::connection::ActiveModel {
         project: Set(req.project),
         env: Set(req.env),
@@ -318,7 +459,7 @@ async fn connection_test(
     headers: HeaderMap,
     Json(req): Json<ConnectionTestReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
     let row = Connection::find()
         .filter(entities::connection::Column::Project.eq(req.project))
         .filter(entities::connection::Column::Env.eq(req.env))
@@ -354,7 +495,7 @@ async fn apply_release(
     headers: HeaderMap,
     Json(req): Json<ApplyReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &req.project, &["admin", "deployer"]).await?;
     let schema_json = merge_schema(&req.schema)?;
     apply_schema_to_db(&state.db, &req.project, &req.env, &schema_json).await?;
 
@@ -549,7 +690,7 @@ async fn apikey_create(
     headers: HeaderMap,
     Json(req): Json<ApiKeyCreateReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
     let key_id = req.name.clone();
     let secret = Uuid::new_v4().simple().to_string();
     let api_key = format!("{}.{}", key_id, secret);
@@ -595,7 +736,7 @@ async fn apikey_list(
     headers: HeaderMap,
     Query(q): Query<ApiKeyListQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &q.project, &["admin"]).await?;
     let rows = ApiKey::find()
         .filter(entities::apikey::Column::Project.eq(q.project))
         .filter(entities::apikey::Column::Env.eq(q.env))
@@ -622,7 +763,7 @@ async fn apikey_revoke(
     headers: HeaderMap,
     Json(req): Json<ApiKeyRevokeReq>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    require_operator(&headers)?;
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
     ApiKey::update_many()
         .col_expr(entities::apikey::Column::Revoked, 1.into())
         .filter(entities::apikey::Column::Project.eq(req.project))
@@ -636,6 +777,190 @@ async fn apikey_revoke(
         .await
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
     Ok(Json(serde_json::json!({"ok":true})))
+}
+
+#[derive(Deserialize)]
+struct OrgInviteReq {
+    email: String,
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct OrgSetRoleReq {
+    user: String,
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct OrgRemoveReq {
+    user: String,
+}
+
+#[derive(Deserialize)]
+struct ProjectInviteReq {
+    project: String,
+    email: String,
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct ProjectSetRoleReq {
+    project: String,
+    user: String,
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct ProjectRemoveReq {
+    project: String,
+    user: String,
+}
+
+fn validate_org_role(role: &str) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+    if matches!(role, "owner" | "admin" | "member") {
+        Ok(())
+    } else {
+        Err(err(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "INVALID_ROLE",
+            "invalid org role",
+        ))
+    }
+}
+
+fn validate_project_role(role: &str) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+    if matches!(role, "admin" | "deployer" | "viewer") {
+        Ok(())
+    } else {
+        Err(err(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "INVALID_ROLE",
+            "invalid project role",
+        ))
+    }
+}
+
+async fn org_invite(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<OrgInviteReq>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+    require_org_admin(&state, &headers).await?;
+    validate_org_role(&req.role)?;
+    let stmt = format!(
+        "INSERT INTO org_memberships (org, email, role, status) VALUES ('default', '{}', '{}', 'pending') \
+         ON CONFLICT(org,email) DO UPDATE SET role=excluded.role, status='pending'",
+        sql_escape(&req.email),
+        sql_escape(&req.role)
+    );
+    state
+        .db
+        .execute(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+async fn org_set_role(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<OrgSetRoleReq>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+    require_org_admin(&state, &headers).await?;
+    validate_org_role(&req.role)?;
+    let stmt = format!(
+        "INSERT INTO org_memberships (org, email, role, status) VALUES ('default', '{}', '{}', 'active') \
+         ON CONFLICT(org,email) DO UPDATE SET role=excluded.role, status='active'",
+        sql_escape(&req.user),
+        sql_escape(&req.role)
+    );
+    state
+        .db
+        .execute(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+async fn org_remove(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<OrgRemoveReq>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+    require_org_admin(&state, &headers).await?;
+    let stmt = format!(
+        "DELETE FROM org_memberships WHERE org='default' AND email='{}'",
+        sql_escape(&req.user)
+    );
+    state
+        .db
+        .execute(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+async fn project_invite(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<ProjectInviteReq>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
+    validate_project_role(&req.role)?;
+    let stmt = format!(
+        "INSERT INTO project_memberships (project, email, role, status) VALUES ('{}', '{}', '{}', 'pending') \
+         ON CONFLICT(project,email) DO UPDATE SET role=excluded.role, status='pending'",
+        sql_escape(&req.project),
+        sql_escape(&req.email),
+        sql_escape(&req.role)
+    );
+    state
+        .db
+        .execute(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+async fn project_set_role(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<ProjectSetRoleReq>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
+    validate_project_role(&req.role)?;
+    let stmt = format!(
+        "INSERT INTO project_memberships (project, email, role, status) VALUES ('{}', '{}', '{}', 'active') \
+         ON CONFLICT(project,email) DO UPDATE SET role=excluded.role, status='active'",
+        sql_escape(&req.project),
+        sql_escape(&req.user),
+        sql_escape(&req.role)
+    );
+    state
+        .db
+        .execute(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(Json(serde_json::json!({"ok": true})))
+}
+
+async fn project_remove(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<ProjectRemoveReq>,
+) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+    require_project_role(&state, &headers, &req.project, &["admin"]).await?;
+    let stmt = format!(
+        "DELETE FROM project_memberships WHERE project='{}' AND email='{}'",
+        sql_escape(&req.project),
+        sql_escape(&req.user)
+    );
+    state
+        .db
+        .execute(Statement::from_string(DbBackend::Sqlite, stmt))
+        .await
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
+    Ok(Json(serde_json::json!({"ok": true})))
 }
 
 #[derive(Deserialize)]
@@ -664,7 +989,10 @@ async fn enduser_signup(
             entities::enduser::Column::Env,
             entities::enduser::Column::Email,
         ])
-        .update_columns([entities::enduser::Column::Password, entities::enduser::Column::Sub])
+        .update_columns([
+            entities::enduser::Column::Password,
+            entities::enduser::Column::Sub,
+        ])
         .to_owned(),
     )
     .exec(&state.db)
@@ -685,12 +1013,12 @@ async fn enduser_login(
         .await
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
         .ok_or_else(|| {
-        err(
-            StatusCode::UNAUTHORIZED,
-            "UNAUTHORIZED",
-            "invalid credentials",
-        )
-    })?;
+            err(
+                StatusCode::UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "invalid credentials",
+            )
+        })?;
     if row.password != req.password {
         return Err(err(
             StatusCode::UNAUTHORIZED,
@@ -772,7 +1100,9 @@ struct OidcProviderPayload {
     redirect_uris: Vec<String>,
 }
 
-fn parse_provider_payload(payload_json: &str) -> Result<OidcProviderPayload, (StatusCode, Json<ErrorBody>)> {
+fn parse_provider_payload(
+    payload_json: &str,
+) -> Result<OidcProviderPayload, (StatusCode, Json<ErrorBody>)> {
     serde_json::from_str(payload_json).map_err(|e| {
         err(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -789,7 +1119,11 @@ async fn oidc_start(
     Query(q): Query<OidcStartQuery>,
 ) -> Result<(StatusCode, HeaderMap), (StatusCode, Json<ErrorBody>)> {
     if q.mode != "link" && q.mode != "login" {
-        return Err(err(StatusCode::BAD_REQUEST, "BAD_REQUEST", "unsupported mode"));
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            "BAD_REQUEST",
+            "unsupported mode",
+        ));
     }
 
     let prov = OidcProvider::find()
@@ -843,8 +1177,13 @@ async fn oidc_start(
     let mut out_headers = HeaderMap::new();
     out_headers.insert(
         LOCATION,
-        HeaderValue::from_str(&location)
-            .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", "invalid redirect location"))?,
+        HeaderValue::from_str(&location).map_err(|_| {
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL",
+                "invalid redirect location",
+            )
+        })?,
     );
     Ok((StatusCode::FOUND, out_headers))
 }
@@ -896,7 +1235,11 @@ async fn oidc_callback(
         .await
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?;
 
-    let sep = if pending.redirect_uri.contains('?') { '&' } else { '?' };
+    let sep = if pending.redirect_uri.contains('?') {
+        '&'
+    } else {
+        '?'
+    };
     let location = format!(
         "{}{}exchange_code={}",
         pending.redirect_uri, sep, exchange_code
@@ -904,8 +1247,13 @@ async fn oidc_callback(
     let mut out_headers = HeaderMap::new();
     out_headers.insert(
         LOCATION,
-        HeaderValue::from_str(&location)
-            .map_err(|_| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", "invalid redirect location"))?,
+        HeaderValue::from_str(&location).map_err(|_| {
+            err(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "INTERNAL",
+                "invalid redirect location",
+            )
+        })?,
     );
     Ok((StatusCode::FOUND, out_headers))
 }
@@ -937,7 +1285,13 @@ async fn oidc_exchange(
     }
 
     let expires = DateTime::parse_from_rfc3339(&ex.expires_at)
-        .map_err(|_| err(StatusCode::BAD_REQUEST, "BAD_REQUEST", "invalid or expired exchange_code"))?
+        .map_err(|_| {
+            err(
+                StatusCode::BAD_REQUEST,
+                "BAD_REQUEST",
+                "invalid or expired exchange_code",
+            )
+        })?
         .with_timezone(&Utc);
     if Utc::now() > expires {
         return Err(err(
@@ -1014,7 +1368,13 @@ async fn oidc_exchange(
         .one(&state.db)
         .await
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
-        .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "UNAUTHORIZED", "provider identity is not linked"))?;
+        .ok_or_else(|| {
+            err(
+                StatusCode::UNAUTHORIZED,
+                "UNAUTHORIZED",
+                "provider identity is not linked",
+            )
+        })?;
 
     let token = Uuid::new_v4().to_string();
     Token::insert(entities::token::ActiveModel {
@@ -1147,12 +1507,12 @@ async fn release_promote(
         .await
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL", e.to_string()))?
         .ok_or_else(|| {
-        err(
-            StatusCode::NOT_FOUND,
-            "NOT_FOUND",
-            "source release not found",
-        )
-    })?;
+            err(
+                StatusCode::NOT_FOUND,
+                "NOT_FOUND",
+                "source release not found",
+            )
+        })?;
     CurrentRelease::insert(entities::current_release::ActiveModel {
         project: Set(req.project),
         env: Set(req.to),

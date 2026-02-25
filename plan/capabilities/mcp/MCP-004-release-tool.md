@@ -2,11 +2,13 @@
 id: MCP-004
 domain: mcp
 title: Release tool — get current release info
-status: planned
+status: implemented
 depends: [MCP-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/mcp/test_mcp_004_release_tool.py::test_mcp_release_current_tool
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

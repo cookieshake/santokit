@@ -2,11 +2,13 @@
 id: SDK-004
 domain: sdk
 title: Error handling in generated SDK
-status: planned
+status: implemented
 depends: [SDK-001]
 spec_refs: ["plan/spec/errors.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/sdk/test_sdk_004_error_handling.py::test_sdk_error_handling_generation
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

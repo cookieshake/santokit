@@ -2,11 +2,13 @@
 id: MCP-003
 domain: mcp
 title: Permissions tool — get table permissions
-status: planned
+status: implemented
 depends: [MCP-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/mcp/test_mcp_003_permissions_tool.py::test_mcp_permissions_tool
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

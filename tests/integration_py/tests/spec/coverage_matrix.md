@@ -13,6 +13,7 @@ Legend:
 | OPERATOR-003 | `tests/integration_py/tests/capabilities/operator/test_operator_003_apply_schema.py::test_operator_schema_change` | pass | schema re-apply path covered |
 | OPERATOR-004 | `tests/integration_py/tests/capabilities/operator/test_operator_004_apply_permissions.py::test_operator_permissions_change` | pass | permissions re-apply path covered |
 | OPERATOR-005 | `tests/integration_py/tests/capabilities/operator/test_operator_005_release_promote_rollback.py::test_operator_release_promotion_rollback` | pass | promote + rollback pointer flow covered |
+| OPERATOR-006 | `tests/integration_py/tests/capabilities/operator/test_operator_006_rbac.py::test_operator_rbac_membership_and_roles` | pass | org/project invite, role update, role-based 403, and removal revocation covered |
 | OPERATOR-007 | `tests/integration_py/tests/capabilities/operator/test_operator_007_health.py::test_operator_health_and_readiness` | pass | hub/bridge healthz + readiness success/failure checks covered |
 | AUTH-001 | `tests/integration_py/tests/capabilities/auth/test_auth_001_hub_issuer_login.py::test_enduser_login_hub_issuer` | pass | signup/login + bridge success + context mismatch rejection covered |
 | AUTH-002 | `tests/integration_py/tests/capabilities/auth/test_auth_002_oidc_provider_config.py::test_enduser_login_external_oidc` | pass | provider create/duplicate/malformed issuer covered |
@@ -26,6 +27,15 @@ Legend:
 | STORAGE-006 | `tests/integration_py/tests/capabilities/storage/test_storage_006_path_variable_binding.py::test_storage_path_variable_binding` | pass | path variable extraction + owner/admin bypass + undefined path var error covered |
 | SDK-001 | `tests/integration_py/tests/capabilities/sdk/test_sdk_001_generate_typescript_client.py::test_sdk_generate_typescript_client` | pass | typescript client generation, metadata embedding, and no-release failure path covered |
 | SDK-002 | `tests/integration_py/tests/capabilities/sdk/test_sdk_002_type_mapping.py::test_sdk_type_mapping` | pass | deterministic schema-to-TS mapping with nullable/array recursion and unknown-type failure covered |
+| SDK-003 | `tests/integration_py/tests/capabilities/sdk/test_sdk_003_crud_api_shape.py::test_sdk_crud_api_shape` | pass | generated CRUD method signatures and db table entrypoint shape covered |
+| SDK-004 | `tests/integration_py/tests/capabilities/sdk/test_sdk_004_error_handling.py::test_sdk_error_handling_generation` | pass | generated SantokitError and non-200 response normalization behavior covered |
+| SDK-005 | `tests/integration_py/tests/capabilities/sdk/test_sdk_005_auth_integration.py::test_sdk_auth_integration_generation` | pass | generated auth option exclusivity and automatic apiKey/bearer header injection covered |
+| MCP-001 | `tests/integration_py/tests/capabilities/mcp/test_mcp_001_server_modes.py::test_mcp_server_modes` | pass | stdio JSON-RPC loop, default/custom SSE startup, and context/release preflight behavior covered |
+| MCP-002 | `tests/integration_py/tests/capabilities/mcp/test_mcp_002_schema_tools.py::test_mcp_schema_tools` | pass | schema tool listing, table details (columns/pk/fk), and unknown-table NOT_FOUND behavior covered |
+| MCP-003 | `tests/integration_py/tests/capabilities/mcp/test_mcp_003_permissions_tool.py::test_mcp_permissions_tool` | pass | permissions rule projection, viewer RBAC gate, and missing-table NOT_FOUND behavior covered |
+| MCP-004 | `tests/integration_py/tests/capabilities/mcp/test_mcp_004_release_tool.py::test_mcp_release_current_tool` | pass | current release tool project/env/releaseId response and pointer update visibility covered |
+| MCP-005 | `tests/integration_py/tests/capabilities/mcp/test_mcp_005_logic_tools.py::test_mcp_logic_tools` | pass | logic list/get SQL+params+auth projection and missing-logic NOT_FOUND behavior covered |
+| MCP-006 | `tests/integration_py/tests/capabilities/mcp/test_mcp_006_security.py::test_mcp_security` | pass | RBAC denial, timeout envelope, and sensitive-token/connection-string filtering behavior covered |
 | CRUD-001 | `tests/integration_py/tests/capabilities/crud/test_crud_001_basic.py::test_crud_basic` | pass | insert/select/id policy/rejection covered |
 | CRUD-002 | `tests/integration_py/tests/capabilities/crud/test_crud_002_advanced.py::test_crud_advanced` | pass | update/delete + where safety gate covered |
 | CRUD-003 | `tests/integration_py/tests/capabilities/crud/test_crud_003_expand.py::test_crud_expand` | pass | expand success/no-expand/invalid expand covered |

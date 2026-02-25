@@ -2,11 +2,13 @@
 id: MCP-002
 domain: mcp
 title: Schema tools — list tables and get table details
-status: planned
+status: implemented
 depends: [MCP-001]
 spec_refs: ["plan/spec/schema.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/mcp/test_mcp_002_schema_tools.py::test_mcp_schema_tools
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

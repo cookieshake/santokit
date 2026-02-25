@@ -2,11 +2,13 @@
 id: SDK-005
 domain: sdk
 title: Auth integration in generated SDK
-status: planned
+status: implemented
 depends: [SDK-001]
 spec_refs: []
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/sdk/test_sdk_005_auth_integration.py::test_sdk_auth_integration_generation
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

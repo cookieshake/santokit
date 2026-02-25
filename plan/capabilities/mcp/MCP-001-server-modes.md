@@ -2,11 +2,13 @@
 id: MCP-001
 domain: mcp
 title: Start MCP server in stdio and SSE modes
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: ["plan/spec/cli.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/mcp/test_mcp_001_server_modes.py::test_mcp_server_modes
+code_refs:
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent

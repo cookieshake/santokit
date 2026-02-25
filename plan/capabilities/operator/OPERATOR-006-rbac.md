@@ -2,11 +2,14 @@
 id: OPERATOR-006
 domain: operator
 title: Manage operator RBAC membership and roles
-status: planned
+status: implemented
 depends: [OPERATOR-001]
 spec_refs: ["plan/spec/operator-rbac.md", "plan/spec/cli.md"]
-test_refs: []
-code_refs: []
+test_refs:
+  - tests/integration_py/tests/capabilities/operator/test_operator_006_rbac.py::test_operator_rbac_membership_and_roles
+code_refs:
+  - packages/services/hub/src/main.rs
+  - packages/tools/cli/src/main.rs
 ---
 
 ## Intent
