@@ -77,6 +77,30 @@ CLAUDE.md             # AI 코딩 도구용 가이드 (santokit init 시 생성)
 
 기본: `./santokit/` 탐색. `--config ./path/`로 변경 가능.
 
+### `santokit.yaml` 전체 구조
+
+```yaml
+version: 1
+database: "postgres://..."              # 선택 (docker compose 시 자동)
+
+resources:
+  users: ...
+  posts: ...
+
+auth:
+  token:
+    type: paseto-v4-local
+    expiry: 24h
+  providers:
+    - type: email
+    - type: google
+
+storage:
+  buckets:
+    images: ...
+    media: ...
+```
+
 ## 리소스 (`santokit.yaml`)
 
 리소스 이름이 곧 API 경로와 DB 테이블명. 자동 변환 없음.
@@ -89,20 +113,20 @@ resources:
     fields:
       phone: { type: text, optional: true }
     access:
-      get: "$auth.sub == id"
-      update: "$auth.sub == id"
+      get: [self]
+      update: [self]
 
   profiles:                                  # 공개 프로필 — 누구나 조회 가능
     belongs_to:
-      user: users
+      user: { resource: users, on_delete: cascade }
     unique: [user]
     fields:
       name: text
-      avatar: { type: text, optional: true }
+      avatar: { type: file, bucket: images, optional: true }
     access:
-      list: "true"
-      get: "true"
-      update: "$auth.sub == user.id"
+      list: [anyone]
+      get: [anyone]
+      update: [user]                         # belongs_to user = 본인
 
   posts:
     fields:
@@ -110,34 +134,34 @@ resources:
       body: text
       published: { type: boolean, default: false }
     belongs_to:
-      author: users
-    validation: "author.id == $auth.sub"
+      author: { resource: users, on_delete: restrict }
+    validation: "$auth.sub == author.id"
     access:
-      list: "true"
-      get: "true"
-      create: "$auth.sub != null"
-      update: "$auth.sub == author.id"
-      delete: "$auth.sub == author.id || $auth.is_admin"
+      list: [anyone]
+      get: [anyone]
+      create: [auth]
+      update: [author]
+      delete: [author, admin]
     search: [title, body]
 
   comments:
     fields:
       body: text
     belongs_to:
-      post: posts
-      author: users
+      post: { resource: posts, on_delete: cascade }
+      author: { resource: users, on_delete: restrict }
 
   post_likes:
     belongs_to:
-      post: posts
-      user: users
+      post: { resource: posts, on_delete: cascade }
+      user: { resource: users, on_delete: cascade }
     unique: [post, user]
 ```
 
 ### 인증 리소스 (`auth: true`)
 
 하나의 리소스에 `auth: true`를 지정하면 인증 시스템과 연결. 이름은 자유 (`users`, `accounts`, `members` 등).
-`auth: true`인 리소스가 없으면 `validate`/`apply` 시 에러.
+`auth: true`인 리소스가 없는데 auth provider가 설정되어 있거나 access에서 `$auth`를 참조하면 `validate` 시 에러.
 
 `auth: true`는 `auth: { identity: email }`과 동일. identity를 변경하려면:
 
@@ -152,7 +176,7 @@ players:
 자동 포함 필드:
 - `{identity}` — unique, 로그인 식별자 (email 또는 username)
 - `password_hash` — 내부 관리, API 노출 안 됨
-- `is_admin` — boolean (기본: false, API 수정 불가)
+- `is_admin` — boolean (기본: false, REST API 수정 불가. 대시보드 또는 액션 `ctx.db`에서 변경 가능)
 
 커스텀 역할이 필요하면 직접 필드 추가:
 
@@ -169,7 +193,7 @@ users:
 
 ### 필드 타입
 
-`text`, `number`, `decimal`, `boolean`, `timestamp`, `enum`. 배열은 `[]` 붙임 (`text[]`, `number[]`).
+`text`, `number`, `decimal`, `boolean`, `timestamp`, `enum`, `file`. 배열은 `[]` 붙임 (`text[]`, `number[]`).
 
 - `number` — 정수 (내부: `bigint`)
 - `decimal` — 소수 (기본: `decimal(19,4)`, 커스텀: `{ type: decimal, precision: 10, scale: 2 }`)
@@ -200,33 +224,32 @@ fields:
 
 ### 관계
 
-`belongs_to`로 선언. DB에 `{name}_id` 외래키 자동 생성.
+`belongs_to`로 선언. DB에 `_rel_{name}_id` 내부 컬럼 자동 생성 (유저 필드와 충돌 방지).
 역방향 관계(has_many)는 `belongs_to`에서 자동 추론 — 별도 선언 불필요.
+유저 정의 필드명은 `_` prefix 사용 불가 (`validate` 시 에러).
 
 ```yaml
-# 사람을 가리킬 수도 있고
 belongs_to:
-  author: users       # → author_id (references users)
-
-# 리소스 간 관계도 동일
-belongs_to:
-  list: transaction_lists   # → list_id (references transaction_lists)
-  category: categories      # → category_id (references categories)
+  author: { resource: users, on_delete: restrict }
+  category: { resource: categories, on_delete: cascade }
 ```
 
-어떤 리소스든 `belongs_to` 대상이 될 수 있음. `onDelete`는 `cascade` 고정.
+`on_delete` 필수 명시:
+- `cascade` — 부모 삭제 시 자식도 삭제
+- `restrict` — 자식이 있으면 부모 삭제 불가
 
 예: comments가 `belongs_to: { post: posts }`이면, `GET /api/posts/:id/comments` 자동 생성.
 
 ### 리소스 검증
 
-`validation` — JS 표현식으로 리소스 레벨 검증. 필드명과 `auth`를 직접 참조.
+`validation` — JS 표현식으로 리소스 레벨 검증. 필드명과 `$auth`를 직접 참조.
+create + update 시 모두 실행. 실행 순서: access 체크 → 필드 validation → 리소스 validation.
 
 ```yaml
 posts:
   belongs_to:
-    author: users
-  validation: "author.id == auth.sub"        # 생성 시 작성자 = 현재 유저
+    author: { resource: users, on_delete: restrict }
+  validation: "$auth.sub == author.id"        # 작성자 = 현재 유저
 ```
 
 ### 검색
@@ -259,14 +282,14 @@ YAML 선언 불필요 — 파일이 있으면 자동 등록.
 ```javascript
 // actions/resources/posts/publish.js
 export default {
-  only: ["author", "admin"],
+  access: ["author", "admin"],
   async run(ctx) {
     ctx.resource.published = true
     ctx.resource.published_at = new Date()
 
     // 다른 리소스 접근 (권한 체크 우회 — 서버 사이드 로직)
     await ctx.db.notifications.create({
-      user_id: ctx.resource.author_id,
+      user_id: ctx.resource.author.id,
       message: "게시글이 발행되었습니다"
     })
   }
@@ -276,7 +299,7 @@ export default {
 ```javascript
 // actions/resources/posts/reject.js
 export default {
-  only: ["admin"],
+  access: ["admin"],
   params: {
     reason: { type: "string", required: true }
   },
@@ -288,11 +311,11 @@ export default {
 ```
 
 액션 JS 스펙:
-- `only` — 실행 가능 역할
+- `access` — 키워드 리스트. CRUD access와 동일 문법. 미지정 시 `["admin"]` (관리자만)
 - `params` — 입력 파라미터 정의
 - `run(ctx)` — 실행 로직. 구조분해도 가능: `run({ resource, auth, db })`
-  - `ctx.resource` — 현재 리소스. 필드를 직접 변경하면 DB에 반영됨
-  - `ctx.auth` — 현재 유저 정보 (`sub`, `roles`)
+  - `ctx.resource` — 현재 리소스. 필드를 직접 변경하면 `run()` 종료 후 DB에 한번에 저장. 에러 시 전체 롤백 (트랜잭션)
+  - `ctx.auth` — 현재 유저 정보 (`sub`, `is_admin`, 커스텀 필드)
   - `ctx.db` — 모든 리소스에 CRUD 접근 가능 (권한 체크 우회)
   - `ctx.params` — 액션 입력 파라미터
   - `ctx.now` — 현재 시간
@@ -306,7 +329,7 @@ export default {
 ```javascript
 // actions/global/send_newsletter.js
 export default {
-  only: ["admin"],
+  access: ["admin"],
   async run({ db, fetch }) {
     const users = await db.users.list()
     await fetch("https://api.sendgrid.com/...", {
@@ -327,30 +350,44 @@ POST /api/actions/send_newsletter     # 글로벌 액션 호출
 
 ## 권한
 
-리소스에 인라인 JS 표현식으로 정의. `$auth`로 현재 유저, 필드명으로 리소스 참조.
+키워드 리스트로 정의. 사용 가능한 키워드:
+
+- `anyone` — 누구나 (비로그인 포함)
+- `auth` — 로그인한 유저
+- `self` — 본인 (auth 리소스 전용, `auth.sub == id`)
+- `admin` — `is_admin == true`인 유저
+- `{관계명}` — belongs_to 관계 기반 체크. 관계 대상이 auth 리소스면 소유자 체크 (`auth.sub == record.{관계명}_id`), 아니면 공유 부모 체크 (`auth.{관계명}_id == record.{관계명}_id`)
+- `{is_* 필드명에서 is_ 제거}` — auth 리소스의 boolean 필드 (예: `is_editor` → `editor`)
+
+리스트 내 키워드는 OR 관계.
 
 ```yaml
 resources:
   posts:
     access:
-      list: "true"
-      get: "true"
-      create: "$auth.sub != null"
-      update: "$auth.sub == author.id"
-      delete: "$auth.sub == author.id || $auth.is_admin"
+      list: [anyone]
+      get: [anyone]
+      create: [auth]
+      update: [author]
+      delete: [author, admin]
 ```
 
 ```yaml
 # 예: 가계부 앱 — 같은 조직 소속이면 조회, 본인만 수정
+users:
+  auth: true
+  belongs_to:
+    organization: { resource: organizations, on_delete: restrict }
+
 transactions:
   belongs_to:
-    organization: organizations
-    creator: users
+    organization: { resource: organizations, on_delete: cascade }
+    creator: { resource: users, on_delete: restrict }
   access:
-    list: "$auth.organization_id == organization.id"
-    create: "$auth.organization_id == organization.id"
-    update: "$auth.sub == creator.id"
-    delete: "$auth.is_admin"
+    list: [organization]               # 같은 조직 소속
+    create: [organization]
+    update: [creator]
+    delete: [admin]
 ```
 
 ### 필드별 접근 제어
@@ -363,47 +400,77 @@ users:
   fields:
     phone: text                      # 비공개 — 본인만 접근
   access:
-    get: "$auth.sub == id"
+    get: [self]
 
 profiles:
   belongs_to:
-    user: users
+    user: { resource: users, on_delete: cascade }
   unique: [user]
   fields:
     name: text                       # 공개 — 누구나 조회 가능
-    avatar: { type: text, optional: true }
+    avatar: { type: file, bucket: images, optional: true }
   access:
-    list: "true"
-    get: "true"
-    update: "$auth.sub == user.id"
+    list: [anyone]
+    get: [anyone]
+    update: [user]
 ```
 
 post에서 작성자 정보 조회: `GET /api/posts/:id?expand=author.profile`
 
+### expand
+
+`?expand=`로 belongs_to 관계를 펼쳐서 조회. 중첩 depth 제한 없음.
+
+belongs_to 관계는 API 응답에서 `{ id }` 객체로 표현. expand하면 필드가 채워짐:
+
+```json
+// GET /api/posts/:id
+{ "id": "...", "title": "...", "author": { "id": "abc123" } }
+
+// GET /api/posts/:id?expand=author
+{ "id": "...", "title": "...", "author": { "id": "abc123", "name": "..." } }
+
+// GET /api/posts/:id?expand=author.profile (중첩)
+{
+  "id": "...", "title": "...",
+  "author": {
+    "id": "abc123", "name": "...",
+    "profile": { "id": "...", "avatar": "..." }
+  }
+}
+```
+
+생성/수정 요청도 동일한 객체 형식:
+
+```json
+// POST /api/posts
+{ "title": "...", "body": "...", "author": { "id": "abc123" } }
+```
+
 ### 기본값
 
-`access` 미지정 시 기본: `"$auth.is_admin"` (관리자만 가능).
+`access` 미지정 시 기본: `[admin]` (관리자만 가능).
 
 ## 타입 생성
 
-`santokit apply` 시 `types/santokit.d.ts`와 `jsconfig.json`을 자동 생성. YAML에서 리소스별 타입을 유도.
+`santokit serve` 시작 시 `types/santokit.d.ts`와 `jsconfig.json`을 자동 생성. YAML에서 리소스별 타입을 유도.
 
 ```typescript
 // types/santokit.d.ts (자동 생성 — 직접 수정하지 않음)
 
 interface Posts {
   id: string
-  title: text
-  body: text
+  title: string
+  body: string
   published: boolean
-  author_id: string
+  author: { id: string }                     // belongs_to → 객체 (expand 시 필드 채워짐)
   created_at: string
   updated_at: string
 }
 
 interface PostsActionContext {
   resource: Posts
-  auth: { sub: string; roles: string[] }
+  auth: { sub: string; is_admin: boolean; [key: string]: any }
   params: Record<string, any>
   db: DB
 }
@@ -419,7 +486,7 @@ interface DB {
 }
 
 interface Action<T = any> {
-  only?: string[]
+  access?: string[]
   params?: Record<string, { type: string; required?: boolean }>
   run(ctx: T): Promise<void> | void
 }
@@ -456,7 +523,7 @@ DELETE /api/posts/:id                삭제
 GET    /api/posts?q=검색어
 
 # 필터링
-GET    /api/posts?filter[published]=true&filter[author_id]=xxx
+GET    /api/posts?filter[published]=true&filter[author.id]=xxx
 
 # 액션
 POST   /api/posts/:id/publish        액션 실행
@@ -469,13 +536,15 @@ GET    /api/users/:id/posts          해당 유저의 포스트 목록
 # Auth
 POST   /api/auth/signup              { "email": "...", "password": "..." }
 POST   /api/auth/login               { "email": "...", "password": "..." }
+POST   /api/auth/set-password        비밀번호 설정 (OAuth 유저용, 로그인 필요)
 GET    /api/auth/google              → 302 → Google OAuth
 GET    /api/auth/google/callback     → 토큰 발급
+POST   /api/auth/link/google         기존 계정에 OAuth 연결 (로그인 필요)
+POST   /api/auth/unlink/google       OAuth 연결 해제 (로그인 필요)
 
 # Storage
-POST   /api/storage/main/upload      presigned URL 요청
-GET    /api/storage/main/:key        presigned download URL
-DELETE /api/storage/main/:key        삭제
+POST   /api/{리소스}/presign/{필드}    presigned 업로드 URL 발급 (redirect 버킷만)
+GET    /api/storage/{bucket}/:key     다운로드 (버킷 serve 설정에 따라 proxy 또는 redirect)
 ```
 
 인증: `Authorization: Bearer <token>`.
@@ -519,7 +588,7 @@ SANTOKIT_ADMIN_PASSWORD="securepass"       # admin 비밀번호
 
 ### `help --llm`
 
-현재 프로젝트 상태를 AI가 이해할 수 있는 형태로 출력. `resources.yaml`을 읽어서 동적으로 생성.
+현재 프로젝트 상태를 AI가 이해할 수 있는 형태로 출력. `santokit.yaml`을 읽어서 동적으로 생성.
 
 ```
 $ santokit help --llm
@@ -538,7 +607,7 @@ santokit validate   — validate YAML without DB
 santokit serve      — start server (auto-applies schema changes)
 
 ## Current Resources
-- users (auth: true): name, roles | auto: email, password_hash
+- users (auth: true): name | auto: email, password_hash, is_admin
 - posts: title, body, published | belongs_to: author(users) | actions: publish, unpublish
 - comments: body | belongs_to: post(posts), author(users)
 - post_likes: belongs_to: post(posts), user(users) | unique: [post, user]
@@ -553,39 +622,110 @@ santokit serve      — start server (auto-applies schema changes)
 ## 인증 (`santokit.yaml` 내 `auth`)
 
 ```yaml
-token:
-  type: paseto-v4-local
-  expiry: 24h
-providers:
-  - type: email
-    enabled: true
-  - type: google
-    enabled: true
-    clientId: "..."
-    clientSecret: "${GOOGLE_CLIENT_SECRET}"
-  - type: github
-    enabled: true
-    clientId: "..."
-    clientSecret: "${GITHUB_CLIENT_SECRET}"
+auth:
+  token:
+    type: paseto-v4-local
+    expiry: 24h
+  providers:
+    - type: email
+      enabled: true
+    - type: google
+      enabled: true
+      clientId: "..."
+      clientSecret: "${GOOGLE_CLIENT_SECRET}"
+    - type: github
+      enabled: true
+      clientId: "..."
+      clientSecret: "${GITHUB_CLIENT_SECRET}"
 ```
 
 PASETO v4.local. 서버가 대칭키 자동 생성/관리. secret은 환경 변수 참조.
 
+### 계정 정책
+
+- 같은 email로 중복 가입 시도 → 에러 (409 CONFLICT)
+- 기존 계정에 OAuth 연결 추가 가능 (로그인 상태에서 `POST /api/auth/link/{provider}`)
+- OAuth 전용 유저도 email provider가 켜져 있으면 `POST /api/auth/set-password`로 비밀번호 설정 후 email 로그인 가능
+
 ## 스토리지 (`santokit.yaml` 내 `storage`)
 
 ```yaml
-buckets:
-  main:
-    provider: s3
-    region: ap-northeast-2
-    bucket: my-app-uploads
-    accessKeyId: "${AWS_ACCESS_KEY_ID}"
-    secretAccessKey: "${AWS_SECRET_ACCESS_KEY}"
+storage:
+  buckets:
+    images:
+      provider: s3
+      serve: proxy                             # 서버가 파일 직접 전달
+      region: ap-northeast-2
+      bucket: my-app-images
+      accessKeyId: "${AWS_ACCESS_KEY_ID}"
+      secretAccessKey: "${AWS_SECRET_ACCESS_KEY}"
+    media:
+      provider: s3
+      serve: redirect                          # S3 presigned URL로 302 redirect
+      region: ap-northeast-2
+      bucket: my-app-media
+      accessKeyId: "${AWS_ACCESS_KEY_ID}"
+      secretAccessKey: "${AWS_SECRET_ACCESS_KEY}"
 ```
 
-S3 presigned URL 기반. 버킷 여러 개 정의 가능.
+`serve` 필수 명시:
+- `proxy` — 서버가 S3에서 받아서 전달 (작은 파일)
+- `redirect` — S3 presigned URL로 302 (큰 파일)
+
+버킷 여러 개 정의 가능.
+
+### 파일 필드
+
+리소스 필드에 `file` 타입을 사용하면 스토리지 버킷과 연결. 파일의 access는 해당 리소스의 access 규칙을 따름.
+
+```yaml
+profiles:
+  fields:
+    avatar: { type: file, bucket: images, optional: true }
+  access:
+    get: [anyone]       # → avatar 다운로드도 anyone
+    update: [user]      # → avatar 업로드/교체도 user만
+
+posts:
+  fields:
+    attachment: { type: file, bucket: media, optional: true }
+```
+
+**업로드** — 버킷의 `serve` 설정에 따라 결정:
+
+```
+# proxy 모드: multipart로 서버 경유
+PATCH /api/profiles/:id (multipart, avatar: <file>)
+→ 서버가 S3에 업로드 → DB에 key 저장
+
+# redirect 모드: presigned URL로 S3 직접 업로드
+POST /api/posts/presign/attachment   → { url: "https://s3.../presigned", key: "abc" }
+# 클라이언트가 S3에 직접 업로드
+PUT https://s3.../presigned
+# 레코드에 연결
+POST /api/posts { title: "...", attachment: "abc" }
+```
+
+**파일 자동 삭제:**
+- 레코드 삭제 → 연결된 S3 파일 자동 삭제
+- 파일 필드 변경 → 이전 S3 파일 자동 삭제
+- 파일 필드 null로 변경 → S3 파일 자동 삭제
+
+presign 후 레코드에 연결되지 않은 미연결 파일은 서버가 주기적으로 정리.
+
+**다운로드** — file 필드 응답은 URL 문자열:
+
+```json
+{ "avatar": "/api/storage/images/abc123" }
+```
+
+요청 시 access 체크 후:
+- `proxy` 버킷 → 서버가 파일을 직접 전달
+- `redirect` 버킷 → S3 presigned URL로 302 redirect
 
 ## 대시보드 (`/_admin`)
+
+`is_admin` 유저만 접근 가능. 로그인 필요.
 
 - 리소스 목록, 필드/관계 시각화
 - 데이터 CRUD (조회, 추가, 수정, 삭제)
